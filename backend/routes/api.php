@@ -25,14 +25,14 @@ Route::get('email/verify/{id}/{hash}', function (Request $request, $id, $hash) {
     $user = \App\Models\User::findOrFail($id);
 
     if (!hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
-        return redirect(env('FRONTEND_URL', 'http://localhost') . '/auth/login?verified=error');
+        return redirect(rtrim(config('app.frontend_url'), '/') . '/auth/login?verified=error');
     }
 
     if (!$user->hasVerifiedEmail()) {
         $user->markEmailAsVerified();
     }
 
-    return redirect(env('FRONTEND_URL', 'http://localhost') . '/auth/login?verified=1');
+    return redirect(rtrim(config('app.frontend_url'), '/') . '/auth/login?verified=1');
 })->name('verification.verify');
 
 Route::get('categories',         [CategoryController::class, 'index']);

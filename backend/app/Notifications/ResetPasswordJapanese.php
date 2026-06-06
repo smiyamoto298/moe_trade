@@ -12,7 +12,7 @@ class ResetPasswordJapanese extends ResetPassword
      */
     public function toMail($notifiable): MailMessage
     {
-        $frontend = rtrim(env('FRONTEND_URL', 'http://localhost'), '/');
+        $frontend = rtrim(config('app.frontend_url'), '/');
 
         // getEmailForPasswordReset() はハッシュ値を返すため、再設定フォームへは
         // 送信時の平文メール（plainEmail）を渡す。フォームからPOSTされた平文を
