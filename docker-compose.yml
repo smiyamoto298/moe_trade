@@ -1,0 +1,92 @@
+services:
+  # ── nginx ──────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./backend:/var/www/backend
+    depends_on:
+      - php
+      - frontend
+    networks:
+      - moe
+
+  # ── PHP / Laravel ───────────────────────────────────────
+  php:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/var/www/backend
+    environment:
+      - APP_ENV=local
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moe
+
+  # ── React 開発サーバー ────────────────────────────────
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    networks:
+      - moe
+
+  # ── MySQL ──────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: moe_trade
+      MYSQL_USER: moe
+      MYSQL_PASSWORD: moe_password
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - moe
+
+  # ── Mailpit (開発用メールサーバー) ──────────────────────
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"  # Web UI
+      - "1025:1025"  # SMTP
+    networks:
+      - moe
+
+  # ── phpMyAdmin (開発用) ───────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:5
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: moe
+      PMA_PASSWORD: moe_password
+    depends_on:
+      - db
+    networks:
+      - moe
+
+volumes:
+  db_data:
+
+networks:
+  moe:
+    driver: bridge

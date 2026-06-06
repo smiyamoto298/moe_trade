@@ -1,0 +1,22 @@
+# Laravel
+backend/.env
+backend/vendor/
+backend/node_modules/
+backend/storage/logs/*
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+
+# React
+frontend/node_modules/
+frontend/dist/
+
+# Docker
+docker/mysql/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# fansite
+fansitekit/
