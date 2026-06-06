@@ -261,6 +261,11 @@ export default function NewListingPage() {
           </div>
         </div>
 
+        <div className="bg-surface-card border border-surface-border rounded-lg px-4 py-3 text-xs text-gray-400 space-y-1">
+          <p>・出品は <span className="text-gray-200 font-medium">7日間</span> で期限切れになります。</p>
+          <p>・期限はマイページの出品一覧からいつでも更新（延長）できます。</p>
+        </div>
+
         <button
           type="submit"
           disabled={!canSubmit || submitting}
