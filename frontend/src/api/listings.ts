@@ -9,6 +9,7 @@ export interface ListingCreatePayload {
   quantity: number
   trade_type: string
   comment: string
+  is_worn?: boolean
   servers: { server: string; character_id: number | null }[]
 }
 

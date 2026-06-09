@@ -73,6 +73,10 @@ class ChatController extends Controller
             $buyerIp  = $request->ip();
             $sellerIp = $chat->listing->user->register_ip ?? null;
 
+            // 同一IPの取引は相場対象外（is_valid = false）とするが、
+            // ローカル環境ではテストのため常に相場対象（is_valid = true）にする。
+            $isValid = app()->environment('local') ? true : ($buyerIp !== $sellerIp);
+
             TradeHistory::create([
                 'listing_id' => $chat->listing_id,
                 'item_id'    => $chat->listing->item_id,
@@ -82,7 +86,7 @@ class ChatController extends Controller
                 'price'      => $chat->listing->price,
                 'currency'   => $chat->listing->currency,
                 'server'     => $chat->server,
-                'is_valid'   => $buyerIp !== $sellerIp,
+                'is_valid'   => $isValid,
                 'traded_at'  => now(),
             ]);
         });
@@ -105,11 +109,14 @@ class ChatController extends Controller
         $relist = $request->boolean('relist', false);
 
         DB::transaction(function () use ($chat, $relist) {
-            // チャットを open に戻す
-            $chat->update(['status' => 'open']);
+            // チャットを「取引不成立」にして編集不可にする（交渉中には戻さない）
+            $chat->update(['status' => 'deal_failed']);
 
             // 出品ステータスを不成立に
             $chat->listing->update(['status' => 'deal_failed']);
+
+            // 成立時に記録した取引履歴を削除（不成立の価格を相場データに残さない）
+            TradeHistory::where('listing_id', $chat->listing_id)->delete();
 
             if ($relist) {
                 // 同じ内容で新規出品を作成

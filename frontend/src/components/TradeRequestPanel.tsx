@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { chatApi } from '../api/chat'
 import { charactersApi } from '../api/characters'
 import { useAuth } from '../contexts/AuthContext'
@@ -19,15 +20,19 @@ interface Props {
   listing: Listing
   onComplete: () => void
   onCancel: () => void
+  /** 送信時に出品が取り下げ／取引成立済みで取引不可だった場合の処理。未指定なら一覧へリダイレクト。 */
+  onUnavailable?: () => void
 }
 
-export default function TradeRequestPanel({ listing, onComplete, onCancel }: Props) {
+export default function TradeRequestPanel({ listing, onComplete, onCancel, onUnavailable }: Props) {
   const { user, refresh } = useAuth()
+  const navigate = useNavigate()
   const [server, setServer] = useState<Server | ''>('')
   const [timeSlot, setTimeSlot] = useState('いつでも')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [newCharName, setNewCharName] = useState('')
+  const [error, setError] = useState('')
 
   // 選択サーバーに自分のキャラクターが登録済みか
   const myChar = server ? user?.characters?.find((c) => c.server === server) : null
@@ -41,6 +46,7 @@ export default function TradeRequestPanel({ listing, onComplete, onCancel }: Pro
   const handleSubmit = async () => {
     if (!server) return
     if (needsChar && !newCharName.trim()) return
+    setError('')
     setLoading(true)
     try {
       // キャラクター未登録なら先に登録
@@ -57,6 +63,25 @@ export default function TradeRequestPanel({ listing, onComplete, onCancel }: Pro
       ]
       await chatApi.sendMessage(res.data.id, lines.join('\n'))
       onComplete()
+    } catch (err: unknown) {
+      const res = (err as { response?: { status?: number; data?: { message?: string } } })?.response
+      // 入力中に出品が取り下げ／取引成立した場合 → エラー表示して一覧へリダイレクト
+      const unavailable =
+        res?.status === 404 ||
+        (res?.status === 400 && (res.data?.message ?? '').includes('取引できません'))
+      if (unavailable) {
+        if (onUnavailable) {
+          onUnavailable()
+        } else {
+          navigate('/listings', {
+            state: {
+              tradeError: 'この出品は取り下げ、または取引成立済みのため取引できませんでした。',
+            },
+          })
+        }
+        return
+      }
+      setError(res?.data?.message ?? '取引希望の送信に失敗しました。時間をおいて再度お試しください。')
     } finally {
       setLoading(false)
     }
@@ -154,6 +179,12 @@ export default function TradeRequestPanel({ listing, onComplete, onCancel }: Pro
           className="w-full bg-surface-card border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
         />
       </div>
+
+      {error && (
+        <div className="bg-red-900/40 border border-red-600/50 rounded px-3 py-2 text-sm text-red-300">
+          {error}
+        </div>
+      )}
 
       <div className="flex gap-2 justify-end">
         <button onClick={onCancel} className="text-sm text-gray-400 hover:text-white px-4 py-2 rounded transition-colors">

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { itemsApi } from '../api/items'
+import { useDialog } from '../contexts/DialogContext'
 import ComboInput from './ComboInput'
 import Spinner from './Spinner'
-import type { Item, ItemCategory } from '../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, BONUS_VALUE_LABEL_OPTIONS, SKILL_GROUPS } from '../utils/constants'
+import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, BONUS_VALUE_LABEL_OPTIONS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../utils/constants'
 
 interface BonusValueForm {
   value: string
@@ -26,6 +27,10 @@ const ALL_STATS = Object.keys(BASE_STAT_LABELS)
 const isEquipmentSetCategory = (cat: ItemCategory) =>
   cat.parent_id === null && cat.name === '装備セット'
 
+// 「アセット」親カテゴリの判定（子カテゴリなし・name で判断）
+const isAssetCategory = (cat: ItemCategory) =>
+  cat.parent_id === null && cat.name === 'アセット'
+
 interface Props {
   onRegistered: (item: Item) => void
   onCancel: () => void
@@ -33,6 +38,7 @@ interface Props {
 }
 
 export default function NewItemForm({ onRegistered, onCancel, initialName = '' }: Props) {
+  const { alert } = useDialog()
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -46,6 +52,12 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     set_piece_category_ids: [] as number[],
     skill_requirements: {} as Record<string, string>,
     mithril: false,
+    exclusive_skill: false,
+    placement: '' as '' | AssetPlacement,
+    asset_width: '',
+    asset_height: '',
+    storage_count: '',
+    special_function: '' as '' | AssetFunction,
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
 
@@ -60,14 +72,17 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const allCategories = categories.flatMap((c) => [c, ...(c.children ?? [])])
   const selectedCategory = allCategories.find((c) => String(c.id) === form.category_id)
   const isEquipSet = selectedCategory ? isEquipmentSetCategory(selectedCategory) : false
-  // 親カテゴリが「スキル」かどうか
+  const isAsset = selectedCategory ? isAssetCategory(selectedCategory) : false
+  // 親カテゴリが「テクニック」かどうか
   const isSkill = (() => {
     if (!selectedCategory) return false
     const parent = selectedCategory.parent_id
       ? categories.find((c) => c.id === selectedCategory.parent_id)
       : selectedCategory
-    return parent?.name === 'スキル'
+    return parent?.name === 'テクニック'
   })()
+  // 装備品（効果系の入力欄を出す通常アイテム）
+  const isPlain = !isSkill && !isAsset
 
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -115,21 +130,24 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
     if (isEquipSet && form.set_piece_category_ids.length === 0) {
-      alert('装備セットは構成部位を1つ以上選択してください。')
+      await alert('装備セットは構成部位を1つ以上選択してください。', { title: '入力エラー' })
       return
     }
     setError('')
     setSaving(true)
     try {
+      // 装備品固有の効果系はアセット・テクニックでは送らない
       const res = await itemsApi.create({
         category_id: Number(form.category_id),
         name: form.name,
         description: form.description,
-        base_stats: isSkill ? {} : Object.fromEntries(
+        base_stats: isPlain ? Object.fromEntries(
           Object.entries(form.base_stats).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)])
-        ),
+        ) : {},
+        // 特殊条件は装備品・アセットで使用（テクニックは無し）
         special_conditions: isSkill ? [] : form.special_conditions,
-        mithril: isSkill ? false : form.mithril,
+        mithril: isPlain ? form.mithril : false,
+        exclusive_skill: isPlain ? form.exclusive_skill : false,
         skill_requirements: isSkill
           ? Object.fromEntries(
               Object.entries(form.skill_requirements)
@@ -137,7 +155,13 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
                 .map(([k, v]) => [k, Number(v)])
             )
           : null,
-        bonus_effects: isSkill ? [] : bonusEffects
+        // アセット固有
+        placement: isAsset ? (form.placement || null) : null,
+        asset_width: isAsset && form.asset_width !== '' ? Number(form.asset_width) : null,
+        asset_height: isAsset && form.asset_height !== '' ? Number(form.asset_height) : null,
+        storage_count: isAsset && form.storage_count !== '' ? Number(form.storage_count) : null,
+        special_function: isAsset ? (form.special_function || null) : null,
+        bonus_effects: isPlain ? bonusEffects
           .filter((e) => e.effect_name.trim())
           .map((e) => ({
             effect_name: e.effect_name,
@@ -145,7 +169,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
               .filter((v) => v.value !== '')
               .map((v) => ({ value: Number(v.value), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
-          })),
+          })) : [],
         ...(isEquipSet && {
           is_equipment_set: true,
           set_piece_category_ids: form.set_piece_category_ids,
@@ -182,7 +206,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
       ) : (
       <>
       {/* 基本情報 */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs text-gray-400 mb-1">種別 <span className="text-red-400">*</span></label>
           <select
@@ -196,9 +220,13 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
             {categories.filter(isEquipmentSetCategory).map((cat) => (
               <option key={cat.id} value={cat.id}>⚔ 装備セット</option>
             ))}
-            {/* 通常の子カテゴリ（武器・防具・装飾品） */}
+            {/* アセット（子カテゴリなし・単体選択） */}
+            {categories.filter(isAssetCategory).map((cat) => (
+              <option key={cat.id} value={cat.id}>🏠 アセット</option>
+            ))}
+            {/* 通常の子カテゴリ（武器・防具・装飾品など） */}
             {categories
-              .filter((cat) => !isEquipmentSetCategory(cat))
+              .filter((cat) => !isEquipmentSetCategory(cat) && !isAssetCategory(cat))
               .map((cat) => (
                 <optgroup key={cat.id} label={cat.name}>
                   {cat.children?.map((child) => (
@@ -239,7 +267,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
           </p>
           <div className="space-y-2">
             {categories
-              .filter((cat) => !isEquipmentSetCategory(cat) && cat.name !== 'スキル' && (cat.children ?? []).length > 0)
+              .filter((cat) => !isEquipmentSetCategory(cat) && cat.name !== 'テクニック' && (cat.children ?? []).length > 0)
               .map((cat) => (
                 <div key={cat.id}>
                   <p className="text-xs text-gray-500 mb-1">{cat.name}</p>
@@ -305,18 +333,114 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         </div>
       )}
 
-      {!isSkill && (
+      {/* アセット固有パラメータ */}
+      {isAsset && (
+        <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-3">
+          <p className="text-xs font-semibold text-primary-400">アセット情報</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">設置個所</label>
+              <select
+                value={form.placement}
+                onChange={(e) => setField('placement', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              >
+                <option value="">選択なし</option>
+                {ASSET_PLACEMENTS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">特殊機能</label>
+              <select
+                value={form.special_function}
+                onChange={(e) => setField('special_function', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              >
+                <option value="">なし</option>
+                {ASSET_FUNCTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">サイズ（横）</label>
+              <input
+                type="number" min={1} placeholder="—"
+                value={form.asset_width}
+                onChange={(e) => setField('asset_width', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">サイズ（縦）</label>
+              <input
+                type="number" min={1} placeholder="—"
+                value={form.asset_height}
+                onChange={(e) => setField('asset_height', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">ストレージ数</label>
+              <input
+                type="number" min={0} placeholder="—"
+                value={form.storage_count}
+                onChange={(e) => setField('storage_count', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 特殊条件（アセット） */}
+      {isAsset && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs font-semibold text-gray-300 py-1 flex items-center gap-1 select-none">
+            <span className="group-open:rotate-90 transition-transform inline-block">▶</span> 特殊条件
+          </summary>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {ALL_SPECIAL.map((c) => (
+              <label
+                key={c}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-xs transition-colors ${
+                  form.special_conditions.includes(c)
+                    ? 'border-red-500/60 bg-red-900/20 text-red-300'
+                    : 'border-surface-border text-gray-400 hover:border-gray-500'
+                }`}
+              >
+                <input type="checkbox" checked={form.special_conditions.includes(c)} onChange={() => toggleCond(c)} className="accent-red-500" />
+                <span className="font-medium">{c}</span>
+                <span className="truncate">{SPECIAL_CONDITIONS[c]}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {isPlain && (
       <>
-      {/* ミスリル */}
-      <label className="flex items-center gap-2 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={form.mithril}
-          onChange={(e) => setField('mithril', e.target.checked)}
-          className="accent-primary-500"
-        />
-        <span className="text-sm text-gray-300">ミスリル</span>
-      </label>
+      {/* ミスリル・専用技 */}
+      <div className="flex items-center gap-6">
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.mithril}
+            onChange={(e) => setField('mithril', e.target.checked)}
+            className="accent-primary-500"
+          />
+          <span className="text-sm text-gray-300">ミスリル</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.exclusive_skill}
+            onChange={(e) => setField('exclusive_skill', e.target.checked)}
+            className="accent-primary-500"
+          />
+          <span className="text-sm text-gray-300">専用技</span>
+        </label>
+      </div>
 
       {/* 追加効果 */}
       <details className="group">

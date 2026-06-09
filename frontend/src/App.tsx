@@ -4,6 +4,7 @@ import Footer from './components/Footer'
 import ListingsPage from './pages/ListingsPage'
 import ListingDetailPage from './pages/ListingDetailPage'
 import NewListingPage from './pages/NewListingPage'
+import BulkListingPage from './pages/BulkListingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
@@ -40,10 +41,15 @@ export default function App() {
           <Route path="/" element={<Navigate to="/listings" replace />} />
           <Route path="/listings" element={<ListingsPage key="equipment" mode="equipment" />} />
           <Route path="/skills" element={<ListingsPage key="skill" mode="skill" />} />
+          <Route path="/assets" element={<ListingsPage key="asset" mode="asset" />} />
           <Route path="/listings/:id" element={<ListingDetailPage />} />
           <Route
             path="/listings/new"
             element={<PrivateRoute><NewListingPage /></PrivateRoute>}
+          />
+          <Route
+            path="/listings/bulk"
+            element={<PrivateRoute><BulkListingPage /></PrivateRoute>}
           />
           <Route path="/auth/login" element={<LoginPage />} />
           <Route path="/auth/register" element={<RegisterPage />} />
@@ -63,18 +69,16 @@ export default function App() {
             element={<PrivateRoute><BoardThreadPage /></PrivateRoute>}
           />
           <Route path="/admin" element={<Navigate to="/admin/items" replace />} />
-          {/* 管理画面 */}
-          <Route
-            path="/admin/items"
-            element={<RoleRoute roles={['admin', 'editor']}><AdminItemsPage /></RoleRoute>}
-          />
+          {/* アイテム管理：閲覧は全員（ゲスト含む）可。操作はページ内で権限別に制御。 */}
+          <Route path="/admin/items" element={<AdminItemsPage />} />
+          {/* 追加・編集はログイン必須（権限の細部はページ内・APIで制御） */}
           <Route
             path="/admin/items/new"
-            element={<RoleRoute roles={['admin', 'editor']}><AdminItemEditPage /></RoleRoute>}
+            element={<PrivateRoute><AdminItemEditPage /></PrivateRoute>}
           />
           <Route
             path="/admin/items/:id/edit"
-            element={<RoleRoute roles={['admin', 'editor']}><AdminItemEditPage /></RoleRoute>}
+            element={<PrivateRoute><AdminItemEditPage /></PrivateRoute>}
           />
           <Route
             path="/admin/users"

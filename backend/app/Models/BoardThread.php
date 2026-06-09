@@ -6,7 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class BoardThread extends Model
 {
-    protected $fillable = ['user_id', 'title', 'status'];
+    protected $fillable = ['user_id', 'title', 'status', 'admin_only'];
+
+    protected $casts = [
+        'admin_only' => 'boolean',
+    ];
 
     public function user()
     {

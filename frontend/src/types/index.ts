@@ -63,13 +63,29 @@ export interface Item {
   special_conditions: string[]
   dyeable: boolean | null
   mithril: boolean
+  exclusive_skill: boolean
   is_equipment_set: boolean
   set_piece_category_ids: number[] | null
   skill_requirements: Record<string, number> | null
+  // ---- アセット固有（装備品・テクニックでは null） ----
+  placement?: AssetPlacement | null      // 設置個所: 床 / 壁 / 天井
+  asset_width?: number | null            // サイズ: 横
+  asset_height?: number | null           // サイズ: 縦
+  storage_count?: number | null          // ストレージ数
+  special_function?: AssetFunction | null // 特殊機能（単一）
   verified_status: VerifiedStatus
   submitted_by: number | null
+  // editor/admin が編集・確認すると true。true の間は登録者(user)が上書き編集できない（排他制御）。
+  locked_by_staff: boolean
   bonus_effects: ItemBonusEffect[]
 }
+
+// ---- アセット ----
+export type AssetPlacement = '床' | '壁' | '天井'
+export type AssetFunction = '販売員' | '銀行' | 'タイプカプセル' | '栽培' | '生産施設' | 'カタログ'
+
+// ---- 種別（一覧タブ） ----
+export type ItemType = 'equipment' | 'technique' | 'asset'
 
 // ---- 出品 ----
 export type TradeType = 'fixed' | 'negotiable'
@@ -90,6 +106,8 @@ export interface Listing {
   quantity: number
   trade_type: TradeType
   comment: string
+  /** 削れあり（耐久度に削れがある中古品）。古いレスポンスでは未定義 */
+  is_worn?: boolean
   status: ListingStatus
   expires_at: string
   servers: ListingServer[]
@@ -112,6 +130,10 @@ export interface TradeRecord {
   currency: string
   server: Server
   traded_at: string
+  /** 相場データとして有効か（同一IP取引は false）。古いレスポンスでは未定義 */
+  is_valid?: boolean
+  /** データの出所。'trade' = サイト内取引、'manual' = 他サイト相場の手動登録 */
+  source?: 'trade' | 'manual'
 }
 
 export interface PriceStats {
@@ -143,8 +165,14 @@ export interface ListingSearchParams {
   include_equipment_set?: boolean
   include_completed?: boolean
   is_skill?: boolean
+  item_type?: ItemType
+  placements?: AssetPlacement[]
+  special_functions?: AssetFunction[]
+  storage_min?: number
+  storage_max?: number
   servers?: Server[]
   trade_type?: TradeType
+  exclude_worn?: boolean
   price_min?: number
   price_max?: number
   bonus_effect_names?: string[]
@@ -152,13 +180,15 @@ export interface ListingSearchParams {
   bonus_value_ranges?: Record<string, StatRange>
   base_stat_keys?: string[]
   base_stat_ranges?: Record<string, StatRange>
+  skill_keys?: string[]
+  skill_ranges?: Record<string, StatRange>
   special_conditions?: string[]
   sort?: string  // 'newest' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
   page?: number
 }
 
 // ---- チャット ----
-export type ChatStatus = 'open' | 'deal' | 'declined'
+export type ChatStatus = 'open' | 'deal' | 'declined' | 'deal_failed'
 
 export interface TradeMessage {
   id: number
@@ -191,6 +221,7 @@ export interface BoardThreadSummary {
   id: number
   title: string
   status: BoardThreadStatus
+  admin_only: boolean
   user_id: number
   author_name: string
   post_count: number
@@ -203,13 +234,16 @@ export interface BoardPost {
   user_id: number
   author_name: string
   message: string
+  image_url?: string | null
   created_at: string
+  updated_at?: string
 }
 
 export interface BoardThread {
   id: number
   title: string
   status: BoardThreadStatus
+  admin_only: boolean
   user_id: number
   author_name: string
   created_at: string

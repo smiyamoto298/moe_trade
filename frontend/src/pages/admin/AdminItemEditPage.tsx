@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { itemsApi } from '../../api/items'
+import { useAuth } from '../../contexts/AuthContext'
+import { useDialog } from '../../contexts/DialogContext'
 import ComboInput from '../../components/ComboInput'
 import Spinner from '../../components/Spinner'
-import type { ItemCategory } from '../../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, BONUS_VALUE_LABEL_OPTIONS, SKILL_GROUPS } from '../../utils/constants'
+import type { ItemCategory, AssetPlacement, AssetFunction } from '../../types'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, BONUS_VALUE_LABEL_OPTIONS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../../utils/constants'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 const ALL_STATS = Object.keys(BASE_STAT_LABELS)
@@ -30,14 +32,27 @@ const emptyBonus = (): BonusEffectForm => ({
 const isEquipmentSetCategory = (cat: ItemCategory) =>
   cat.parent_id === null && cat.name === '装備セット'
 
+const isAssetCategory = (cat: ItemCategory) =>
+  cat.parent_id === null && cat.name === 'アセット'
+
 export default function AdminItemEditPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  // 一覧から渡された絞り込みフィルタ（未確認 / 確認済み / すべて）。戻るときに復元する。
+  const incomingFilter = (location.state as { filter?: string } | null)?.filter
+  const { alert } = useDialog()
+  const { user } = useAuth()
+  // editor / admin は全アイテムを編集でき、「確認済みにする」も可能
+  const isEditor = user?.role === 'editor' || user?.role === 'admin'
   const isNew = !id
 
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [verifiedStatus, setVerifiedStatus] = useState<'verified' | 'unverified' | null>(null)
+  // 「保存して確認済みにする」が押されたかどうか（submit 時に参照）
+  const verifyAfterSaveRef = useRef(false)
   const [form, setForm] = useState({
     category_id: '',
     name: '',
@@ -46,9 +61,15 @@ export default function AdminItemEditPage() {
     special_conditions: [] as string[],
     dyeable: null as boolean | null,
     mithril: false as boolean,
+    exclusive_skill: false as boolean,
     is_equipment_set: false as boolean,
     set_piece_category_ids: [] as number[],
     skill_requirements: {} as Record<string, string>,
+    placement: '' as '' | AssetPlacement,
+    asset_width: '',
+    asset_height: '',
+    storage_count: '',
+    special_function: '' as '' | AssetFunction,
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
 
@@ -58,8 +79,21 @@ export default function AdminItemEditPage() {
       itemsApi.categories().then((r) => setCategories(r.data)),
     ]
     if (!isNew && id) {
-      tasks.push(itemsApi.get(Number(id)).then((r) => {
+      tasks.push(itemsApi.get(Number(id)).then(async (r) => {
         const item = r.data
+        // 編集権限チェック：editor/admin は常に可。user は自分の未確認(未ロック)のみ。
+        const canEdit = isEditor
+          || (!!user && item.submitted_by === user.id && item.verified_status === 'unverified' && !item.locked_by_staff)
+        if (!canEdit) {
+          await alert(
+            item.locked_by_staff
+              ? 'このアイテムは編集者・管理者によって更新されたため、編集できません。'
+              : 'このアイテムを編集する権限がありません。',
+            { title: '編集できません' }
+          )
+          navigate('/admin/items')
+          return
+        }
         setForm({
           category_id: String(item.category.id),
           name: item.name,
@@ -68,12 +102,19 @@ export default function AdminItemEditPage() {
           special_conditions: [...item.special_conditions],
           dyeable: item.dyeable,
           mithril: item.mithril ?? false,
+          exclusive_skill: item.exclusive_skill ?? false,
           is_equipment_set: item.is_equipment_set ?? false,
           set_piece_category_ids: item.set_piece_category_ids ?? [],
           skill_requirements: Object.fromEntries(
             Object.entries(item.skill_requirements ?? {}).map(([k, v]) => [k, String(v)])
           ),
+          placement: (item.placement ?? '') as '' | AssetPlacement,
+          asset_width: item.asset_width != null ? String(item.asset_width) : '',
+          asset_height: item.asset_height != null ? String(item.asset_height) : '',
+          storage_count: item.storage_count != null ? String(item.storage_count) : '',
+          special_function: (item.special_function ?? '') as '' | AssetFunction,
         })
+        setVerifiedStatus(item.verified_status)
         setBonusEffects(item.bonus_effects.map((e) => ({
           id: e.id,
           effect_name: e.effect_name,
@@ -91,14 +132,24 @@ export default function AdminItemEditPage() {
   const allCategories = categories.flatMap((c) => [c, ...(c.children ?? [])])
   const selectedCategory = allCategories.find((c) => String(c.id) === form.category_id)
   const isEquipSet = selectedCategory ? isEquipmentSetCategory(selectedCategory) : false
-  // 親カテゴリが「スキル」かどうか
+  const isAsset = selectedCategory ? isAssetCategory(selectedCategory) : false
+  // 親カテゴリが「テクニック」かどうか
   const isSkill = (() => {
     if (!selectedCategory) return false
     const parent = selectedCategory.parent_id
       ? categories.find((c) => c.id === selectedCategory.parent_id)
       : selectedCategory
-    return parent?.name === 'スキル'
+    return parent?.name === 'テクニック'
   })()
+  // 装備品（効果系の入力欄を出す通常アイテム）
+  const isPlain = !isSkill && !isAsset
+
+  // 一覧に戻るとき、編集中アイテムの種別タブを復元するための state
+  const listState = {
+    mode: (isSkill ? 'skill' : isAsset ? 'asset' : 'equipment') as 'equipment' | 'skill' | 'asset',
+    filter: incomingFilter,
+  }
+  const backToList = () => navigate('/admin/items', { state: listState })
 
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -162,8 +213,10 @@ export default function AdminItemEditPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const andVerify = verifyAfterSaveRef.current
+    verifyAfterSaveRef.current = false
     if (isEquipSet && form.set_piece_category_ids.length === 0) {
-      alert('装備セットは構成部位を1つ以上選択してください。')
+      await alert('装備セットは構成部位を1つ以上選択してください。', { title: '入力エラー' })
       return
     }
     setSaving(true)
@@ -172,14 +225,15 @@ export default function AdminItemEditPage() {
         category_id: Number(form.category_id),
         name: form.name,
         description: form.description,
-        base_stats: Object.fromEntries(
+        base_stats: isPlain ? Object.fromEntries(
           Object.entries(form.base_stats)
             .filter(([, v]) => v !== '')
             .map(([k, v]) => [k, Number(v)])
-        ),
+        ) : {},
         special_conditions: isSkill ? [] : form.special_conditions,
-        dyeable: isSkill ? null : form.dyeable,
-        mithril: isSkill ? false : form.mithril,
+        dyeable: isPlain ? form.dyeable : null,
+        mithril: isPlain ? form.mithril : false,
+        exclusive_skill: isPlain ? form.exclusive_skill : false,
         is_equipment_set: isEquipSet,
         set_piece_category_ids: isEquipSet ? form.set_piece_category_ids : [],
         skill_requirements: isSkill
@@ -189,7 +243,12 @@ export default function AdminItemEditPage() {
                 .map(([k, v]) => [k, Number(v)])
             )
           : null,
-        bonus_effects: bonusEffects
+        placement: isAsset ? (form.placement || null) : null,
+        asset_width: isAsset && form.asset_width !== '' ? Number(form.asset_width) : null,
+        asset_height: isAsset && form.asset_height !== '' ? Number(form.asset_height) : null,
+        storage_count: isAsset && form.storage_count !== '' ? Number(form.storage_count) : null,
+        special_function: isAsset ? (form.special_function || null) : null,
+        bonus_effects: isPlain ? bonusEffects
           .filter((e) => e.effect_name.trim())
           .map((e) => ({
             effect_name: e.effect_name,
@@ -197,14 +256,22 @@ export default function AdminItemEditPage() {
               .filter((v) => v.value !== '')
               .map((v) => ({ value: Number(v.value), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
-          })),
+          })) : [],
       }
+      let itemId: number
       if (isNew) {
-        await itemsApi.create(payload as Parameters<typeof itemsApi.create>[0])
+        const created = await itemsApi.create(payload as Parameters<typeof itemsApi.create>[0])
+        itemId = created.data.id
       } else {
         await itemsApi.update(Number(id), payload as Parameters<typeof itemsApi.update>[1])
+        itemId = Number(id)
       }
-      navigate('/admin/items')
+      if (andVerify) await itemsApi.verify(itemId)
+      backToList()
+    } catch (err: unknown) {
+      const res = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response
+      const first = res?.data?.errors ? Object.values(res.data.errors)[0]?.[0] : undefined
+      await alert(first ?? res?.data?.message ?? 'アイテムの保存に失敗しました。', { title: 'エラー' })
     } finally {
       setSaving(false)
     }
@@ -213,10 +280,16 @@ export default function AdminItemEditPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/admin/items')} className="text-gray-400 hover:text-white text-sm">← 一覧に戻る</button>
+        <button onClick={backToList} className="text-gray-400 hover:text-white text-sm">← 一覧に戻る</button>
         <h1 className="text-xl font-bold text-white">
           {isNew ? 'アイテムを追加' : 'アイテムを編集'}
         </h1>
+        {!isNew && verifiedStatus === 'verified' && (
+          <span className="ml-auto text-xs text-emerald-400 flex items-center gap-1">✓ 確認済み</span>
+        )}
+        {!isNew && verifiedStatus === 'unverified' && (
+          <span className="ml-auto text-xs text-yellow-400 flex items-center gap-1">⚠ 未確認</span>
+        )}
       </div>
 
       {mastersLoading ? (
@@ -239,9 +312,13 @@ export default function AdminItemEditPage() {
               {categories.filter(isEquipmentSetCategory).map((cat) => (
                 <option key={cat.id} value={cat.id}>⚔ 装備セット</option>
               ))}
-              {/* 通常の子カテゴリ（武器・防具・装飾品） */}
+              {/* アセット（子カテゴリなし・単体選択） */}
+              {categories.filter(isAssetCategory).map((cat) => (
+                <option key={cat.id} value={cat.id}>🏠 アセット</option>
+              ))}
+              {/* 通常の子カテゴリ（武器・防具・装飾品など） */}
               {categories
-                .filter((cat) => !isEquipmentSetCategory(cat))
+                .filter((cat) => !isEquipmentSetCategory(cat) && !isAssetCategory(cat))
                 .map((cat) => (
                   <optgroup key={cat.id} label={cat.name}>
                     {cat.children?.map((child) => (
@@ -261,7 +338,7 @@ export default function AdminItemEditPage() {
               </p>
               <div className="space-y-3">
                 {categories
-                  .filter((cat) => !isEquipmentSetCategory(cat) && cat.name !== 'スキル' && (cat.children ?? []).length > 0)
+                  .filter((cat) => !isEquipmentSetCategory(cat) && cat.name !== 'テクニック' && (cat.children ?? []).length > 0)
                   .map((cat) => (
                     <div key={cat.id}>
                       <p className="text-xs text-gray-500 mb-1.5">{cat.name}</p>
@@ -316,8 +393,68 @@ export default function AdminItemEditPage() {
           </div>
         </div>
 
-        {/* 追加効果（スキル以外） */}
-        {!isSkill && (
+        {/* アセット情報（アセットのみ） */}
+        {isAsset && (
+        <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-300">アセット情報</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">設置個所</label>
+              <select
+                value={form.placement}
+                onChange={(e) => setField('placement', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              >
+                <option value="">選択なし</option>
+                {ASSET_PLACEMENTS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">特殊機能</label>
+              <select
+                value={form.special_function}
+                onChange={(e) => setField('special_function', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              >
+                <option value="">なし</option>
+                {ASSET_FUNCTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">サイズ（横）</label>
+              <input
+                type="number" min={1} placeholder="—"
+                value={form.asset_width}
+                onChange={(e) => setField('asset_width', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">サイズ（縦）</label>
+              <input
+                type="number" min={1} placeholder="—"
+                value={form.asset_height}
+                onChange={(e) => setField('asset_height', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">ストレージ数</label>
+              <input
+                type="number" min={0} placeholder="—"
+                value={form.storage_count}
+                onChange={(e) => setField('storage_count', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+          </div>
+        </div>
+        )}
+
+        {/* 追加効果（装備品のみ） */}
+        {isPlain && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-300">追加効果</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -336,8 +473,8 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* 付加効果（スキル以外） */}
-        {!isSkill && (
+        {/* 付加効果（装備品のみ） */}
+        {isPlain && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-300">付加効果</h2>
@@ -464,8 +601,8 @@ export default function AdminItemEditPage() {
           </div>
         )}
 
-        {/* 染色 */}
-        {!isSkill && (
+        {/* 染色（装備品のみ） */}
+        {isPlain && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-3">
           <h2 className="text-sm font-semibold text-gray-300">染色</h2>
           <div className="flex gap-3">
@@ -494,9 +631,9 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* ミスリル（スキル以外） */}
-        {!isSkill && (
-        <div className="bg-surface-card border border-surface-border rounded-lg p-5">
+        {/* ミスリル・専用技（装備品のみ） */}
+        {isPlain && (
+        <div className="bg-surface-card border border-surface-border rounded-lg p-5 flex items-center gap-6">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -505,6 +642,15 @@ export default function AdminItemEditPage() {
               className="accent-primary-500"
             />
             <span className="text-sm font-semibold text-gray-300">ミスリル</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.exclusive_skill}
+              onChange={(e) => setForm((p) => ({ ...p, exclusive_skill: e.target.checked }))}
+              className="accent-primary-500"
+            />
+            <span className="text-sm font-semibold text-gray-300">専用技</span>
           </label>
         </div>
         )}
@@ -541,17 +687,28 @@ export default function AdminItemEditPage() {
 
         <div className="flex gap-3 justify-end">
           <button
-            type="button" onClick={() => navigate('/admin/items')}
+            type="button" onClick={backToList}
             className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-surface-border rounded-md transition-colors"
           >
             キャンセル
           </button>
           <button
             type="submit" disabled={saving}
+            onClick={() => { verifyAfterSaveRef.current = false }}
             className="px-6 py-2 text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white rounded-md transition-colors"
           >
             {saving ? '保存中...' : isNew ? 'アイテムを追加' : '変更を保存'}
           </button>
+          {/* 保存して確認済みにする：editor / admin のみ・既存の未確認アイテム編集時 */}
+          {!isNew && isEditor && verifiedStatus === 'unverified' && (
+            <button
+              type="submit" disabled={saving}
+              onClick={() => { verifyAfterSaveRef.current = true }}
+              className="px-6 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-md transition-colors"
+            >
+              {saving ? '保存中...' : '保存して確認済みにする'}
+            </button>
+          )}
         </div>
       </form>
       )}

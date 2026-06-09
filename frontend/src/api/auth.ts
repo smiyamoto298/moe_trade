@@ -16,6 +16,9 @@ export const authApi = {
 
   me: () => client.get<User>('/auth/me'),
 
+  resendVerification: (email: string) =>
+    client.post<{ message: string }>('/email/resend', { email }),
+
   forgotPassword: (data: { email: string }) =>
     client.post<{ message: string }>('/auth/forgot-password', data),
 

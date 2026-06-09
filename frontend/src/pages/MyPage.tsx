@@ -6,6 +6,7 @@ import { charactersApi } from '../api/characters'
 import { mockChats, MOCK_MY_USER_ID, MOCK_MY_LISTING_IDS, USE_MOCK } from '../api/mock'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
+import { useDialog } from '../contexts/DialogContext'
 import ChatThread from '../components/ChatThread'
 import type { Listing, TradeChat, Server } from '../types'
 import { SERVERS } from '../types'
@@ -14,8 +15,9 @@ import { TRADE_TYPE_LABEL, SERVER_COLORS } from '../utils/constants'
 type Tab = 'listings' | 'buying'
 
 export default function MyPage() {
-  const { user } = useAuth()
+  const { user, refresh } = useAuth()
   const { unreadChatIds, unreadListingIds, hasBuyerUnread, markAsRead, notifPermission, requestNotifPermission } = useNotification()
+  const { confirm, alert } = useDialog()
 
   const [tab, setTab] = useState<Tab>('listings')
   const [editingChars, setEditingChars] = useState(false)
@@ -54,7 +56,11 @@ export default function MyPage() {
           await charactersApi.remove(existing.id)
         }
       }
+      // AuthContext の user を再取得して表示へ反映する
+      await refresh()
       setEditingChars(false)
+    } catch {
+      await alert('キャラクター情報の保存に失敗しました。時間をおいて再度お試しください。', { title: 'エラー' })
     } finally {
       setCharSaving(false)
     }
@@ -67,8 +73,8 @@ export default function MyPage() {
       .finally(() => setLoading(false))
   }
 
-  const fetchChats = async () => {
-    setChatsLoading(true)
+  const fetchChats = async (silent = false) => {
+    if (!silent) setChatsLoading(true)
     try {
       if (USE_MOCK) {
         setBuyingChats(mockChats.filter((c) => c.buyer_id === MOCK_MY_USER_ID))
@@ -91,11 +97,35 @@ export default function MyPage() {
       }
       setSellingChats(sellingMap)
     } finally {
-      setChatsLoading(false)
+      if (!silent) setChatsLoading(false)
     }
   }
 
   useEffect(() => { fetchMyListings(); fetchChats() }, [])
+
+  // 通知サマリーの未読に「一覧に無いチャット」が含まれていたら、
+  // 新規取引希望が届いたとみなしてチャット一覧を静かに再取得する
+  useEffect(() => {
+    const knownIds = new Set([
+      ...Object.values(sellingChats).flat().map((c) => c.id),
+      ...buyingChats.map((c) => c.id),
+    ])
+    const hasUnknownUnread = [...unreadChatIds].some((id) => !knownIds.has(id))
+    if (hasUnknownUnread && !chatsLoading) {
+      fetchChats(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadChatIds])
+
+  // 表示中のチャットに新着が届いた場合、閲覧中なので自動的に既読化する。
+  // （openChat 時の markAsRead だけでは、表示中に届いたメッセージで
+  //   再び未読扱いになり、アイコンが消えなくなる）
+  useEffect(() => {
+    if (activeChat && unreadChatIds.has(activeChat.id)) {
+      markAsRead(activeChat.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadChatIds, activeChat])
 
   const [actioningId, setActioningId] = useState<number | null>(null)
 
@@ -112,7 +142,7 @@ export default function MyPage() {
 
   const handleCancel = async (id: number) => {
     if (actioningId) return
-    if (!confirm('出品を取り下げますか？')) return
+    if (!(await confirm('出品を取り下げますか？', { title: '出品の取り下げ', confirmLabel: '取り下げる', danger: true }))) return
     setActioningId(id)
     try {
       await listingsApi.cancel(id)
@@ -135,7 +165,7 @@ export default function MyPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-white">マイページ</h1>
 
         {/* ブラウザ通知 */}
@@ -337,9 +367,10 @@ export default function MyPage() {
                                   </span>
                                   <span className={`text-xs shrink-0 ${
                                     c.status === 'open' ? 'text-emerald-400' :
-                                    c.status === 'deal' ? 'text-primary-500' : 'text-gray-500'
+                                    c.status === 'deal' ? 'text-primary-500' :
+                                    c.status === 'deal_failed' ? 'text-red-400' : 'text-gray-500'
                                   }`}>
-                                    {c.status === 'open' ? '交渉中' : c.status === 'deal' ? '取引成立' : '見送り'}
+                                    {c.status === 'open' ? '交渉中' : c.status === 'deal' ? '取引成立' : c.status === 'deal_failed' ? '不成立' : '見送り'}
                                   </span>
                                 </button>
                               )
@@ -428,9 +459,10 @@ export default function MyPage() {
                         </div>
                         <span className={`text-xs shrink-0 ${
                           c.status === 'open' ? 'text-emerald-400' :
-                          c.status === 'deal' ? 'text-primary-500' : 'text-gray-500'
+                          c.status === 'deal' ? 'text-primary-500' :
+                          c.status === 'deal_failed' ? 'text-red-400' : 'text-gray-500'
                         }`}>
-                          {c.status === 'open' ? '交渉中' : c.status === 'deal' ? '取引成立' : '見送り'}
+                          {c.status === 'open' ? '交渉中' : c.status === 'deal' ? '取引成立' : c.status === 'deal_failed' ? '不成立' : '見送り'}
                         </span>
                       </div>
                     </button>
@@ -477,6 +509,7 @@ export default function MyPage() {
                   })
                   setBuyingChats((prev) => prev.map((c) => c.id === updated.id ? updated : c))
                 }}
+                onListingsChanged={() => fetchMyListings()}
               />
             </div>
           </div>

@@ -17,10 +17,11 @@ class ItemCategorySeeder extends Seeder
 
         $data = [
             ['name' => '装備セット', 'children' => []],
-            ['name' => 'スキル', 'children' => ['ノアピース', '秘伝の書']],
+            ['name' => 'テクニック', 'children' => ['ノアピース', '秘伝の書']],
             ['name' => '武器', 'children' => ['刀剣', 'こん棒', '槍', '銃器', '投げ', '弓', '素手', '盾']],
             ['name' => '防具', 'children' => ['頭', '胴', '手', 'パ', '靴', '肩', '腰']],
             ['name' => '装飾品', 'children' => ['頭(装)', '顔(装)', '耳(装)', '指(装)', '胸(装)', '背中(装)', '腰(装)']],
+            ['name' => 'アセット', 'children' => []],
         ];
 
         foreach ($data as $sort => $cat) {

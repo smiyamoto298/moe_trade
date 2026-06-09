@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAsync } from '../../hooks/useAsync'
 import { usersApi } from '../../api/users'
 import { useAuth } from '../../contexts/AuthContext'
+import { useDialog } from '../../contexts/DialogContext'
 import type { User, UserRole } from '../../types'
 import { SERVER_COLORS } from '../../utils/constants'
 
@@ -18,6 +19,12 @@ const ROLE_STYLE: Record<UserRole, string> = {
 }
 
 type Filter = 'all' | 'suspended' | 'duplicate_ip' | 'editor' | 'admin'
+
+// email はハッシュ保存のためAPIから返されない。表示用ラベルを生成する
+function userLabel(u: User): string {
+  const charName = u.characters?.[0]?.character_name
+  return u.email ?? (charName ? `${charName}（#${u.id}）` : `ユーザー #${u.id}`)
+}
 
 // 同一IPを持つuser_idのセットを返す
 function getDuplicateIpUserIds(users: User[]): Set<number> {
@@ -37,6 +44,7 @@ function getDuplicateIpUserIds(users: User[]): Set<number> {
 
 export default function AdminUsersPage() {
   const { user: me } = useAuth()
+  const { confirm, alert } = useDialog()
   const [users, setUsers] = useState<User[]>([])
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
@@ -65,7 +73,7 @@ export default function AdminUsersPage() {
   const { run: runGroup, loading: groupLoading } = useAsync()
 
   const handleRoleChange = async (id: number, role: UserRole) => {
-    if (id === me?.id) { alert('自分自身の権限は変更できません'); return }
+    if (id === me?.id) { await alert('自分自身の権限は変更できません', { title: 'エラー' }); return }
     if (actioningId) return
     setActioningId(id)
     try {
@@ -77,10 +85,10 @@ export default function AdminUsersPage() {
   }
 
   const handleToggleSuspend = async (user: User) => {
-    if (user.id === me?.id) { alert('自分自身は停止できません'); return }
+    if (user.id === me?.id) { await alert('自分自身は停止できません', { title: 'エラー' }); return }
     if (actioningId) return
     const action = user.is_suspended ? '利用停止を解除' : '利用停止に'
-    if (!confirm(`「${user.email}」を${action}しますか？`)) return
+    if (!(await confirm(`「${userLabel(user)}」を${action}しますか？`, { title: 'ユーザー操作の確認', danger: !user.is_suspended }))) return
     setActioningId(user.id)
     try {
       const res = user.is_suspended
@@ -92,10 +100,23 @@ export default function AdminUsersPage() {
     }
   }
 
+  // メール認証を手動で完了させる（メール不達時など）
+  const handleVerifyEmail = async (user: User) => {
+    if (actioningId) return
+    if (!(await confirm(`「${userLabel(user)}」を手動で認証済みにしますか？`, { title: 'メール認証の確認', confirmLabel: '認証済みにする' }))) return
+    setActioningId(user.id)
+    try {
+      const res = await usersApi.verifyEmail(user.id)
+      setUsers((prev) => prev.map((u) => u.id === user.id ? res.data : u))
+    } finally {
+      setActioningId(null)
+    }
+  }
+
   // IPグループ全員を一括解除
   const handleUnsuspendGroup = (ip: string) => runGroup(async () => {
     const group = ipGroups.get(ip) ?? []
-    if (!confirm(`IPアドレス ${ip} に紐づく ${group.length} 件のアカウント停止を解除しますか？`)) return
+    if (!(await confirm(`IPアドレス ${ip} に紐づく ${group.length} 件のアカウント停止を解除しますか？`, { title: '一括解除の確認', confirmLabel: '解除する' }))) return
     for (const u of group.filter((u) => u.is_suspended && u.id !== me?.id)) {
       const res = await usersApi.unsuspend(u.id)
       setUsers((prev) => prev.map((x) => x.id === u.id ? res.data : x))
@@ -111,7 +132,8 @@ export default function AdminUsersPage() {
 
   const filtered = users.filter((u) => {
     const matchSearch = !search ||
-      u.email.includes(search) ||
+      (u.email ?? '').includes(search) ||
+      String(u.id) === search ||
       (u.register_ip ?? '').includes(search) ||
       u.characters.some((c) => c.character_name.includes(search))
     const matchFilter =
@@ -138,7 +160,7 @@ export default function AdminUsersPage() {
                 <div key={ip} className="flex items-center gap-3 text-xs">
                   <span className="font-mono text-orange-400">{ip}</span>
                   <span className="text-orange-300/80">
-                    {group.map((u) => u.email).join('、')}
+                    {group.map((u) => userLabel(u)).join('、')}
                   </span>
                   {group.some((u) => u.is_suspended) && (
                     <button
@@ -178,16 +200,16 @@ export default function AdminUsersPage() {
         </div>
         <input
           type="text"
-          placeholder="メール / キャラクター名 / IPアドレス"
+          placeholder="ユーザーID / キャラクター名 / IPアドレス"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-72"
+          className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-full sm:w-72"
         />
       </div>
 
       {/* テーブル */}
-      <div className="bg-surface-card border border-surface-border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b border-surface-border">
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">メールアドレス / IP</th>
@@ -213,9 +235,9 @@ export default function AdminUsersPage() {
                       user.is_suspended ? 'opacity-60' : 'hover:bg-surface-border/20'
                     } ${isDuplicateIp ? 'bg-orange-900/5' : ''}`}
                   >
-                    {/* メール・IP */}
+                    {/* ユーザー・IP */}
                     <td className="px-4 py-3">
-                      <p className="text-white">{user.email}</p>
+                      <p className="text-white">{userLabel(user)}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {user.register_ip && (
                           <span className={`text-xs font-mono ${isDuplicateIp ? 'text-orange-400' : 'text-gray-500'}`}>
@@ -224,7 +246,16 @@ export default function AdminUsersPage() {
                         )}
                         {isMe && <span className="text-xs text-primary-500">（自分）</span>}
                         {!user.email_verified_at && (
-                          <span className="text-xs text-yellow-400">未認証</span>
+                          <>
+                            <span className="text-xs text-yellow-400">未認証</span>
+                            <button
+                              onClick={() => handleVerifyEmail(user)}
+                              disabled={actioningId === user.id}
+                              className="text-xs px-2 py-0.5 rounded border border-yellow-700/50 bg-yellow-900/20 text-yellow-300 hover:bg-yellow-900/40 disabled:opacity-50 transition-colors"
+                            >
+                              {actioningId === user.id ? '処理中...' : '認証済みにする'}
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>

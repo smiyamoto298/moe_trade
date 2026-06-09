@@ -57,7 +57,9 @@ export default function PriceAnalytics({ analytics }: Props) {
               <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 11 }} />
               <YAxis
                 tick={{ fill: '#9ca3af', fontSize: 11 }}
-                tickFormatter={(v) => `${(v / 10000).toFixed(0)}万`}
+                width={52}
+                allowDecimals={false}
+                tickFormatter={(v) => (v >= 10000 ? `${+(v / 10000).toFixed(1)}万` : fmt(v))}
               />
               <Tooltip
                 contentStyle={{ backgroundColor: '#242740', border: '1px solid #353858', borderRadius: '6px' }}
@@ -87,13 +89,29 @@ export default function PriceAnalytics({ analytics }: Props) {
           ) : (
             <div className="space-y-1.5">
               {recent_deals.map((d) => (
-                <div key={d.id} className="flex items-center gap-3 bg-surface rounded px-3 py-2 text-sm">
+                <div key={`${d.source ?? 'trade'}-${d.id}`} className="flex items-center gap-3 bg-surface rounded px-3 py-2 text-sm">
                   <span className="font-bold text-primary-500 w-28 shrink-0">
                     {fmt(d.price)} {d.currency}
                   </span>
                   <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[d.server]}`}>
                     {d.server}
                   </span>
+                  {d.source === 'manual' && (
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-sky-900/30 border border-sky-700/40 text-sky-300"
+                      title="他サイトで取引された相場情報（手動登録）"
+                    >
+                      他サイト
+                    </span>
+                  )}
+                  {d.is_valid === false && (
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-yellow-900/30 border border-yellow-700/40 text-yellow-300"
+                      title="同一IPでの取引のため統計・グラフには含まれません"
+                    >
+                      相場対象外
+                    </span>
+                  )}
                   <span className="text-xs text-gray-500 ml-auto">{relativeDate(d.traded_at)}</span>
                 </div>
               ))}

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { chatApi } from '../api/chat'
+import { useDialog } from '../contexts/DialogContext'
 import type { TradeChat } from '../types'
 import { SERVER_COLORS } from '../utils/constants'
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  open:     { label: '● 交渉中',   color: 'text-emerald-400' },
-  deal:     { label: '✓ 取引成立', color: 'text-primary-500' },
-  declined: { label: '✕ 見送り',   color: 'text-gray-500' },
+  open:        { label: '● 交渉中',     color: 'text-emerald-400' },
+  deal:        { label: '✓ 取引成立',   color: 'text-primary-500' },
+  declined:    { label: '✕ 見送り',     color: 'text-gray-500' },
+  deal_failed: { label: '✕ 取引不成立', color: 'text-red-400' },
 }
 
 interface Props {
@@ -16,15 +18,50 @@ interface Props {
   // 取引成立時に呼ばれる（同じ出品の他チャットも更新するため）
   onDeal?: (updatedChats: TradeChat[]) => void
   onStatusChange?: (chat: TradeChat) => void
+  // 出品の状態が変わり、出品一覧の再取得が必要なときに呼ばれる（取引不成立・再出品など）
+  onListingsChanged?: () => void
 }
 
-export default function ChatThread({ chat: initialChat, currentUserId, isOwner, onDeal, onStatusChange }: Props) {
+export default function ChatThread({ chat: initialChat, currentUserId, isOwner, onDeal, onStatusChange, onListingsChanged }: Props) {
+  const { confirm } = useDialog()
   const [chat, setChat] = useState(initialChat)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setChat(initialChat) }, [initialChat])
+
+  // 新着メッセージのポーリング（5秒間隔）。
+  // 入力欄は別state（input）のため、チャット更新で入力中テキストはリセットされない。
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const res = await chatApi.get(chat.id)
+        setChat((prev) => {
+          const next = res.data
+          // 変化がなければ前のオブジェクトを返して不要な再描画を避ける
+          if (
+            next.messages?.length === prev.messages?.length &&
+            next.status === prev.status &&
+            next.seller_completed === prev.seller_completed &&
+            next.buyer_completed === prev.buyer_completed
+          ) {
+            return prev
+          }
+          // buyer_character_name 等の付加情報はGETレスポンスに含まれないため引き継ぐ
+          return {
+            ...prev,
+            ...next,
+            buyer: next.buyer ?? prev.buyer,
+            buyer_character_name: next.buyer_character_name ?? prev.buyer_character_name,
+          }
+        })
+      } catch {
+        // 通信エラーは無視して次回のポーリングで再試行
+      }
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [chat.id])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -48,37 +85,53 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
 
   const [showDealFailedConfirm, setShowDealFailedConfirm] = useState(false)
 
+  // ステータス系API（deal / decline / reopen / complete 等）のレスポンスは
+  // buyer・buyer_character_name・messages などのリレーションを含まないため、
+  // 既存のチャット情報とマージして表示情報の欠落を防ぐ
+  const mergeChat = (prev: TradeChat, next: Partial<TradeChat>): TradeChat => ({
+    ...prev,
+    ...next,
+    buyer: next.buyer ?? prev.buyer,
+    buyer_character_name: next.buyer_character_name ?? prev.buyer_character_name,
+    messages: next.messages ?? prev.messages,
+  })
+
   const handleMarkComplete = async () => {
-    if (!confirm('受け渡しが完了しましたか？')) return
+    if (!(await confirm('受け渡しが完了しましたか？', { title: '取引完了の確認', confirmLabel: '完了にする' }))) return
     const res = await chatApi.markComplete(chat.id)
-    setChat(res.data)
-    onStatusChange?.(res.data)
+    const merged = mergeChat(chat, res.data)
+    setChat(merged)
+    onStatusChange?.(merged)
   }
 
   const handleDeal = async () => {
-    if (!confirm('取引成立にしますか？')) return
+    if (!(await confirm('取引成立にしますか？', { title: '取引成立の確認', confirmLabel: '取引成立にする' }))) return
     const res = await chatApi.deal(chat.id)
     const updated = Array.isArray(res.data)
       ? res.data.find((c: any) => c.id === chat.id)!
       : res.data
-    setChat(updated)
-    onDeal?.(Array.isArray(res.data) ? res.data : [updated])
-    onStatusChange?.(updated)
+    const merged = mergeChat(chat, updated)
+    setChat(merged)
+    onDeal?.(Array.isArray(res.data) ? res.data.map((c: any) => (c.id === chat.id ? merged : c)) : [merged])
+    onStatusChange?.(merged)
   }
 
   const handleDecline = async () => {
-    if (!confirm('この取引希望を見送りにしますか？')) return
+    if (!(await confirm('この取引希望を見送りにしますか？', { title: '見送りの確認', confirmLabel: '見送る', danger: true }))) return
     const res = await chatApi.decline(chat.id)
-    setChat(res.data)
-    onStatusChange?.(res.data)
+    const merged = mergeChat(chat, res.data)
+    setChat(merged)
+    onStatusChange?.(merged)
   }
 
   const handleDealFailed = async (relist: boolean) => {
     setShowDealFailedConfirm(false)
     const res = await chatApi.dealFailed(chat.id, relist)
-    const updated = (res.data as any)
-    setChat(updated)
-    onStatusChange?.(updated)
+    const merged = mergeChat(chat, res.data as Partial<TradeChat>)
+    setChat(merged)
+    onStatusChange?.(merged)
+    // 出品が deal_failed になり、再出品時は新しい出品が作られるため一覧を再取得させる
+    onListingsChanged?.()
   }
 
   const isMine = (userId: number) =>
@@ -87,6 +140,7 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
   const status = STATUS_LABEL[chat.status] ?? STATUS_LABEL.open
   const isOpen = chat.status === 'open'
   const isDeal = chat.status === 'deal'
+  const isDealFailed = chat.status === 'deal_failed'
   // 他ユーザーの取引が成立（この出品がcompletedで自分のチャットはopen）
   const otherDealCompleted = isOpen && (chat as any).listing?.status === 'completed'
   const canSend = (isOpen || isDeal) && !otherDealCompleted
@@ -97,7 +151,7 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border shrink-0">
+      <div className="flex items-center justify-between gap-2 flex-wrap px-4 py-3 border-b border-surface-border shrink-0">
         <div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-white">
@@ -110,7 +164,7 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
           <span className={`text-xs ${status.color}`}>{status.label}</span>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {/* 出品者のみ */}
           {isOwner && isOpen && !otherDealCompleted && (
             <>
@@ -136,16 +190,18 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
         </div>
       </div>
 
-      {/* 取引成立・見送り・他決定バナー */}
+      {/* 取引成立・見送り・不成立・他決定バナー */}
       {(isDeal || !isOpen || otherDealCompleted) && (
         <div className={`px-4 py-2 text-xs text-center border-b ${
           isDeal         ? 'bg-primary-500/10 text-primary-400 border-primary-500/20' :
+          isDealFailed   ? 'bg-red-900/20 text-red-300 border-red-700/30' :
           otherDealCompleted ? 'bg-orange-900/20 text-orange-300 border-orange-700/30' :
                          'bg-surface-border/50 text-gray-500 border-surface-border'
         }`}>
           {isDeal && bothCompleted ? '✓✓ 双方の受け渡しが完了しました' :
            isDeal && myCompleted  ? `✓ 自分側の受け渡しが完了済み（相手側待ち）` :
            isDeal                 ? '✓ このチャットは取引成立しています（引き続きチャット可能です）' :
+           isDealFailed       ? '✕ この取引は不成立になりました（編集できません）' :
            otherDealCompleted ? '⚠ 他のユーザーとの取引が成立しました' :
                           '✕ このチャットは見送りになりました'}
         </div>
@@ -215,6 +271,7 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
       ) : (
         <div className="px-4 py-3 border-t border-surface-border text-center text-xs text-gray-500 shrink-0">
           {otherDealCompleted ? '他のユーザーの取引が成立したためメッセージを送れません' :
+           isDealFailed ? 'この取引は不成立になりました（編集できません）' :
            chat.status === 'declined' ? 'このチャットは見送りになりました' : ''}
         </div>
       )}

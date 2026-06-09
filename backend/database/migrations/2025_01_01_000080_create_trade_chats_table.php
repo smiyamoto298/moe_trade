@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignId('listing_id')->constrained('listings')->cascadeOnDelete();
             $table->foreignId('buyer_id')->constrained('users')->cascadeOnDelete();
             $table->enum('server', ['Emerald', 'Diamond', 'Pearl']);
-            $table->enum('status', ['open', 'deal', 'declined'])->default('open');
+            $table->enum('status', ['open', 'deal', 'declined', 'deal_failed'])->default('open');
             $table->timestamps();
         });
     }

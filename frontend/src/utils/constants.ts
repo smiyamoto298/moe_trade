@@ -1,4 +1,4 @@
-import type { TradeType, Server } from '../types'
+import type { TradeType, Server, AssetPlacement, AssetFunction } from '../types'
 
 export const TRADE_TYPE_LABEL: Record<TradeType, string> = {
   fixed: '即決',
@@ -60,6 +60,7 @@ export const BONUS_VALUE_LABEL_OPTIONS: string[] = [
 export const BASE_STAT_LABELS: Record<string, string> = {
   atk:        '攻撃力',
   mag:        '魔力',
+  def:        '防御力',
   atk_delay:  '攻撃ディレイ',
   mag_delay:  '魔法ディレイ',
   max_hp:     '最大HP',
@@ -84,3 +85,7 @@ export const SKILL_GROUPS: { group: string; skills: string[] }[] = [
 ]
 
 export const ALL_SKILLS: string[] = SKILL_GROUPS.flatMap((g) => g.skills)
+
+// ---- アセット ----
+export const ASSET_PLACEMENTS: AssetPlacement[] = ['床', '壁', '天井']
+export const ASSET_FUNCTIONS: AssetFunction[] = ['販売員', '銀行', 'タイプカプセル', '栽培', '生産施設', 'カタログ']

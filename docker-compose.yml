@@ -20,6 +20,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./backend:/var/www/backend
+      # vendor はコンテナ内ボリュームに置く（Windowsバインドマウント越しのI/Oを回避）
+      - vendor_data:/var/www/backend/vendor
     environment:
       - APP_ENV=local
     depends_on:
@@ -34,7 +36,9 @@ services:
     working_dir: /app
     volumes:
       - ./frontend:/app
-    command: sh -c "npm install && npm run dev -- --host"
+      # node_modules もコンテナ内ボリュームに置く
+      - node_modules_data:/app/node_modules
+    command: sh -c "[ -f node_modules/.package-lock.json ] || npm install; npm run dev -- --host"
     ports:
       - "5173:5173"
     networks:
@@ -86,6 +90,8 @@ services:
 
 volumes:
   db_data:
+  vendor_data:
+  node_modules_data:
 
 networks:
   moe:

@@ -1,37 +1,75 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { itemsApi } from '../../api/items'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNotification } from '../../contexts/NotificationContext'
 import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory } from '../../types'
+import { SERVERS } from '../../types'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS } from '../../utils/constants'
 
 type Filter = 'all' | 'unverified' | 'verified'
-type Mode = 'equipment' | 'skill'
+type Mode = 'equipment' | 'skill' | 'asset'
 
 export default function AdminItemsPage() {
   const { user } = useAuth()
+  const { unverifiedEquipmentCount, unverifiedTechniqueCount, unverifiedAssetCount } = useNotification()
   const navigate = useNavigate()
+  const location = useLocation()
+  // 編集ページから戻ったときは、編集していたアイテムの種別タブ・フィルタを復元する
+  const navState = location.state as { mode?: Mode; filter?: Filter } | null
+  const initialMode = navState?.mode ?? 'equipment'
+  const initialFilter = navState?.filter ?? 'all'
   const [items, setItems] = useState<Item[]>([])
   const [categories, setCategories] = useState<ItemCategory[]>([])
-  const [mode, setMode] = useState<Mode>('equipment')
-  const [filter, setFilter] = useState<Filter>('all')
+  const [mode, setMode] = useState<Mode>(initialMode)
+  const [filter, setFilter] = useState<Filter>(initialFilter)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [mastersLoading, setMastersLoading] = useState(true)
 
   const isAdmin = user?.role === 'admin'
+  // editor 以上（editor / admin）。確認済みへの変更・全アイテム編集が可能。
+  const isEditor = user?.role === 'editor' || user?.role === 'admin'
+  const isLoggedIn = !!user
+  // 一般 user が編集できるのは「自分が登録した未確認アイテム」かつ「staff 未編集（排他制御）」のみ。
+  const canEditItem = (item: Item) =>
+    isEditor || (!!user && item.submitted_by === user.id && item.verified_status === 'unverified' && !item.locked_by_staff)
   const isSkillMode = mode === 'skill'
+  const isAssetMode = mode === 'asset'
   const [actioningId, setActioningId] = useState<number | null>(null)
 
-  // 「スキル」親カテゴリ配下のカテゴリIDセット
-  const skillCategoryIds = (() => {
-    const skillParent = categories.find((c) => c.parent_id === null && c.name === 'スキル')
-    if (!skillParent) return new Set<number>()
-    const ids = new Set<number>([skillParent.id])
-    ;(skillParent.children ?? []).forEach((c) => ids.add(c.id))
+  // 削除確認モーダル
+  const [deleteTarget, setDeleteTarget] = useState<Item | null>(null)
+  // 関連データありで確認が必要な場合の警告メッセージ（null の間は通常の削除確認）
+  const [deleteWarning, setDeleteWarning] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  // 「他のアイテムに付け替える」モード（重複アイテムの統合）
+  const [mergeMode, setMergeMode] = useState(false)
+  const [mergeKeyword, setMergeKeyword] = useState('')
+  const [mergeResults, setMergeResults] = useState<Item[]>([])
+  const [mergeSearching, setMergeSearching] = useState(false)
+  const [mergeTarget, setMergeTarget] = useState<Item | null>(null)
+  const [merging, setMerging] = useState(false)
+
+  // 相場登録モーダル
+  const [marketTarget, setMarketTarget] = useState<Item | null>(null)
+  const [marketForm, setMarketForm] = useState({ price: '', server: SERVERS[0] as string, traded_at: '', note: '' })
+  const [marketSaving, setMarketSaving] = useState(false)
+  const [marketError, setMarketError] = useState('')
+  const [marketDone, setMarketDone] = useState('')
+
+  // トップカテゴリ名 → 配下カテゴリIDセット（トップ自身も含む）
+  const idsForTop = (name: string) => {
+    const parent = categories.find((c) => c.parent_id === null && c.name === name)
+    if (!parent) return new Set<number>()
+    const ids = new Set<number>([parent.id])
+    ;(parent.children ?? []).forEach((c) => ids.add(c.id))
     return ids
-  })()
+  }
+  const skillCategoryIds = idsForTop('テクニック')
+  const assetCategoryIds = idsForTop('アセット')
 
   const fetchItems = () => {
     setLoading(true)
@@ -60,22 +98,136 @@ export default function AdminItemsPage() {
     }
   }
 
-  const handleDelete = async (item: Item) => {
-    if (actioningId) return
-    if (!confirm(`「${item.name}」を削除しますか？`)) return
-    setActioningId(item.id)
+  const openDelete = (item: Item) => {
+    if (actioningId || deleting) return
+    setDeleteTarget(item)
+    setDeleteWarning(null)
+    setDeleteError('')
+  }
+
+  const closeDelete = () => {
+    if (deleting || merging) return
+    setDeleteTarget(null)
+    setDeleteWarning(null)
+    setDeleteError('')
+    setMergeMode(false)
+    setMergeKeyword('')
+    setMergeResults([])
+    setMergeTarget(null)
+  }
+
+  // 「他のアイテムに付け替える」モードを開始。元アイテム名で候補を初期検索する。
+  const startMerge = () => {
+    setMergeMode(true)
+    setMergeTarget(null)
+    setDeleteError('')
+    setMergeKeyword('')
+  }
+
+  // 付け替え先候補の検索（元アイテム自身は除外）
+  const searchMergeTargets = (keyword: string) => {
+    setMergeKeyword(keyword)
+    setMergeTarget(null)
+    const q = keyword.trim()
+    if (!q) { setMergeResults([]); return }
+    setMergeSearching(true)
+    itemsApi.list({ name: q })
+      .then((r) => setMergeResults(r.data.filter((i) => i.id !== deleteTarget?.id).slice(0, 30)))
+      .finally(() => setMergeSearching(false))
+  }
+
+  // 統合の実行：source の関連データを target へ付け替え、source を削除する
+  const confirmMerge = async () => {
+    if (!deleteTarget || !mergeTarget || merging) return
+    setMerging(true)
+    setDeleteError('')
     try {
-      await itemsApi.delete(item.id)
-      setItems((prev) => prev.filter((i) => i.id !== item.id))
+      await itemsApi.merge(deleteTarget.id, mergeTarget.id)
+      setItems((prev) => prev.filter((i) => i.id !== deleteTarget.id))
+      closeDelete()
+    } catch (err: unknown) {
+      const res = (err as { response?: { data?: { message?: string } } })?.response
+      setDeleteError(res?.data?.message ?? 'アイテムの付け替えに失敗しました。')
     } finally {
-      setActioningId(null)
+      setMerging(false)
     }
   }
 
-  // スキル/装備品モードで絞り込み
-  const modeItems = items.filter((i) =>
-    isSkillMode ? skillCategoryIds.has(i.category.id) : !skillCategoryIds.has(i.category.id)
-  )
+  // モーダルの削除ボタン。関連データがあれば 1 回目は確認警告を表示し、2 回目（force）で削除する。
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting) return
+    const force = deleteWarning !== null
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await itemsApi.delete(deleteTarget.id, force)
+      setItems((prev) => prev.filter((i) => i.id !== deleteTarget.id))
+      setDeleteTarget(null)
+      setDeleteWarning(null)
+    } catch (err: unknown) {
+      const res = (err as {
+        response?: { status?: number; data?: { requires_confirmation?: boolean; message?: string } }
+      })?.response
+      // 関連データ（出品・取引・取引履歴）がある場合は禁止せず、確認のうえ強制削除へ
+      if (res?.status === 409 && res.data?.requires_confirmation && !force) {
+        setDeleteWarning(res.data.message ?? 'このアイテムには関連データが紐づいています。関連データも含めて削除しますか？')
+      } else {
+        setDeleteError(res?.data?.message ?? 'アイテムの削除に失敗しました。')
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const openMarketPrice = (item: Item) => {
+    setMarketTarget(item)
+    setMarketForm({ price: '', server: SERVERS[0], traded_at: new Date().toISOString().slice(0, 10), note: '' })
+    setMarketError('')
+    setMarketDone('')
+  }
+
+  const closeMarketPrice = () => {
+    if (marketSaving) return
+    setMarketTarget(null)
+  }
+
+  const submitMarketPrice = async () => {
+    if (!marketTarget || marketSaving) return
+    if (!(Number(marketForm.price) >= 1)) {
+      setMarketError('価格は1以上で入力してください。')
+      return
+    }
+    if (!marketForm.traded_at) {
+      setMarketError('取引日を入力してください。')
+      return
+    }
+    setMarketError('')
+    setMarketSaving(true)
+    try {
+      await itemsApi.createMarketPrice(marketTarget.id, {
+        price: Number(marketForm.price),
+        server: marketForm.server,
+        traded_at: marketForm.traded_at,
+        note: marketForm.note || undefined,
+      })
+      // 続けて登録できるよう、価格・備考だけリセットして成立メッセージを表示
+      setMarketDone(`「${marketTarget.name}」の相場を登録しました。`)
+      setMarketForm((p) => ({ ...p, price: '', note: '' }))
+    } catch (err: unknown) {
+      const res = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response
+      const first = res?.data?.errors ? Object.values(res.data.errors)[0]?.[0] : undefined
+      setMarketError(first ?? res?.data?.message ?? '相場の登録に失敗しました。')
+    } finally {
+      setMarketSaving(false)
+    }
+  }
+
+  // スキル/アセット/装備品モードで絞り込み
+  const modeItems = items.filter((i) => {
+    if (isSkillMode) return skillCategoryIds.has(i.category.id)
+    if (isAssetMode) return assetCategoryIds.has(i.category.id)
+    return !skillCategoryIds.has(i.category.id) && !assetCategoryIds.has(i.category.id)
+  })
 
   const filtered = modeItems.filter((i) => {
     if (filter === 'unverified') return i.verified_status === 'unverified'
@@ -87,35 +239,73 @@ export default function AdminItemsPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <div>
             <h1 className="text-xl font-bold text-white">アイテム管理</h1>
             <p className="text-xs text-gray-400 mt-0.5">
-              {user?.role === 'admin' ? '管理者' : '編集者'}権限
+              {user?.role === 'admin'
+                ? '管理者権限'
+                : user?.role === 'editor'
+                ? '編集者権限'
+                : user
+                ? '一般ユーザー（自分が登録した未確認アイテムのみ編集可）'
+                : '閲覧のみ（編集にはログインが必要です）'}
             </p>
           </div>
           <div className="flex border border-surface-border rounded-lg overflow-hidden text-sm">
             <button
               onClick={() => { setMode('equipment'); setFilter('all') }}
-              className={`px-4 py-1.5 transition-colors ${!isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${mode === 'equipment' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               装備品
+              {unverifiedEquipmentCount > 0 && (
+                <span
+                  title={`未確認アイテム ${unverifiedEquipmentCount}件`}
+                  className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
+                >
+                  {unverifiedEquipmentCount}
+                </span>
+              )}
             </button>
             <button
               onClick={() => { setMode('skill'); setFilter('all') }}
-              className={`px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
-              スキル
+              テクニック
+              {unverifiedTechniqueCount > 0 && (
+                <span
+                  title={`未確認アイテム ${unverifiedTechniqueCount}件`}
+                  className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
+                >
+                  {unverifiedTechniqueCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setMode('asset'); setFilter('all') }}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              アセット
+              {unverifiedAssetCount > 0 && (
+                <span
+                  title={`未確認アイテム ${unverifiedAssetCount}件`}
+                  className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
+                >
+                  {unverifiedAssetCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
-        <Link
-          to="/admin/items/new"
-          className="bg-primary-500 hover:bg-primary-600 text-white text-sm px-4 py-2 rounded-md transition-colors"
-        >
-          + アイテムを追加
-        </Link>
+        {isLoggedIn && (
+          <Link
+            to="/admin/items/new"
+            className="bg-primary-500 hover:bg-primary-600 text-white text-sm px-4 py-2 rounded-md transition-colors"
+          >
+            + アイテムを追加
+          </Link>
+        )}
       </div>
 
       {mastersLoading ? (
@@ -142,19 +332,25 @@ export default function AdminItemsPage() {
           placeholder="アイテム名で検索"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-56"
+          className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-full sm:w-56"
         />
       </div>
 
       {/* テーブル */}
-      <div className="bg-surface-card border border-surface-border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
+        <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-surface-border">
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">アイテム名</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">種別</th>
               {isSkillMode ? (
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={3}>必要スキル</th>
+              ) : isAssetMode ? (
+                <>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">設置・サイズ</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">ストレージ・特殊機能</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
+                </>
               ) : (
                 <>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">追加効果</th>
@@ -194,6 +390,46 @@ export default function AdminItemsPage() {
                         ))}
                       </div>
                     </td>
+                  ) : isAssetMode ? (
+                  <>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {item.placement && (
+                        <span className="text-xs bg-surface text-gray-300 px-1.5 py-0.5 rounded">{item.placement}</span>
+                      )}
+                      {(item.asset_width && item.asset_height) ? (
+                        <span className="text-xs bg-surface text-gray-300 px-1.5 py-0.5 rounded">{item.asset_width}×{item.asset_height}</span>
+                      ) : null}
+                      {!item.placement && !(item.asset_width && item.asset_height) && (
+                        <span className="text-xs text-gray-600">—</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {(item.storage_count ?? 0) > 0 && (
+                        <span className="text-xs bg-surface text-gray-300 px-1.5 py-0.5 rounded">ストレージ {item.storage_count}</span>
+                      )}
+                      {item.special_function && (
+                        <span className="text-xs bg-primary-500/10 border border-primary-500/30 text-primary-300 px-1.5 py-0.5 rounded">{item.special_function}</span>
+                      )}
+                      {!(item.storage_count ?? 0) && !item.special_function && (
+                        <span className="text-xs text-gray-600">—</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {item.special_conditions.length === 0 ? (
+                        <span className="text-xs text-gray-600">—</span>
+                      ) : item.special_conditions.map((c) => (
+                        <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  </>
                   ) : (
                   <>
                   <td className="px-4 py-3">
@@ -206,6 +442,11 @@ export default function AdminItemsPage() {
                       {item.mithril && (
                         <span className="text-xs bg-slate-700/40 border border-slate-400/40 text-slate-200 px-1.5 py-0.5 rounded">
                           ミスリル
+                        </span>
+                      )}
+                      {item.exclusive_skill && (
+                        <span className="text-xs bg-amber-900/40 border border-amber-600/40 text-amber-200 px-1.5 py-0.5 rounded">
+                          専用技
                         </span>
                       )}
                     </div>
@@ -247,7 +488,8 @@ export default function AdminItemsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      {item.verified_status === 'unverified' && (
+                      {/* 確認済みにする：editor / admin のみ（未確認のとき） */}
+                      {isEditor && item.verified_status === 'unverified' && (
                         <button
                           onClick={() => handleVerify(item.id)}
                           disabled={actioningId === item.id}
@@ -256,20 +498,37 @@ export default function AdminItemsPage() {
                           {actioningId === item.id ? '処理中...' : '確認済みにする'}
                         </button>
                       )}
-                      <button
-                        onClick={() => navigate(`/admin/items/${item.id}/edit`)}
-                        className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-2 py-1 rounded transition-colors"
-                      >
-                        編集
-                      </button>
+                      {/* 相場登録：admin のみ（確認済みのとき） */}
+                      {isAdmin && item.verified_status === 'verified' && (
+                        <button
+                          onClick={() => openMarketPrice(item)}
+                          className="text-xs bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2 py-1 rounded transition-colors"
+                        >
+                          相場登録
+                        </button>
+                      )}
+                      {/* 編集：staff は全件、user は自分の未確認(未ロック)のみ */}
+                      {canEditItem(item) && (
+                        <button
+                          onClick={() => navigate(`/admin/items/${item.id}/edit`, { state: { filter } })}
+                          className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-2 py-1 rounded transition-colors"
+                        >
+                          編集
+                        </button>
+                      )}
+                      {/* 削除：admin のみ */}
                       {isAdmin && (
                         <button
-                          onClick={() => handleDelete(item)}
+                          onClick={() => openDelete(item)}
                           disabled={actioningId === item.id}
                           className="text-xs bg-red-900/30 hover:bg-red-900/60 disabled:opacity-50 border border-red-700/30 text-red-400 px-2 py-1 rounded transition-colors"
                         >
-                          {actioningId === item.id ? '処理中...' : '削除'}
+                          削除
                         </button>
+                      )}
+                      {/* 操作が無いユーザー向けのプレースホルダ */}
+                      {!isEditor && !canEditItem(item) && (
+                        <span className="text-xs text-gray-600">—</span>
                       )}
                     </div>
                   </td>
@@ -280,6 +539,233 @@ export default function AdminItemsPage() {
         </table>
       </div>
       </>
+      )}
+
+      {/* 削除確認モーダル */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={closeDelete}
+        >
+          <div
+            className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-bold text-white">
+              {mergeMode ? '他のアイテムに付け替える' : 'アイテムの削除'}
+            </h2>
+
+            {mergeMode ? (
+              <>
+                <p className="text-sm text-gray-300">
+                  「<span className="text-white font-medium">{deleteTarget.name}</span>」の出品・取引履歴・相場データを、
+                  選択したアイテムに付け替えてから「{deleteTarget.name}」を削除します。
+                  <span className="text-gray-400">（同じアイテムが重複登録された場合の統合用）</span>
+                </p>
+
+                <input
+                  type="text"
+                  autoFocus
+                  value={mergeKeyword}
+                  onChange={(e) => searchMergeTargets(e.target.value)}
+                  placeholder="付け替え先のアイテム名で検索"
+                  className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
+                />
+
+                <div className="max-h-56 overflow-y-auto border border-surface-border rounded divide-y divide-surface-border">
+                  {mergeSearching ? (
+                    <p className="text-sm text-gray-500 text-center py-4">検索中...</p>
+                  ) : mergeKeyword.trim() === '' ? (
+                    <p className="text-sm text-gray-500 text-center py-4">アイテム名を入力してください。</p>
+                  ) : mergeResults.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">該当するアイテムが見つかりません。</p>
+                  ) : (
+                    mergeResults.map((it) => (
+                      <button
+                        key={it.id}
+                        onClick={() => setMergeTarget(it)}
+                        className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
+                          mergeTarget?.id === it.id ? 'bg-primary-500/20' : 'hover:bg-surface-border/40'
+                        }`}
+                      >
+                        <span className="text-sm text-white flex-1 truncate">{it.name}</span>
+                        <span className="text-[10px] text-gray-500 shrink-0">{it.category.name}</span>
+                        {it.verified_status === 'unverified' && (
+                          <span className="text-[10px] text-yellow-400 shrink-0">⚠ 未確認</span>
+                        )}
+                        {mergeTarget?.id === it.id && <span className="text-primary-400 text-xs shrink-0">✓</span>}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {mergeTarget && (
+                  <div className="bg-sky-900/20 border border-sky-700/40 rounded px-3 py-2 text-sm text-sky-200">
+                    「<span className="font-medium">{deleteTarget.name}</span>」→「<span className="font-medium">{mergeTarget.name}</span>」に付け替えて削除します。
+                  </div>
+                )}
+
+                {deleteError && (
+                  <div className="bg-red-900/40 border border-red-600/50 rounded px-3 py-2 text-sm text-red-300">
+                    {deleteError}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => { setMergeMode(false); setDeleteError('') }}
+                    disabled={merging}
+                    className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border disabled:opacity-50 transition-colors"
+                  >
+                    戻る
+                  </button>
+                  <button
+                    onClick={confirmMerge}
+                    disabled={!mergeTarget || merging}
+                    className="text-sm bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white px-4 py-2 rounded font-medium transition-colors"
+                  >
+                    {merging ? '付け替え中...' : '付け替えて削除する'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {deleteWarning ? (
+                  <div className="bg-red-900/30 border border-red-700/50 rounded px-3 py-2.5 text-sm text-red-200 whitespace-pre-line">
+                    {deleteWarning}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-300">
+                    「<span className="text-white font-medium">{deleteTarget.name}</span>」を削除しますか？
+                  </p>
+                )}
+
+                {deleteError && (
+                  <div className="bg-red-900/40 border border-red-600/50 rounded px-3 py-2 text-sm text-red-300">
+                    {deleteError}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    onClick={closeDelete}
+                    disabled={deleting}
+                    className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border disabled:opacity-50 transition-colors"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={startMerge}
+                    disabled={deleting}
+                    className="text-sm bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-200 px-4 py-2 rounded disabled:opacity-50 transition-colors"
+                  >
+                    他のアイテムに付け替える
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    disabled={deleting}
+                    className="text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded font-medium transition-colors"
+                  >
+                    {deleting ? '削除中...' : deleteWarning ? '関連データごと削除する' : '削除する'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 相場登録モーダル */}
+      {marketTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={closeMarketPrice}
+        >
+          <div
+            className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h2 className="text-base font-bold text-white">相場を登録</h2>
+              <p className="text-sm text-gray-400 mt-0.5">
+                他サイト等で取引された相場情報を登録します（「<span className="text-gray-200">{marketTarget.name}</span>」）
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">価格（AC）<span className="text-red-400">*</span></label>
+                <input
+                  type="number"
+                  min={1}
+                  value={marketForm.price}
+                  onChange={(e) => setMarketForm((p) => ({ ...p, price: e.target.value }))}
+                  className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">サーバー <span className="text-red-400">*</span></label>
+                <select
+                  value={marketForm.server}
+                  onChange={(e) => setMarketForm((p) => ({ ...p, server: e.target.value }))}
+                  className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+                >
+                  {SERVERS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">取引日 <span className="text-red-400">*</span></label>
+              <input
+                type="date"
+                max={new Date().toISOString().slice(0, 10)}
+                value={marketForm.traded_at}
+                onChange={(e) => setMarketForm((p) => ({ ...p, traded_at: e.target.value }))}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">メモ（任意・取引元サイト等）</label>
+              <input
+                type="text"
+                maxLength={200}
+                value={marketForm.note}
+                onChange={(e) => setMarketForm((p) => ({ ...p, note: e.target.value }))}
+                placeholder="例: ○○取引掲示板"
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+
+            {marketError && (
+              <div className="bg-red-900/40 border border-red-600/50 rounded px-3 py-2 text-sm text-red-300">
+                {marketError}
+              </div>
+            )}
+            {marketDone && (
+              <div className="bg-emerald-900/40 border border-emerald-600/50 rounded px-3 py-2 text-sm text-emerald-300">
+                {marketDone} 続けて登録できます。
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeMarketPrice}
+                disabled={marketSaving}
+                className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border disabled:opacity-50 transition-colors"
+              >
+                閉じる
+              </button>
+              <button
+                onClick={submitMarketPrice}
+                disabled={marketSaving}
+                className="text-sm bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white px-4 py-2 rounded font-medium transition-colors"
+              >
+                {marketSaving ? '登録中...' : '登録する'}
+              </button>
+            </div>          </div>
+        </div>
       )}
     </div>
   )

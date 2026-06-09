@@ -15,25 +15,35 @@ class ListingController extends Controller
         $includeCompleted = $request->boolean('include_completed', false);
         $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
 
-        $query = Listing::with(['item.category', 'item.bonusEffects', 'user:id,email', 'servers.character'])
+        $query = Listing::with(['item.category', 'item.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
             ->whereIn('status', $statuses)
             ->whereHas('user', fn($q) => $q->where('is_suspended', false));
 
-        // スキル / 装備品フィルター
-        if ($request->has('is_skill')) {
-            $isSkill = $request->boolean('is_skill');
-            $query->whereHas('item.category', function ($cq) use ($isSkill) {
-                if ($isSkill) {
-                    // 親カテゴリ名が「スキル」のものを対象
-                    $cq->whereHas('parent', fn($pq) => $pq->where('name', 'スキル'))
-                       ->orWhere('name', 'スキル');
-                } else {
-                    // 親カテゴリ名が「スキル」以外
-                    $cq->where(function ($inner) {
-                        $inner->whereDoesntHave('parent')
-                              ->where('name', '!=', 'スキル');
-                    })->orWhereHas('parent', fn($pq) => $pq->where('name', '!=', 'スキル'));
-                }
+        // 種別フィルター（装備品 / テクニック / アセット）
+        // item_type を優先。未指定なら後方互換で is_skill を解釈する。
+        $itemType = $request->item_type;
+        if (!$itemType && $request->has('is_skill')) {
+            $itemType = $request->boolean('is_skill') ? 'technique' : 'equipment';
+        }
+        if ($itemType) {
+            // 対象のトップカテゴリ名と包含/除外を決定
+            [$names, $include] = match ($itemType) {
+                'technique' => [['テクニック'], true],
+                'asset'     => [['アセット'], true],
+                // equipment: テクニックでもアセットでもないもの
+                default     => [['テクニック', 'アセット'], false],
+            };
+
+            // アイテムのトップカテゴリ名（子カテゴリは親名、トップ自身はその名前）で判定
+            $query->whereHas('item.category', function ($cq) use ($names, $include) {
+                $cq->where(function ($q) use ($names, $include) {
+                    $q->whereHas('parent', function ($pq) use ($names, $include) {
+                        $include ? $pq->whereIn('name', $names) : $pq->whereNotIn('name', $names);
+                    })->orWhere(function ($q2) use ($names, $include) {
+                        $q2->whereDoesntHave('parent');
+                        $include ? $q2->whereIn('name', $names) : $q2->whereNotIn('name', $names);
+                    });
+                });
             });
         }
 
@@ -95,6 +105,53 @@ class ListingController extends Controller
             }
         }
 
+        // 必要スキル値フィルター（スキルタブ用・AND条件）
+        // チェックされたスキルは「必要スキルに含まれる」ことを必須条件とし、範囲指定でさらに絞り込む
+        if ($request->skill_keys) {
+            foreach ((array) $request->skill_keys as $key) {
+                // スキル名は日本語のためJSONパスはバインドで渡す（インジェクション防止）
+                $path  = '$."' . str_replace(['"', '\\'], '', $key) . '"';
+                $range = $request->skill_ranges[$key] ?? [];
+                $min   = $range['min'] ?? '';
+                $max   = $range['max'] ?? '';
+
+                $query->whereHas('item', function ($iq) use ($path, $min, $max) {
+                    $iq->whereRaw('JSON_EXTRACT(skill_requirements, ?) IS NOT NULL', [$path]);
+                    if ($min !== '' && $min !== null) {
+                        $iq->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) >= ?', [$path, (float) $min]);
+                    }
+                    if ($max !== '' && $max !== null) {
+                        $iq->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) <= ?', [$path, (float) $max]);
+                    }
+                });
+            }
+        }
+
+        // 特殊条件フィルター（選択された条件をすべて持つアイテムに絞り込み、AND条件）
+        if ($request->special_conditions) {
+            foreach ((array) $request->special_conditions as $cond) {
+                $query->whereHas('item', fn($iq) => $iq->whereJsonContains('special_conditions', $cond));
+            }
+        }
+
+        // 設置個所フィルター（アセット・OR条件）
+        if ($request->placements) {
+            $query->whereHas('item', fn($iq) => $iq->whereIn('placement', (array) $request->placements));
+        }
+
+        // 特殊機能フィルター（アセット・OR条件）
+        if ($request->special_functions) {
+            $query->whereHas('item', fn($iq) => $iq->whereIn('special_function', (array) $request->special_functions));
+        }
+
+        // ストレージ数の範囲（アセット）
+        if ($request->filled('storage_min')) {
+            $query->whereHas('item', fn($iq) => $iq->where('storage_count', '>=', (int) $request->storage_min));
+        }
+        if ($request->filled('storage_max')) {
+            $query->whereHas('item', fn($iq) => $iq->where('storage_count', '<=', (int) $request->storage_max));
+        }
+
         // 付加効果フィルター（effect_nameで絞り込み、AND条件）
         if ($request->bonus_effect_names) {
             foreach ((array) $request->bonus_effect_names as $name) {
@@ -134,8 +191,15 @@ class ListingController extends Controller
         }
 
         $query->when($request->trade_type, fn($q) => $q->where('trade_type', $request->trade_type));
-        $query->when($request->min_price, fn($q) => $q->where('price', '>=', $request->min_price));
-        $query->when($request->max_price, fn($q) => $q->where('price', '<=', $request->max_price));
+        // 「削れありを非表示」
+        if ($request->boolean('exclude_worn')) {
+            $query->where('is_worn', false);
+        }
+        // 価格帯（フロントは price_min/price_max、旧形式 min_price/max_price も受け付ける）
+        $minPrice = $request->price_min ?? $request->min_price;
+        $maxPrice = $request->price_max ?? $request->max_price;
+        $query->when($minPrice, fn($q) => $q->where('price', '>=', $minPrice));
+        $query->when($maxPrice, fn($q) => $q->where('price', '<=', $maxPrice));
 
         if ($request->servers) {
             $servers = (array) $request->servers;
@@ -172,13 +236,20 @@ class ListingController extends Controller
             };
         }
 
-        return response()->json($query->paginate(20));
+        $result = $query->paginate(20);
+        // 連絡先キャラ名を出品者の現在のキャラクターで解決
+        $result->getCollection()->each(fn(Listing $l) => $l->resolveServerContacts());
+
+        return response()->json($result);
     }
 
     public function show(int $id)
     {
-        $listing = Listing::with(['item.category', 'item.bonusEffects', 'user:id,email', 'servers.character'])
+        // 公開対象（出品中・取引成立）のみ閲覧可。取り下げ・期限切れ等は404。
+        $listing = Listing::with(['item.category', 'item.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
+            ->whereIn('status', ['active', 'completed'])
             ->findOrFail($id);
+        $listing->resolveServerContacts();
         return response()->json($listing);
     }
 
@@ -195,10 +266,11 @@ class ListingController extends Controller
 
         $data = $request->validate([
             'item_id'    => 'required|exists:items,id',
-            'price'      => 'required|integer|min:0',
+            'price'      => 'required|integer|min:1',
             'quantity'   => 'required|integer|min:1',
             'trade_type' => 'required|in:fixed,negotiable',
             'comment'    => 'nullable|string|max:1000',
+            'is_worn'    => 'nullable|boolean',
             'servers'    => 'required|array|min:1',
             'servers.*.server'       => 'required|in:Emerald,Diamond,Pearl',
             'servers.*.character_id' => 'nullable|exists:user_characters,id',
@@ -212,6 +284,7 @@ class ListingController extends Controller
                 'quantity'   => $data['quantity'],
                 'trade_type' => $data['trade_type'],
                 'comment'    => $data['comment'] ?? null,
+                'is_worn'    => $data['is_worn'] ?? false,
                 'currency'   => 'AC',
                 'expires_at' => now()->addDays(7),
             ]);
@@ -236,10 +309,11 @@ class ListingController extends Controller
         $this->authorize('update', $listing);
 
         $data = $request->validate([
-            'price'      => 'sometimes|integer|min:0',
+            'price'      => 'sometimes|integer|min:1',
             'quantity'   => 'sometimes|integer|min:1',
             'trade_type' => 'sometimes|in:fixed,negotiable',
             'comment'    => 'nullable|string|max:1000',
+            'is_worn'    => 'sometimes|boolean',
             'servers'    => 'sometimes|array|min:1',
             'servers.*.server'       => 'required|in:Emerald,Diamond,Pearl',
             'servers.*.character_id' => 'nullable|exists:user_characters,id',

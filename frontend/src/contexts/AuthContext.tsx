@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { authApi } from '../api/auth'
-import { saveToken, removeToken } from '../api/client'
+import { saveToken, removeToken, getToken } from '../api/client'
 import { USE_MOCK } from '../api/mock'
 import type { User } from '../types'
 
@@ -20,6 +20,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = async () => {
     if (USE_MOCK) return
+    // トークンが無ければ未ログイン確定。無駄な401を発生させない
+    if (!getToken()) {
+      setUser(null)
+      return
+    }
     try {
       const res = await authApi.me()
       setUser(res.data)

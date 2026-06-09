@@ -24,10 +24,18 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (res) => res,
   (err) => {
-    const authPages = ['/auth/login', '/auth/register']
-    if (err.response?.status === 401 && !authPages.includes(window.location.pathname)) {
-      removeToken()
-      window.location.href = '/auth/login'
+    if (err.response?.status === 401) {
+      // 失効したトークンは破棄する（以後は未ログインとして振る舞う）
+      if (getToken()) removeToken()
+
+      // ログインへ強制リダイレクトするのは「ログイン必須ページ」にいる場合のみ。
+      // 出品一覧などの公開ページでは未ログイン表示のままにする
+      // （メールリンクで開く /auth/reset-password 等が飛ばされる問題の防止も兼ねる）。
+      const protectedPrefixes = ['/mypage', '/admin', '/board', '/listings/new']
+      const path = window.location.pathname
+      if (protectedPrefixes.some((p) => path === p || path.startsWith(p + '/'))) {
+        window.location.href = '/auth/login'
+      }
     }
     return Promise.reject(err)
   }

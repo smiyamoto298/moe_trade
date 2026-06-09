@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { boardApi } from '../api/board'
+import { useAuth } from '../contexts/AuthContext'
+import { useNotification } from '../contexts/NotificationContext'
 import { useAsync } from '../hooks/useAsync'
 import Spinner from '../components/Spinner'
 import type { BoardThreadSummary } from '../types'
@@ -11,13 +13,55 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
 }
 
 export default function BoardPage() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const [threads, setThreads] = useState<BoardThreadSummary[]>([])
+  const [onlyMine, setOnlyMine] = useState(false)
+  const [hideResolved, setHideResolved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
+  const [adminOnly, setAdminOnly] = useState(false)
+  const [image, setImage] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [error, setError] = useState('')
+
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+  const pickImage = (file: File | null) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('画像ファイルを選択してください。')
+      return
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError('画像サイズは5MBまでです。')
+      return
+    }
+    setError('')
+    setImage(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  const clearImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImage(null)
+    setImagePreview(null)
+  }
+
+  // クリップボードからの画像貼り付け（Ctrl+V）
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const file = Array.from(e.clipboardData.items)
+      .find((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      ?.getAsFile()
+    if (file) {
+      e.preventDefault()
+      pickImage(file)
+    }
+  }
   const { run: runCreate, loading: creating } = useAsync()
+  const { markBoardSeen, unreadBoardThreadIds } = useNotification()
 
   const load = () => {
     setLoading(true)
@@ -26,7 +70,7 @@ export default function BoardPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); markBoardSeen() }, [])
 
   const handleCreate = () => runCreate(async () => {
     setError('')
@@ -35,15 +79,22 @@ export default function BoardPage() {
       return
     }
     try {
-      await boardApi.createThread(title.trim(), message.trim())
+      await boardApi.createThread(title.trim(), message.trim(), image, isAdmin && adminOnly)
       setTitle('')
       setMessage('')
+      setAdminOnly(false)
+      clearImage()
       setShowForm(false)
       load()
     } catch {
       setError('スレッドの作成に失敗しました。')
     }
   })
+
+  const filteredThreads = threads.filter((t) =>
+    (!onlyMine || t.user_id === user?.id) &&
+    (!hideResolved || t.status !== 'resolved')
+  )
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
@@ -83,11 +134,46 @@ export default function BoardPage() {
               rows={4}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onPaste={handlePaste}
               maxLength={5000}
-              placeholder="不具合の内容、再現手順、要望などを記載してください"
+              placeholder="不具合の内容、再現手順、要望などを記載してください（画像はCtrl+Vで貼り付け可）"
               className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 resize-none"
             />
           </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">画像（任意・5MBまで）</label>
+            {imagePreview ? (
+              <div className="relative inline-block">
+                <img src={imagePreview} alt="添付プレビュー" className="max-h-40 rounded-lg border border-surface-border" />
+                <button
+                  type="button"
+                  onClick={clearImage}
+                  className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full bg-gray-700 hover:bg-gray-600 text-white text-xs"
+                  title="画像を取り消す"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => pickImage(e.target.files?.[0] ?? null)}
+                className="block w-full text-xs text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-surface-border file:text-gray-200 hover:file:bg-surface-border/70 cursor-pointer"
+              />
+            )}
+          </div>
+          {isAdmin && (
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-300">
+              <input
+                type="checkbox"
+                checked={adminOnly}
+                onChange={(e) => setAdminOnly(e.target.checked)}
+                className="accent-primary-500 w-4 h-4"
+              />
+              🔒 管理者のみ閲覧可（他のユーザーには表示されません）
+            </label>
+          )}
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             onClick={handleCreate}
@@ -99,15 +185,42 @@ export default function BoardPage() {
         </div>
       )}
 
+      {/* フィルター */}
+      <div className="mb-3 flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 hover:text-gray-200 transition-colors">
+          <input
+            type="checkbox"
+            checked={onlyMine}
+            onChange={(e) => setOnlyMine(e.target.checked)}
+            className="accent-primary-500 w-3.5 h-3.5"
+          />
+          自分の作成したスレッド
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 hover:text-gray-200 transition-colors">
+          <input
+            type="checkbox"
+            checked={hideResolved}
+            onChange={(e) => setHideResolved(e.target.checked)}
+            className="accent-primary-500 w-3.5 h-3.5"
+          />
+          解決済みを非表示
+        </label>
+      </div>
+
       {/* スレッド一覧 */}
       {loading ? (
         <Spinner center />
-      ) : threads.length === 0 ? (
-        <p className="text-center text-sm text-gray-500 py-12">まだスレッドがありません。最初のスレッドを作成してみましょう。</p>
+      ) : filteredThreads.length === 0 ? (
+        <p className="text-center text-sm text-gray-500 py-12">
+          {threads.length === 0
+            ? 'まだスレッドがありません。最初のスレッドを作成してみましょう。'
+            : '条件に一致するスレッドがありません。'}
+        </p>
       ) : (
         <div className="space-y-2">
-          {threads.map((t) => {
+          {filteredThreads.map((t) => {
             const badge = STATUS_BADGE[t.status] ?? STATUS_BADGE.open
+            const isUnread = unreadBoardThreadIds.has(t.id)
             return (
               <Link
                 key={t.id}
@@ -117,7 +230,11 @@ export default function BoardPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
+                      {isUnread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="未読の投稿があります" />}
                       <span className={`text-xs rounded px-1.5 py-0.5 shrink-0 ${badge.className}`}>{badge.label}</span>
+                      {t.admin_only && (
+                        <span className="text-xs rounded px-1.5 py-0.5 shrink-0 bg-purple-900/40 border border-purple-600/50 text-purple-200" title="管理者のみ閲覧可能">🔒 管理者限定</span>
+                      )}
                       <h2 className="text-sm font-medium text-white truncate">{t.title}</h2>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">

@@ -1,83 +1,142 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
+import VerifyEmailBanner from './VerifyEmailBanner'
 
 export default function Header() {
   const { user, logout } = useAuth()
-  const { totalUnread } = useNotification()
+  const { totalUnread, hasNewBoard, unverifiedItemCount } = useNotification()
   const navigate = useNavigate()
   const [adminOpen, setAdminOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const adminRef = useRef<HTMLDivElement>(null)
 
+  // 画面遷移時にモバイルメニューを閉じる
+  const closeMobile = () => setMobileOpen(false)
+
+  // モバイルメニューを開いている間は背面のスクロールを止める
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
+
   const handleLogout = async () => {
+    setMobileOpen(false)
     await logout()
     navigate('/auth/login')
   }
 
+  // デスクトップ・モバイル共通で使うナビリンク群
+  const navLinks = (
+    <>
+      <Link
+        to="/listings"
+        onClick={closeMobile}
+        className="text-gray-300 hover:text-white transition-colors"
+      >
+        出品一覧
+      </Link>
+      {user && (
+        <>
+          <Link
+            to="/listings/new"
+            onClick={closeMobile}
+            className="text-gray-300 hover:text-white transition-colors"
+          >
+            出品する
+          </Link>
+          <Link
+            to="/listings/bulk"
+            onClick={closeMobile}
+            className="text-gray-300 hover:text-white transition-colors"
+          >
+            一括出品
+          </Link>
+          <Link
+            to="/board"
+            onClick={closeMobile}
+            className="relative text-gray-300 hover:text-white transition-colors"
+          >
+            運営掲示板
+            {hasNewBoard && (
+              <span className="absolute -top-1 -right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
+            )}
+          </Link>
+          <Link
+            to="/mypage"
+            onClick={closeMobile}
+            className="relative text-gray-300 hover:text-white transition-colors"
+          >
+            マイページ
+            {totalUnread > 0 && (
+              <span className="absolute -top-1.5 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none">
+                {totalUnread}
+              </span>
+            )}
+          </Link>
+        </>
+      )}
+    </>
+  )
+
   return (
     <header className="bg-surface-card border-b border-surface-border sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-        <Link to="/" className="text-lg font-bold text-primary-500 tracking-wide">
+      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <Link to="/" className="text-lg font-bold text-primary-500 tracking-wide shrink-0">
           MoE Trade
         </Link>
 
-        <nav className="flex items-center gap-6 text-sm">
-          <Link to="/listings" className="text-gray-300 hover:text-white transition-colors">
-            出品一覧
-          </Link>
-          {user && (
-            <>
-              <Link to="/listings/new" className="text-gray-300 hover:text-white transition-colors">
-                出品する
-              </Link>
-              <Link to="/board" className="text-gray-300 hover:text-white transition-colors">
-                運営掲示板
-              </Link>
-              <Link to="/mypage" className="relative text-gray-300 hover:text-white transition-colors">
-                マイページ
-                {totalUnread > 0 && (
-                  <span className="absolute -top-1.5 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none">
-                    {totalUnread}
-                  </span>
-                )}
-              </Link>
-              {(user.role === 'admin' || user.role === 'editor') && (
-                <div ref={adminRef} className="relative">
-                  <button
-                    onClick={() => setAdminOpen((v) => !v)}
-                    className="text-gray-300 hover:text-white transition-colors flex items-center gap-1"
-                  >
-                    管理
-                    <span className="text-xs text-gray-500">{adminOpen ? '▲' : '▼'}</span>
-                  </button>
-                  {adminOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-36 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
-                      <Link
-                        to="/admin/items"
-                        onClick={() => setAdminOpen(false)}
-                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                      >
-                        アイテム管理
-                      </Link>
-                      {user.role === 'admin' && (
-                        <Link
-                          to="/admin/users"
-                          onClick={() => setAdminOpen(false)}
-                          className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                        >
-                          ユーザー管理
-                        </Link>
-                      )}
-                    </div>
-                  )}
-                </div>
+        {/* デスクトップナビ（lg以上） */}
+        <nav className="hidden lg:flex items-center gap-6 text-sm">
+          {navLinks}
+          {/* 管理メニュー：アイテム管理は全員、ユーザー管理は admin のみ */}
+          <div ref={adminRef} className="relative">
+            <button
+              onClick={() => setAdminOpen((v) => !v)}
+              className="relative text-gray-300 hover:text-white transition-colors flex items-center gap-1"
+            >
+              管理
+              <span className="text-xs text-gray-500">{adminOpen ? '▲' : '▼'}</span>
+              {unverifiedItemCount > 0 && (
+                <span
+                  title={`未確認アイテム ${unverifiedItemCount}件`}
+                  className="absolute -top-1.5 -right-3 bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none"
+                >
+                  {unverifiedItemCount}
+                </span>
               )}
-            </>
-          )}
+            </button>
+            {adminOpen && (
+              <div className="absolute top-full left-0 mt-1 w-36 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
+                <Link
+                  to="/admin/items"
+                  onClick={() => setAdminOpen(false)}
+                  className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                >
+                  <span>アイテム管理</span>
+                  {unverifiedItemCount > 0 && (
+                    <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                      {unverifiedItemCount}
+                    </span>
+                  )}
+                </Link>
+                {user?.role === 'admin' && (
+                  <Link
+                    to="/admin/users"
+                    onClick={() => setAdminOpen(false)}
+                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                  >
+                    ユーザー管理
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
         </nav>
 
-        <div className="flex items-center gap-3">
+        {/* デスクトップ右側のログイン操作 */}
+        <div className="hidden lg:flex items-center gap-3 shrink-0">
           {user ? (
             <button
               onClick={handleLogout}
@@ -96,7 +155,121 @@ export default function Header() {
             </>
           )}
         </div>
+
+        {/* モバイル用ハンバーガーボタン（lg未満） */}
+        <button
+          type="button"
+          onClick={() => setMobileOpen((v) => !v)}
+          className="lg:hidden relative -mr-1 p-2 text-gray-300 hover:text-white transition-colors"
+          aria-label="メニュー"
+          aria-expanded={mobileOpen}
+        >
+          {mobileOpen ? (
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          ) : (
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          )}
+          {/* 未読・未確認の合計バッジ（メニューを閉じているときのみ） */}
+          {!mobileOpen && (totalUnread > 0 || hasNewBoard || unverifiedItemCount > 0) && (
+            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
+          )}
+        </button>
       </div>
+
+      {/* モバイルメニュー（オーバーレイ + ドロワー） */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 top-14 z-40">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileOpen(false)}
+          />
+          <nav className="absolute top-0 right-0 w-72 max-w-[85vw] h-full bg-surface-card border-l border-surface-border shadow-xl overflow-y-auto flex flex-col p-4 text-sm">
+            <Link to="/listings" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+              出品一覧
+            </Link>
+            {user && (
+              <>
+                <Link to="/listings/new" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                  出品する
+                </Link>
+                <Link to="/listings/bulk" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                  一括出品
+                </Link>
+                <Link to="/board" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                  <span>運営掲示板</span>
+                  {hasNewBoard && <span className="w-2 h-2 rounded-full bg-red-500" />}
+                </Link>
+                <Link to="/mypage" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                  <span>マイページ</span>
+                  {totalUnread > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                      {totalUnread}
+                    </span>
+                  )}
+                </Link>
+              </>
+            )}
+            <div className="mt-2 pt-4 border-t border-surface-border">
+              <p className="text-xs text-gray-500 mb-1">管理</p>
+              <Link
+                to="/admin/items"
+                onClick={closeMobile}
+                className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+              >
+                <span>アイテム管理</span>
+                {unverifiedItemCount > 0 && (
+                  <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                    {unverifiedItemCount}
+                  </span>
+                )}
+              </Link>
+              {user?.role === 'admin' && (
+                <Link
+                  to="/admin/users"
+                  onClick={closeMobile}
+                  className="block py-3 text-gray-300 hover:text-white transition-colors"
+                >
+                  ユーザー管理
+                </Link>
+              )}
+            </div>
+            <div className="mt-auto pt-4 border-t border-surface-border">
+              {user ? (
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left py-3 text-gray-400 hover:text-white transition-colors"
+                >
+                  ログアウト
+                </button>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Link
+                    to="/auth/login"
+                    onClick={closeMobile}
+                    className="w-full text-center py-2 border border-surface-border rounded-md text-gray-300 hover:text-white transition-colors"
+                  >
+                    ログイン
+                  </Link>
+                  <Link
+                    to="/auth/register"
+                    onClick={closeMobile}
+                    className="w-full text-center bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-md transition-colors"
+                  >
+                    新規登録
+                  </Link>
+                </div>
+              )}
+            </div>
+          </nav>
+        </div>
+      )}
+
+      {/* メール未認証ユーザー向けバナー */}
+      <VerifyEmailBanner />
 
       {/* テスト運用中のお知らせ */}
       <div className="bg-yellow-900/30 border-t border-yellow-700/40 text-yellow-200 text-xs sm:text-sm">

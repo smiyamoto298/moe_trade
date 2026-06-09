@@ -1,41 +1,73 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import client from '../api/client'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
-import { chatApi } from '../api/chat'
-import { USE_MOCK } from '../api/mock'
 import UnverifiedBadge from '../components/UnverifiedBadge'
-import ChatThread from '../components/ChatThread'
+import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsComp from '../components/PriceAnalytics'
-import type { Listing, TradeChat, Server, ItemPriceAnalytics } from '../types'
+import type { Listing, ItemPriceAnalytics, ItemCategory } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, SPECIAL_CONDITIONS, BASE_STAT_LABELS } from '../utils/constants'
-
-// モック時の「自分」の設定
-const MOCK_USER_ID = 99
-// const MOCK_IS_OWNER = false  // true にすると出品者視点で確認できる
-const MOCK_IS_OWNER = true  // true にすると出品者視点で確認できる
 
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const [listing, setListing] = useState<Listing | null>(null)
   const [analytics, setAnalytics] = useState<ItemPriceAnalytics | null>(null)
+  const [categories, setCategories] = useState<ItemCategory[]>([])
+  const [notFound, setNotFound] = useState(false)
 
-  // チャット関連
-  const [chatOpen, setChatOpen] = useState(false)
-  const [activeChat, setActiveChat] = useState<TradeChat | null>(null)
-  const [allChats, setAllChats] = useState<TradeChat[]>([])
-  const [chatLoading, setChatLoading] = useState(false)
-  const [showServerSelect, setShowServerSelect] = useState(false)
+  // カテゴリID → 名前（装備セットの内訳表示に使用）
+  const categoryNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    categories.forEach((c) => {
+      map.set(c.id, c.name)
+      ;(c.children ?? []).forEach((ch) => map.set(ch.id, ch.name))
+    })
+    return map
+  }, [categories])
+
+  // 取引希望パネル
+  const [showTradePanel, setShowTradePanel] = useState(false)
+  const [requested, setRequested] = useState(false)
 
   useEffect(() => {
     if (!id) return
-    listingsApi.get(Number(id)).then((r) => {
-      setListing(r.data)
-      itemsApi.priceAnalytics(r.data.item.id).then((a) => setAnalytics(a.data))
-    })
+    setNotFound(false)
+    setListing(null)
+    listingsApi.get(Number(id))
+      .then((r) => {
+        setListing(r.data)
+        itemsApi.priceAnalytics(r.data.item.id).then((a) => setAnalytics(a.data))
+        // 装備セットのときだけ、内訳表示用にカテゴリツリーを取得
+        if (r.data.item.is_equipment_set) {
+          itemsApi.categories().then((c) => setCategories(c.data)).catch(() => {})
+        }
+      })
+      .catch(() => setNotFound(true))
   }, [id])
+
+  // 既に取引希望済みかどうか
+  useEffect(() => {
+    if (!user || !id) return
+    client.get<{ listing_id: number }[] | { data: { listing_id: number }[] }>('/mypage/chats')
+      .then((r) => {
+        const chats = Array.isArray(r.data) ? r.data : r.data.data
+        if (chats.some((c) => c.listing_id === Number(id))) setRequested(true)
+      })
+      .catch(() => {})
+  }, [user, id])
+
+  if (notFound)
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-4">
+        <p className="text-gray-400">この出品は見つかりませんでした。取り下げ済みか、期限切れの可能性があります。</p>
+        <Link to="/listings" className="inline-block text-sm text-primary-500 hover:underline">
+          出品一覧へ戻る
+        </Link>
+      </div>
+    )
 
   if (!listing) return <div className="text-center py-20 text-gray-500">読み込み中...</div>
 
@@ -43,46 +75,71 @@ export default function ListingDetailPage() {
   const daysLeft = Math.ceil(
     (new Date(listing.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   )
-
-  // モック時: 出品者かどうかの判定（本番はuseAuthで判定）
-  const isOwner = USE_MOCK ? MOCK_IS_OWNER : false
-
-  // サーバー選択後にチャットを開く
-  const handleOpenChat = async (server: Server) => {
-    setChatLoading(true)
-    setShowServerSelect(false)
-    try {
-      const res = await chatApi.getOrCreate(listing.id, server)
-      setActiveChat(res.data)
-      setChatOpen(true)
-    } finally {
-      setChatLoading(false)
-    }
-  }
-
-  // 出品者用：全チャット一覧を開く
-  const handleOpenAllChats = async () => {
-    setChatLoading(true)
-    try {
-      const res = await chatApi.listByListing(listing.id)
-      setAllChats(res.data)
-      setChatOpen(true)
-    } finally {
-      setChatLoading(false)
-    }
-  }
+  const isOwner = user?.id === listing.user_id
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       {item.verified_status === 'unverified' && <UnverifiedBadge />}
 
       {/* アイテム情報 */}
-      <div className="bg-surface-card border border-surface-border rounded-lg p-6">
+      <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
         <p className="text-sm text-gray-400 mb-1">{item.category.name}</p>
         <h1 className="text-2xl font-bold text-white mb-4">{item.name}</h1>
 
         {item.description && (
           <p className="text-sm text-gray-300 mb-4">{item.description}</p>
+        )}
+
+        {/* 装備セット内訳 */}
+        {item.is_equipment_set && (item.set_piece_category_ids?.length ?? 0) > 0 && (
+          <div className="mb-4 border border-amber-600/40 bg-amber-900/10 rounded-lg p-4">
+            <h2 className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">
+              ⚔ セット内訳（{item.set_piece_category_ids!.length}部位）
+            </h2>
+            <div className="flex flex-wrap gap-1.5">
+              {item.set_piece_category_ids!.map((cid) => (
+                <span
+                  key={cid}
+                  className="text-xs bg-amber-900/30 border border-amber-700/40 text-amber-100 rounded px-2 py-1"
+                >
+                  {categoryNameById.get(cid) ?? `#${cid}`}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* アセット情報 */}
+        {(item.placement || (item.asset_width && item.asset_height) || (item.storage_count ?? 0) > 0 || item.special_function) && (
+          <div className="mb-4">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">アセット情報</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {item.placement && (
+                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
+                  <span className="text-gray-400">設置個所</span>
+                  <span className="text-white font-medium">{item.placement}</span>
+                </div>
+              )}
+              {item.asset_width && item.asset_height ? (
+                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
+                  <span className="text-gray-400">サイズ</span>
+                  <span className="text-white font-medium">{item.asset_width}×{item.asset_height}</span>
+                </div>
+              ) : null}
+              {(item.storage_count ?? 0) > 0 && (
+                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
+                  <span className="text-gray-400">ストレージ</span>
+                  <span className="text-white font-medium">{item.storage_count}</span>
+                </div>
+              )}
+              {item.special_function && (
+                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
+                  <span className="text-gray-400">特殊機能</span>
+                  <span className="text-white font-medium">{item.special_function}</span>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {Object.keys(item.base_stats).length > 0 && (
@@ -142,7 +199,7 @@ export default function ListingDetailPage() {
       </div>
 
       {/* 出品情報 */}
-      <div className="bg-surface-card border border-surface-border rounded-lg p-6">
+      <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">出品情報</h2>
         <div className="flex items-end gap-2 mb-4">
           <span className="text-3xl font-bold text-primary-500">{listing.price.toLocaleString()}</span>
@@ -150,6 +207,14 @@ export default function ListingDetailPage() {
           <span className="ml-2 bg-surface text-gray-300 text-sm px-2 py-0.5 rounded">
             {TRADE_TYPE_LABEL[listing.trade_type]}
           </span>
+          {listing.is_worn && (
+            <span
+              title="削れあり（耐久度に削れがある中古品）"
+              className="bg-amber-900/30 border border-amber-600/40 text-amber-300 text-sm px-2 py-0.5 rounded"
+            >
+              ⚠ 削れあり
+            </span>
+          )}
         </div>
 
         {listing.comment && (
@@ -173,19 +238,14 @@ export default function ListingDetailPage() {
           出品期限まで残り{daysLeft}日
         </p>
 
-        {/* チャットボタン */}
+        {/* 取引アクション（チャットのやり取りはマイページで行う） */}
         {isOwner ? (
-          <button
-            onClick={handleOpenAllChats}
-            disabled={chatLoading}
-            className="w-full flex items-center justify-center gap-2 bg-surface hover:bg-surface-border border border-surface-border text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+          <Link
+            to="/mypage"
+            className="w-full flex items-center justify-center gap-2 bg-surface hover:bg-surface-border border border-surface-border text-gray-300 py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
-            <span>💬</span>
-            取引チャット一覧を見る
-            {allChats.length > 0 && (
-              <span className="bg-primary-500 text-white text-xs rounded-full px-1.5">{allChats.length}</span>
-            )}
-          </button>
+            取引チャットはマイページで管理できます →
+          </Link>
         ) : !user ? (
           <Link
             to="/auth/login"
@@ -193,122 +253,42 @@ export default function ListingDetailPage() {
           >
             取引するにはログインが必要です
           </Link>
+        ) : !user.email_verified_at ? (
+          <p className="text-center text-sm text-yellow-400 bg-yellow-900/20 border border-yellow-700/40 rounded-lg py-2.5 px-3">
+            取引にはメールアドレスの認証が必要です（画面上部から認証メールを再送できます）
+          </p>
+        ) : listing.status !== 'active' ? (
+          <p className="text-center text-sm text-gray-500 py-2">この出品は現在取引できません</p>
+        ) : requested ? (
+          <Link
+            to="/mypage"
+            className="w-full flex items-center justify-center gap-2 bg-surface border border-primary-500/40 text-primary-400 py-2.5 rounded-lg text-sm font-medium hover:bg-surface-border transition-colors"
+          >
+            ✓ 取引希望済み — やり取りはマイページで確認 →
+          </Link>
+        ) : showTradePanel ? (
+          <TradeRequestPanel
+            listing={listing}
+            onComplete={() => {
+              setShowTradePanel(false)
+              setRequested(true)
+            }}
+            onCancel={() => setShowTradePanel(false)}
+          />
         ) : (
-          <div className="space-y-2">
-            {!showServerSelect ? (
-              <button
-                onClick={() => setShowServerSelect(true)}
-                disabled={chatLoading}
-                className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                <span>💬</span>
-                {chatLoading ? '接続中...' : '取引希望チャットを開く'}
-              </button>
-            ) : (
-              <div className="border border-primary-500/40 bg-primary-500/10 rounded-lg p-4 space-y-3">
-                <p className="text-sm text-white font-medium">取引するサーバーを選択してください</p>
-                <div className="space-y-2">
-                  {listing.servers.map((s) => (
-                    <button
-                      key={s.server}
-                      onClick={() => handleOpenChat(s.server)}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg border transition-colors ${SERVER_COLORS[s.server]} border-current/30 hover:opacity-80`}
-                    >
-                      <span className="font-medium">{s.server}</span>
-                      <span className="text-sm opacity-80">連絡先: {s.character?.character_name}</span>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => setShowServerSelect(false)}
-                  className="text-xs text-gray-400 hover:text-white w-full text-center"
-                >
-                  キャンセル
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setShowTradePanel(true)}
+            className="w-full bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <span>💬</span>
+            取引希望を送る
+          </button>
         )}
       </div>
 
-      {/* チャットパネル */}
-      {chatOpen && (
-        <div className="bg-surface-card border border-surface-border rounded-lg overflow-hidden">
-          {isOwner ? (
-            // 出品者：全チャット一覧 + 選択したスレッド
-            <div className="grid grid-cols-[240px_1fr] h-[480px]">
-              {/* スレッド一覧 */}
-              <div className="border-r border-surface-border flex flex-col">
-                <p className="text-xs font-semibold text-gray-400 px-3 py-2 border-b border-surface-border">
-                  取引希望 ({allChats.length}件)
-                </p>
-                <div className="overflow-y-auto flex-1">
-                  {allChats.length === 0 ? (
-                    <p className="text-xs text-gray-500 text-center py-6">まだチャットはありません</p>
-                  ) : (
-                    allChats.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => setActiveChat(c)}
-                        className={`w-full text-left px-3 py-3 border-b border-surface-border hover:bg-surface-border transition-colors ${
-                          activeChat?.id === c.id ? 'bg-primary-500/10 border-l-2 border-l-primary-500' : ''
-                        }`}
-                      >
-                        <p className="text-sm text-white font-medium">{c.buyer_character_name}</p>
-                        <p className="text-xs text-gray-400 truncate mt-0.5">
-                          {c.messages.at(-1)?.message ?? 'メッセージなし'}
-                        </p>
-                        <p className={`text-xs mt-0.5 ${c.status === 'open' ? 'text-emerald-400' : 'text-gray-500'}`}>
-                          {c.status === 'open' ? '交渉中' : 'クローズ'}
-                        </p>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* メッセージ */}
-              <div>
-                {activeChat ? (
-                  <ChatThread
-                    chat={activeChat}
-                    currentUserId={USE_MOCK ? 1 : null}
-                    isOwner={true}
-                    onDeal={(updatedChats) => {
-                      setAllChats(updatedChats)
-                      const updated = updatedChats.find((c) => c.id === activeChat.id)
-                      if (updated) setActiveChat(updated)
-                    }}
-                    onStatusChange={(updated) => {
-                      setActiveChat(updated)
-                      setAllChats((prev) => prev.map((c) => c.id === updated.id ? updated : c))
-                    }}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-sm text-gray-500">
-                    左のリストからチャットを選択してください
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            // 購入希望者：自分のスレッドのみ
-            <div className="h-[480px]">
-              {activeChat && (
-                <ChatThread
-                  chat={activeChat}
-                  currentUserId={USE_MOCK ? MOCK_USER_ID : null}
-                  isOwner={false}
-                />
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* 価格解析 */}
       {analytics && (
-        <div className="bg-surface-card border border-surface-border rounded-lg p-6">
+        <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-5">
             価格データ解析
           </h2>

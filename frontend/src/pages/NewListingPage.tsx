@@ -5,6 +5,7 @@ import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
 import { useAuth } from '../contexts/AuthContext'
 import NewItemForm from '../components/NewItemForm'
+import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import type { Item } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL } from '../utils/constants'
@@ -19,13 +20,15 @@ export default function NewListingPage() {
   const [searchResults, setSearchResults] = useState<Item[]>([])
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
   const [showNewItemForm, setShowNewItemForm] = useState(false)
+  const [priceError, setPriceError] = useState('')
+  const [showAnalytics, setShowAnalytics] = useState(false)
 
   const [form, setForm] = useState({
     price: '',
     currency: 'AC', // ゲーム内通貨（固定）
-    quantity: '1',
     trade_type: 'fixed',
     comment: '',
+    is_worn: false,
     servers: [] as string[],
   })
 
@@ -40,6 +43,12 @@ export default function NewListingPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedItem || !user) return
+    // 価格は1以上
+    if (!(Number(form.price) >= 1)) {
+      setPriceError('価格は1以上で入力してください。')
+      return
+    }
+    setPriceError('')
     runSubmit(async () => {
       const serverPayload = form.servers.map((s) => {
         const char = user.characters?.find((c) => c.server === s)
@@ -49,9 +58,10 @@ export default function NewListingPage() {
         item_id: selectedItem.id,
         price: Number(form.price),
         currency: form.currency,
-        quantity: Number(form.quantity),
+        quantity: 1,
         trade_type: form.trade_type,
         comment: form.comment,
+        is_worn: form.is_worn,
         servers: serverPayload,
       })
       navigate('/mypage')
@@ -60,7 +70,6 @@ export default function NewListingPage() {
 
   const canSubmit =
     selectedItem &&
-    form.price &&
     form.servers.length > 0 &&
     user?.email_verified_at
 
@@ -88,13 +97,22 @@ export default function NewListingPage() {
                   <p className="text-xs text-yellow-400 mt-0.5">⚠ 未確認アイテム</p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedItem(null)}
-                className="text-gray-400 hover:text-white text-sm"
-              >
-                変更
-              </button>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAnalytics(true)}
+                  className="text-xs bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors"
+                >
+                  相場情報
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItem(null)}
+                  className="text-gray-400 hover:text-white text-sm"
+                >
+                  変更
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -127,7 +145,17 @@ export default function NewListingPage() {
                       className="w-full text-left px-3 py-2 hover:bg-surface-border transition-colors"
                     >
                       <p className="text-xs text-gray-400">{item.category.name}</p>
-                      <p className="text-sm text-white">{item.name}</p>
+                      <p className="text-sm text-white flex items-center gap-1.5">
+                        {item.name}
+                        {item.verified_status === 'unverified' && (
+                          <span
+                            title="未確認アイテム（管理者による確認が完了していません）"
+                            className="text-xs text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1.5 py-0.5 shrink-0"
+                          >
+                            ⚠ 未確認
+                          </span>
+                        )}
+                      </p>
                     </button>
                   ))}
                   <button
@@ -168,11 +196,17 @@ export default function NewListingPage() {
               <input
                 type="number"
                 required
-                min={0}
+                min={1}
                 value={form.price}
-                onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))}
-                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, price: e.target.value }))
+                  if (priceError) setPriceError('')
+                }}
+                className={`w-full bg-surface border rounded px-3 py-2 text-sm text-white focus:outline-none ${
+                  priceError ? 'border-red-500 focus:border-red-500' : 'border-surface-border focus:border-primary-500'
+                }`}
               />
+              {priceError && <p className="mt-1 text-xs text-red-400">{priceError}</p>}
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">通貨</label>
@@ -182,29 +216,17 @@ export default function NewListingPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">数量</label>
-              <input
-                type="number"
-                min={1}
-                value={form.quantity}
-                onChange={(e) => setForm((p) => ({ ...p, quantity: e.target.value }))}
-                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">取引方法</label>
-              <select
-                value={form.trade_type}
-                onChange={(e) => setForm((p) => ({ ...p, trade_type: e.target.value }))}
-                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
-              >
-                {(Object.keys(TRADE_TYPE_LABEL) as Array<keyof typeof TRADE_TYPE_LABEL>).map((k) => (
-                  <option key={k} value={k}>{TRADE_TYPE_LABEL[k]}</option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">取引方法</label>
+            <select
+              value={form.trade_type}
+              onChange={(e) => setForm((p) => ({ ...p, trade_type: e.target.value }))}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+            >
+              {(Object.keys(TRADE_TYPE_LABEL) as Array<keyof typeof TRADE_TYPE_LABEL>).map((k) => (
+                <option key={k} value={k}>{TRADE_TYPE_LABEL[k]}</option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -216,6 +238,17 @@ export default function NewListingPage() {
               className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500 resize-none"
             />
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.is_worn}
+              onChange={(e) => setForm((p) => ({ ...p, is_worn: e.target.checked }))}
+              className="accent-amber-500"
+            />
+            <span className="text-sm text-gray-300">削れあり</span>
+            <span className="text-xs text-gray-500">（耐久度に削れがある中古品）</span>
+          </label>
         </div>
 
         {/* サーバー選択 */}
@@ -274,6 +307,14 @@ export default function NewListingPage() {
           {submitting ? '送信中...' : '出品する'}
         </button>
       </form>
+
+      {showAnalytics && selectedItem && (
+        <PriceAnalyticsModal
+          itemId={selectedItem.id}
+          itemName={selectedItem.name}
+          onClose={() => setShowAnalytics(false)}
+        />
+      )}
     </div>
   )
 }

@@ -39,4 +39,14 @@ class AdminController extends Controller
         $user->update(['is_suspended' => false]);
         return response()->json($user->load('characters'));
     }
+
+    // メール送信失敗等で認証できないユーザーを手動で認証済みにする
+    public function verifyEmail(int $id)
+    {
+        $user = User::findOrFail($id);
+        if (!$user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+        return response()->json($user->load('characters'));
+    }
 }

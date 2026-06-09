@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import client from '../api/client'
 import { listingsApi } from '../api/listings'
@@ -10,7 +10,7 @@ import TradeRequestPanel from '../components/TradeRequestPanel'
 import Spinner from '../components/Spinner'
 import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
-import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../utils/constants'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -34,13 +34,38 @@ function hasNonEquipSetCategory(selectedIds: string[], categories: ItemCategory[
   return selectedIds.some((id) => id !== String(equipSetCat.id))
 }
 
-interface Props { mode?: 'equipment' | 'skill' }
+interface Props { mode?: 'equipment' | 'skill' | 'asset' }
 
 export default function ListingsPage({ mode = 'equipment' }: Props) {
   const isSkillMode = mode === 'skill'
+  const isAssetMode = mode === 'asset'
+  const isEquipmentMode = !isSkillMode && !isAssetMode
   const { user } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // 取引希望送信時に出品が取り下げ／成立していた場合のエラー（詳細ページ等からのリダイレクト）
+  const [tradeError, setTradeError] = useState<string | null>(
+    (location.state as { tradeError?: string } | null)?.tradeError ?? null
+  )
+
+  // 通知メッセージは一度表示したら履歴から消す（リロードや戻る操作で再表示しない）
+  useEffect(() => {
+    if ((location.state as { tradeError?: string } | null)?.tradeError) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [listings, setListings] = useState<Listing[]>([])
   const [categories, setCategories] = useState<ItemCategory[]>([])
+  // カテゴリID → 名前（装備セットの内訳表示に使用）
+  const categoryNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    categories.forEach((c) => {
+      map.set(c.id, c.name)
+      ;(c.children ?? []).forEach((ch) => map.set(ch.id, ch.name))
+    })
+    return map
+  }, [categories])
   const [bonusValueLabels, setBonusValueLabels] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [mastersLoading, setMastersLoading] = useState(true)
@@ -48,7 +73,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
   const [params, setParams] = useState<ListingSearchParams>({
     sort: 'newest', page: 1,
-    ...(mode === 'skill' ? { is_skill: true } : { is_skill: false }),
+    item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : 'equipment',
   })
   const [tradeTarget, setTradeTarget] = useState<Listing | null>(null)
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set())
@@ -122,6 +147,22 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
     })
   }
 
+  // 必要スキル値ハンドラー（スキルタブ用）
+  const setSkillRange = (key: string, range: StatRange) =>
+    setParams((p) => ({
+      ...p,
+      skill_ranges: { ...p.skill_ranges, [key]: range },
+      page: 1,
+    }))
+
+  const setSkillKeys = (vals: string[]) => {
+    setParams((p) => {
+      const ranges = { ...p.skill_ranges }
+      Object.keys(ranges).forEach((k) => { if (!vals.includes(k)) delete ranges[k] })
+      return { ...p, skill_keys: vals.length > 0 ? vals : undefined, skill_ranges: ranges, page: 1 }
+    })
+  }
+
   // 選択解除時に対応するrangeも削除
   const setBaseStatKeys = (vals: string[]) => {
     setParams((p) => {
@@ -151,22 +192,52 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
     label: `${k} — ${v}`,
   }))
 
-  const [filterOpen, setFilterOpen] = useState(typeof window !== 'undefined' && window.innerWidth >= 1024)
+  // 必要スキルオプション（スキルタブ用・グループ付き）
+  const skillOptions: FilterOption[] = SKILL_GROUPS.flatMap(({ group, skills }) =>
+    skills.map((s) => ({ value: s, label: s, group }))
+  )
+
+  const [filterOpen, setFilterOpen] = useState(false)
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-white">出品一覧</h1>
-            <div className="flex border border-surface-border rounded-lg overflow-hidden text-sm">
-              <Link to="/listings" className={`px-4 py-1.5 transition-colors ${!isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>装備品</Link>
-              <Link to="/skills" className={`px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>スキル</Link>
+      {/* 取引希望が無効になった場合のエラーバナー */}
+      {tradeError && (
+        <div className="mb-4 bg-red-900/40 border border-red-600/50 rounded-lg px-4 py-3 text-sm text-red-300 flex items-start justify-between gap-3">
+          <span>{tradeError}</span>
+          <button
+            onClick={() => setTradeError(null)}
+            className="text-red-400 hover:text-red-200 shrink-0"
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* 未ログイン時の案内バナー */}
+      {!user && (
+        <div className="mb-4 bg-yellow-900/30 border border-yellow-700/40 rounded-lg px-4 py-3 text-sm text-yellow-200 flex flex-wrap items-center gap-2">
+          <span>出品・取引希望にはログインが必要です！</span>
+          <Link to="/auth/login" className="underline font-medium hover:text-white transition-colors">ログイン</Link>
+          <span className="text-yellow-400/60">/</span>
+          <Link to="/auth/register" className="underline font-medium hover:text-white transition-colors">新規登録</Link>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <h1 className="text-lg sm:text-xl font-bold text-white">出品一覧</h1>
+            <div className="flex border border-surface-border rounded-lg overflow-hidden text-xs sm:text-sm">
+              <Link to="/listings" className={`px-3 sm:px-4 py-1.5 transition-colors ${isEquipmentMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>装備品</Link>
+              <Link to="/skills" className={`px-3 sm:px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>テクニック</Link>
+              <Link to="/assets" className={`px-3 sm:px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>アセット</Link>
             </div>
           </div>
         {user && (
           <Link
             to="/listings/new"
-            className="bg-primary-500 hover:bg-primary-600 text-white text-sm px-4 py-2 rounded-md transition-colors"
+            className="bg-primary-500 hover:bg-primary-600 text-white text-sm px-4 py-2 rounded-md transition-colors whitespace-nowrap"
           >
             + 出品する
           </Link>
@@ -208,13 +279,14 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               />
             </div>
 
-            {/* 種別（カテゴリ） */}
+            {/* 種別（カテゴリ）— アセットはカテゴリ分けが無いため非表示 */}
+            {!isAssetMode && (
             <div>
               <label className="block text-xs text-gray-400 mb-1.5">種別</label>
               <FilterPopup
                 title="種別を選択"
                 options={categoriesToOptions(
-                  categories.filter((c) => (isSkillMode ? c.name === 'スキル' : c.name !== 'スキル'))
+                  categories.filter((c) => (isSkillMode ? c.name === 'テクニック' : c.name !== 'テクニック' && c.name !== 'アセット'))
                 )}
                 selected={(params.category_ids ?? []).map(String)}
                 onChange={(vals) => {
@@ -242,9 +314,76 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 </label>
               )}
             </div>
+            )}
+
+            {/* 必要スキル（スキルモードのみ） */}
+            {isSkillMode && (
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">必要スキル</label>
+                <FilterPopup
+                  title="必要スキルを選択"
+                  options={skillOptions}
+                  selected={params.skill_keys ?? []}
+                  onChange={setSkillKeys}
+                  searchable
+                />
+              </div>
+            )}
+
+            {/* 設置個所・特殊機能・ストレージ・特殊条件（アセットモードのみ） */}
+            {isAssetMode && (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">設置個所</label>
+                  <FilterPopup
+                    title="設置個所を選択"
+                    options={ASSET_PLACEMENTS.map((p) => ({ value: p, label: p }))}
+                    selected={params.placements ?? []}
+                    onChange={(vals) => setParam('placements', vals)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">特殊機能</label>
+                  <FilterPopup
+                    title="特殊機能を選択"
+                    options={ASSET_FUNCTIONS.map((f) => ({ value: f, label: f }))}
+                    selected={params.special_functions ?? []}
+                    onChange={(vals) => setParam('special_functions', vals)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">ストレージ数</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min={0} placeholder="最小"
+                      className="w-full bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-primary-500"
+                      onChange={(e) => setParam('storage_min', e.target.value ? Number(e.target.value) : undefined)}
+                    />
+                    <span className="text-gray-500 shrink-0">〜</span>
+                    <input
+                      type="number" min={0} placeholder="最大"
+                      className="w-full bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-primary-500"
+                      onChange={(e) => setParam('storage_max', e.target.value ? Number(e.target.value) : undefined)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">特殊条件</label>
+                  <FilterPopup
+                    title="特殊条件を選択"
+                    options={specialOptions}
+                    selected={params.special_conditions ?? []}
+                    onChange={(vals) => setParam('special_conditions', vals)}
+                  />
+                </div>
+              </>
+            )}
 
             {/* 追加効果・付加効果・特殊条件（装備品モードのみ） */}
-            {!isSkillMode && (
+            {isEquipmentMode && (
               <>
                 <div>
                   <label className="block text-xs text-gray-400 mb-1.5">追加効果</label>
@@ -265,6 +404,9 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                     onChange={setBonusValueKeys}
                     searchable
                   />
+                  <p className="mt-1 text-[10px] text-gray-500">
+                    ※バフ名ではなく、バフの効果で検索してください
+                  </p>
                 </div>
 
                 <div>
@@ -353,12 +495,39 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 />
               </div>
             </div>
+
+            {/* 削れあり（アセットは対象外） */}
+            {!isAssetMode && (
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!params.exclude_worn}
+                  onChange={(e) => setParam('exclude_worn', e.target.checked)}
+                  className="accent-primary-500"
+                />
+                <span className="text-sm text-gray-300">削れありを非表示</span>
+              </label>
+            </div>
+            )}
             </div>{/* filterOpen 折りたたみエリア終了 */}
           </div>
         </aside>
 
         {/* 一覧 */}
         <div>
+          {/* 必要スキル値の範囲絞り込み（スキルモード） */}
+          {(params.skill_keys?.length ?? 0) > 0 && (
+            <div className="mb-4">
+              <StatRangeFilter
+                title="必要スキル値"
+                items={(params.skill_keys ?? []).map((k) => ({ key: k, label: k }))}
+                ranges={params.skill_ranges ?? {}}
+                onChange={setSkillRange}
+              />
+            </div>
+          )}
+
           {/* 数値絞り込みエリア */}
           {(params.base_stat_keys?.length ?? 0) > 0 && (
             <div className="mb-4">
@@ -413,21 +582,27 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
             </select>
           </div>
 
-          <div className="bg-surface-card border border-surface-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
+            <table className="w-full sm:min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-surface-border">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-48">アイテム</th>
                   {isSkillMode ? (
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={3}>必要スキル</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell" colSpan={3}>必要スキル</th>
+                  ) : isAssetMode ? (
+                    <>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">設置・サイズ</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">ストレージ・特殊機能</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">特殊条件</th>
+                    </>
                   ) : (
                     <>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">追加効果</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">付加効果</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">追加効果</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">付加効果</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">特殊条件</th>
                     </>
                   )}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">取引</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">取引</th>
                   <th className="text-right px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">価格</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -452,16 +627,56 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         {/* アイテム名・種別 */}
                         <td className="px-4 py-3">
                           {l.item.verified_status === 'unverified' && (
-                            <span className="inline-block mb-1 text-xs text-yellow-400">⚠ 未確認</span>
+                            <span
+                              tabIndex={0}
+                              className="group relative inline-block mb-1 text-xs text-yellow-400 cursor-help focus:outline-none"
+                            >
+                              ⚠ 未確認
+                              <span className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block group-focus:block w-64 bg-surface-card border border-yellow-700/50 rounded-md px-3 py-2 text-xs text-yellow-200 shadow-xl whitespace-normal">
+                                アイテムの情報が正確でない場合があります。wiki等で確認してからの取引をお願いします。
+                              </span>
+                            </span>
                           )}
                           <div className="flex items-center gap-1 flex-wrap">
                             {l.item.is_equipment_set ? (
-                              <span className="text-xs bg-amber-900/30 border border-amber-600/40 text-amber-300 rounded px-1.5 py-0.5">⚔ 装備セット</span>
+                              (() => {
+                                const partNames = (l.item.set_piece_category_ids ?? [])
+                                  .map((cid) => categoryNameById.get(cid))
+                                  .filter((n): n is string => !!n)
+                                return (
+                                  <span
+                                    tabIndex={0}
+                                    className="group relative inline-block text-xs bg-amber-900/30 border border-amber-600/40 text-amber-300 rounded px-1.5 py-0.5 cursor-help focus:outline-none"
+                                  >
+                                    ⚔ 装備セット
+                                    {partNames.length > 0 && (
+                                      <span className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block group-focus:block w-56 bg-surface-card border border-amber-700/50 rounded-md px-3 py-2 text-xs text-amber-100 shadow-xl whitespace-normal text-left font-normal">
+                                        <span className="block text-amber-300 font-semibold mb-1">セット内訳（{partNames.length}部位）</span>
+                                        <span className="flex flex-wrap gap-1">
+                                          {partNames.map((n, i) => (
+                                            <span key={i} className="bg-amber-900/40 border border-amber-700/40 rounded px-1.5 py-0.5">{n}</span>
+                                          ))}
+                                        </span>
+                                      </span>
+                                    )}
+                                  </span>
+                                )
+                              })()
                             ) : (
                               <span className="text-xs text-gray-400">{l.item.category.name}</span>
                             )}
                           </div>
-                          <p className="text-white font-medium">{l.item.name}</p>
+                          <p className="text-white font-medium flex items-center gap-1.5">
+                            <span>{l.item.name}</span>
+                            {l.is_worn && (
+                              <span
+                                title="削れあり（耐久度に削れがある中古品）"
+                                className="text-xs text-amber-300 bg-amber-900/30 border border-amber-600/40 rounded px-1.5 py-0.5 shrink-0"
+                              >
+                                ⚠ 削れあり
+                              </span>
+                            )}
+                          </p>
                           {l.item.is_equipment_set && l.item.set_piece_category_ids && l.item.set_piece_category_ids.length > 0 && (
                             <p className="text-xs text-gray-500 mt-0.5">
                               {l.item.set_piece_category_ids.length}部位セット
@@ -471,7 +686,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
                         {isSkillMode ? (
                           /* スキル必要スキル値 */
-                          <td className="px-4 py-3" colSpan={3}>
+                          <td className="hidden sm:table-cell px-4 py-3" colSpan={3}>
                             <div className="flex flex-wrap gap-1">
                               {!l.item.skill_requirements || Object.keys(l.item.skill_requirements).length === 0 ? (
                                 <span className="text-xs text-gray-600">—</span>
@@ -482,12 +697,64 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                               ))}
                             </div>
                           </td>
+                        ) : isAssetMode ? (
+                          <>
+                          {/* 設置・サイズ */}
+                          <td className="hidden sm:table-cell px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {l.item.placement && (
+                                <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">{l.item.placement}</span>
+                              )}
+                              {(l.item.asset_width && l.item.asset_height) ? (
+                                <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+                                  {l.item.asset_width}×{l.item.asset_height}
+                                </span>
+                              ) : null}
+                              {!l.item.placement && !(l.item.asset_width && l.item.asset_height) && (
+                                <span className="text-xs text-gray-600">—</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* ストレージ・特殊機能 */}
+                          <td className="hidden sm:table-cell px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {(l.item.storage_count ?? 0) > 0 && (
+                                <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+                                  ストレージ <span className="text-white font-medium">{l.item.storage_count}</span>
+                                </span>
+                              )}
+                              {l.item.special_function && (
+                                <span className="text-xs bg-primary-500/10 border border-primary-500/30 text-primary-300 rounded px-1.5 py-0.5">
+                                  {l.item.special_function}
+                                </span>
+                              )}
+                              {!(l.item.storage_count ?? 0) && !l.item.special_function && (
+                                <span className="text-xs text-gray-600">—</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 特殊条件 */}
+                          <td className="hidden sm:table-cell px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {l.item.special_conditions.length === 0 ? (
+                                <span className="text-xs text-gray-600">—</span>
+                              ) : l.item.special_conditions.map((c) => (
+                                <span key={c} title={SPECIAL_CONDITIONS[c]}
+                                  className="text-xs bg-red-900/30 border border-red-700/30 text-red-300 rounded px-1.5 py-0.5">
+                                  {c}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          </>
                         ) : (
                           <>
                           {/* 追加効果 */}
-                          <td className="px-4 py-3">
+                          <td className="hidden sm:table-cell px-4 py-3">
                             <div className="flex flex-wrap gap-1">
-                              {Object.keys(l.item.base_stats).length === 0 && !l.item.mithril ? (
+                              {Object.keys(l.item.base_stats).length === 0 && !l.item.mithril && !l.item.exclusive_skill ? (
                                 <span className="text-xs text-gray-600">—</span>
                               ) : (
                                 <>
@@ -501,13 +768,18 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                                       ミスリル
                                     </span>
                                   )}
+                                  {l.item.exclusive_skill && (
+                                    <span className="text-xs bg-amber-900/40 border border-amber-600/40 rounded px-1.5 py-0.5 text-amber-200">
+                                      専用技
+                                    </span>
+                                  )}
                                 </>
                               )}
                             </div>
                           </td>
 
                           {/* 付加効果 */}
-                          <td className="px-4 py-3">
+                          <td className="hidden sm:table-cell px-4 py-3">
                             <div className="flex flex-col gap-1.5">
                               {l.item.bonus_effects.length === 0 ? (
                                 <span className="text-xs text-gray-600">—</span>
@@ -526,7 +798,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </td>
 
                           {/* 特殊条件 */}
-                          <td className="px-4 py-3">
+                          <td className="hidden sm:table-cell px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {l.item.special_conditions.length === 0 ? (
                                 <span className="text-xs text-gray-600">—</span>
@@ -542,7 +814,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         )}
 
                         {/* 取引方法・サーバー */}
-                        <td className="px-4 py-3">
+                        <td className="hidden sm:table-cell px-4 py-3">
                           <div className="flex flex-wrap gap-1 mb-1">
                             <span className="text-xs bg-surface text-gray-300 px-2 py-0.5 rounded">
                               {TRADE_TYPE_LABEL[l.trade_type]}
@@ -584,7 +856,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                             </div>
                           ) : (
                             <div className="flex flex-col gap-1 items-end">
-                              {user && (
+                              {user && !!user.email_verified_at && (
                                 <button
                                   onClick={() => setTradeTarget(isOpen ? null : l)}
                                   className={`text-xs whitespace-nowrap px-3 py-1.5 rounded border transition-colors ${
@@ -619,6 +891,14 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                                 setTradeTarget(null)
                               }}
                               onCancel={() => setTradeTarget(null)}
+                              onUnavailable={() => {
+                                setTradeTarget(null)
+                                setTradeError('この出品は取り下げ、または取引成立済みのため取引できませんでした。')
+                                // 一覧を再取得して無効になった出品を除外する
+                                setParams((p) => ({ ...p }))
+                                // 上部のエラーバナーが見えるようスクロール
+                                window.scrollTo({ top: 0, behavior: 'smooth' })
+                              }}
                             />
                           </td>
                         </tr>

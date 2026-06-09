@@ -17,7 +17,9 @@ return new class extends Migration
             $table->integer('quantity')->default(1);
             $table->enum('trade_type', ['fixed', 'negotiable']);
             $table->text('comment')->nullable();
-            $table->enum('status', ['active', 'expired', 'cancelled'])->default('active');
+            // completed / deal_failed は後続マイグレーション（MySQL用ALTER）でも追加されるが、
+            // SQLite（テスト環境）ではCHECK制約が作成時に固定されるため最初から全ステータスを定義する。
+            $table->enum('status', ['active', 'expired', 'cancelled', 'completed', 'deal_failed'])->default('active');
             $table->timestamp('expires_at');
             $table->timestamps();
         });

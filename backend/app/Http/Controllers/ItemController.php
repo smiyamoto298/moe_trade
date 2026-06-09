@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Item;
 use App\Models\Listing;
+use App\Models\MarketPrice;
 use App\Models\TradeHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -63,11 +64,57 @@ class ItemController extends Controller
         return response()->json($item);
     }
 
+    /**
+     * アイテム名の配列を受け取り、登録済みアイテムとの一致をまとめて返す。
+     * - 完全一致を優先
+     * - 末尾が "..." または "…"（公式サイトの省略表記）の場合は前方一致
+     * 戻り値: { data: { "<入力名>": <Item>, ... } } （一致したものだけ）
+     */
+    public function matchNames(Request $request)
+    {
+        $names = (array) $request->input('names', []);
+        $result = [];
+
+        foreach ($names as $raw) {
+            if (!is_string($raw)) {
+                continue;
+            }
+            $name = trim($raw);
+            if ($name === '') {
+                continue;
+            }
+            if (isset($result[$raw])) {
+                continue;
+            }
+
+            $isTruncated = (bool) preg_match('/(\.\.\.|…)\s*$/u', $name);
+            $base = trim(preg_replace('/\s*(\.\.\.|…)\s*$/u', '', $name));
+
+            if ($isTruncated && $base !== '') {
+                // LIKE のメタ文字をエスケープして前方一致
+                $escaped = addcslashes($base, '%_\\');
+                $item = Item::with('category')
+                    ->where('name', 'like', $escaped . '%')
+                    ->orderByRaw('LENGTH(name)')
+                    ->orderBy('name')
+                    ->first();
+            } else {
+                $item = Item::with('category')->where('name', $name)->first();
+            }
+
+            if ($item) {
+                $result[$raw] = $item;
+            }
+        }
+
+        return response()->json(['data' => (object) $result]);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
             'category_id'              => 'required|exists:item_categories,id',
-            'name'                     => 'required|string|max:200',
+            'name'                     => 'required|string|max:200|unique:items,name',
             'description'              => 'nullable|string',
             'image_url'                => 'nullable|url|max:500',
             'base_stats'               => 'nullable|array',
@@ -75,23 +122,38 @@ class ItemController extends Controller
             'special_conditions.*'     => 'string',
             'dyeable'                  => 'nullable|boolean',
             'mithril'                  => 'nullable|boolean',
+            'exclusive_skill'          => 'nullable|boolean',
             'is_equipment_set'         => 'nullable|boolean',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'skill_requirements'       => 'nullable|array',
             'skill_requirements.*'     => 'integer|min:0|max:100',
             'set_piece_category_ids'   => 'nullable|array',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
+            'placement'                => 'nullable|in:床,壁,天井',
+            'asset_width'              => 'nullable|integer|min:1|max:255',
+            'asset_height'             => 'nullable|integer|min:1|max:255',
+            'storage_count'            => 'nullable|integer|min:0',
+            'special_function'         => 'nullable|in:販売員,銀行,タイプカプセル,栽培,生産施設,カタログ',
             'bonus_effects'            => 'nullable|array',
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
+        ], [
+            'name.unique' => '同じ名前のアイテムが既に登録されています。',
         ]);
 
-        $item = DB::transaction(function () use ($data, $request) {
+        $user = $request->user();
+        // 管理者が登録したアイテムは自動的に確認済みにする
+        $isAdmin = $user->isAdmin();
+
+        $item = DB::transaction(function () use ($data, $user, $isAdmin) {
             $item = Item::create([
                 ...$data,
-                'verified_status' => 'unverified',
-                'submitted_by'    => $request->user()->id,
+                'verified_status' => $isAdmin ? 'verified' : 'unverified',
+                'submitted_by'    => $user->id,
+                'verified_by'     => $isAdmin ? $user->id : null,
+                'verified_at'     => $isAdmin ? now() : null,
+                'locked_by_staff' => $isAdmin,
             ]);
 
             if (!empty($data['bonus_effects'])) {
@@ -111,34 +173,56 @@ class ItemController extends Controller
         $item = Item::findOrFail($id);
         $user = $request->user();
 
-        // 本人は unverified 期間のみ編集可。editor/admin は常に可
-        if (!$user->isEditor() && !($item->submitted_by === $user->id && $item->verified_status === 'unverified')) {
-            abort(403);
+        // editor/admin は常に編集可。
+        // 一般 user は「自分が登録した未確認アイテム」かつ「staff が未編集（排他制御）」の場合のみ編集可。
+        $isOwnerEditable = $item->submitted_by === $user->id
+            && $item->verified_status === 'unverified'
+            && !$item->locked_by_staff;
+
+        if (!$user->isEditor() && !$isOwnerEditable) {
+            // 排他制御：editor/admin が手を入れたアイテムは登録者でも上書きできない
+            if ($item->submitted_by === $user->id && $item->locked_by_staff) {
+                abort(403, 'このアイテムは編集者または管理者によって更新されたため、編集できません。');
+            }
+            abort(403, 'このアイテムを編集する権限がありません。');
         }
 
         $data = $request->validate([
             'category_id'              => 'sometimes|exists:item_categories,id',
-            'name'                     => 'sometimes|string|max:200',
+            'name'                     => ['sometimes', 'string', 'max:200', \Illuminate\Validation\Rule::unique('items', 'name')->ignore($item->id)],
             'description'              => 'nullable|string',
             'image_url'                => 'nullable|url|max:500',
             'base_stats'               => 'nullable|array',
             'special_conditions'       => 'nullable|array',
             'dyeable'                  => 'nullable|boolean',
             'mithril'                  => 'nullable|boolean',
+            'exclusive_skill'          => 'nullable|boolean',
             'is_equipment_set'         => 'nullable|boolean',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'skill_requirements'       => 'nullable|array',
             'skill_requirements.*'     => 'integer|min:0|max:100',
             'set_piece_category_ids'   => 'nullable|array',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
+            'placement'                => 'nullable|in:床,壁,天井',
+            'asset_width'              => 'nullable|integer|min:1|max:255',
+            'asset_height'             => 'nullable|integer|min:1|max:255',
+            'storage_count'            => 'nullable|integer|min:0',
+            'special_function'         => 'nullable|in:販売員,銀行,タイプカプセル,栽培,生産施設,カタログ',
             'bonus_effects'            => 'nullable|array',
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
+        ], [
+            'name.unique' => '同じ名前のアイテムが既に登録されています。',
         ]);
 
-        DB::transaction(function () use ($item, $data) {
-            $item->update(collect($data)->except('bonus_effects')->toArray());
+        DB::transaction(function () use ($item, $data, $user) {
+            $payload = collect($data)->except('bonus_effects')->toArray();
+            // editor/admin が編集したら排他ロックを立て、登録者の上書きを防ぐ
+            if ($user->isEditor()) {
+                $payload['locked_by_staff'] = true;
+            }
+            $item->update($payload);
 
             if (isset($data['bonus_effects'])) {
                 $item->bonusEffects()->delete();
@@ -158,14 +242,107 @@ class ItemController extends Controller
             'verified_status' => 'verified',
             'verified_by'     => $request->user()->id,
             'verified_at'     => now(),
+            'locked_by_staff' => true,
         ]);
         return response()->json($item);
     }
 
-    public function destroy(int $id)
+    public function destroy(Request $request, int $id)
     {
-        Item::findOrFail($id)->delete();
+        $item = Item::findOrFail($id);
+
+        // 出品・取引履歴と紐づいている場合は、禁止せず確認を促す。
+        // force=true で確認済みとして関連データごと削除する。
+        $listingCount = Listing::where('item_id', $id)->count();
+        $historyCount = TradeHistory::where('item_id', $id)->count();
+        $hasRelated   = $listingCount > 0 || $historyCount > 0;
+
+        if ($hasRelated && !$request->boolean('force')) {
+            return response()->json([
+                'requires_confirmation' => true,
+                'listing_count' => $listingCount,
+                'history_count' => $historyCount,
+                'message' => "このアイテムには出品（{$listingCount}件）・取引履歴（{$historyCount}件）が紐づいています。\n削除すると、関連する出品・取引チャット・取引履歴もすべて削除されます。\n本当に削除してよろしいですか？",
+            ], 409);
+        }
+
+        DB::transaction(function () use ($item, $id) {
+            // 取引履歴（items / listings を RESTRICT 参照）を先に削除
+            TradeHistory::where('item_id', $id)->delete();
+            // 出品を削除（listing_servers / trade_chats / trade_messages は外部キー cascade）
+            Listing::where('item_id', $id)->delete();
+            // アイテム削除（item_bonus_effects は外部キー cascade）
+            $item->delete();
+        });
+
         return response()->json(null, 204);
+    }
+
+    /**
+     * 重複登録されたアイテムの統合（admin）。
+     * 元アイテム($id)に紐づく出品・取引履歴・相場データを統合先($targetId)へ付け替え、
+     * 元アイテムを削除する。誤字等で同じアイテムが重複登録された場合のデータ修正用。
+     */
+    public function merge(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'target_id' => 'required|integer|exists:items,id',
+        ]);
+        $targetId = (int) $data['target_id'];
+
+        if ($targetId === $id) {
+            return response()->json(['message' => '同じアイテムには付け替えできません。'], 422);
+        }
+
+        $item   = Item::findOrFail($id);
+        $target = Item::findOrFail($targetId);
+
+        $result = DB::transaction(function () use ($item, $id, $targetId) {
+            // 紐づくデータの item_id を統合先へ付け替える
+            $listingCount = Listing::where('item_id', $id)->update(['item_id' => $targetId]);
+            $historyCount = TradeHistory::where('item_id', $id)->update(['item_id' => $targetId]);
+            $marketCount  = MarketPrice::where('item_id', $id)->update(['item_id' => $targetId]);
+
+            // 付け替え済みなので、元アイテムは関連データなしで削除（item_bonus_effects は cascade）
+            $item->delete();
+
+            return compact('listingCount', 'historyCount', 'marketCount');
+        });
+
+        return response()->json([
+            'merged_into'   => $target->only(['id', 'name']),
+            'listing_count' => $result['listingCount'],
+            'history_count' => $result['historyCount'],
+            'market_count'  => $result['marketCount'],
+        ]);
+    }
+
+    /**
+     * 他サイト等、サイト外で取引された相場情報を手動登録する（editor / admin）。
+     */
+    public function storeMarketPrice(Request $request, int $id)
+    {
+        $item = Item::findOrFail($id);
+
+        $data = $request->validate([
+            'price'     => 'required|integer|min:1',
+            'currency'  => 'nullable|string|max:10',
+            'server'    => 'required|in:Emerald,Diamond,Pearl',
+            'traded_at' => 'required|date|before_or_equal:now',
+            'note'      => 'nullable|string|max:200',
+        ]);
+
+        $entry = MarketPrice::create([
+            'item_id'       => $item->id,
+            'price'         => $data['price'],
+            'currency'      => $data['currency'] ?? 'AC',
+            'server'        => $data['server'],
+            'traded_at'     => $data['traded_at'],
+            'registered_by' => $request->user()->id,
+            'note'          => $data['note'] ?? null,
+        ]);
+
+        return response()->json($entry, 201);
     }
 
     public function priceAnalytics(int $id)
@@ -178,11 +355,44 @@ class ItemController extends Controller
                 : $sorted[(int)($c / 2)];
         };
 
-        // 取引成立履歴
-        $history = TradeHistory::where('item_id', $id)
-            ->where('is_valid', true)
-            ->orderBy('traded_at')
-            ->get(['id', 'price', 'currency', 'server', 'traded_at']);
+        // ローカル環境ではテストのため、同一IP取引も相場対象外にしない（全件を有効扱い）
+        $isLocal = app()->environment('local');
+
+        // サイト内の取引成立履歴（有効データのみ。local では全件）
+        $tradeValid = TradeHistory::where('item_id', $id)
+            ->when(!$isLocal, fn($q) => $q->where('is_valid', true))
+            ->get(['id', 'price', 'currency', 'server', 'traded_at'])
+            ->map(fn($h) => (object) [
+                'id' => $h->id, 'price' => $h->price, 'currency' => $h->currency,
+                'server' => $h->server, 'traded_at' => $h->traded_at, 'source' => 'trade',
+            ]);
+
+        // 手動登録された他サイト相場（すべて有効データとして扱う）
+        $market = MarketPrice::where('item_id', $id)
+            ->get(['id', 'price', 'currency', 'server', 'traded_at'])
+            ->map(fn($m) => (object) [
+                'id' => $m->id, 'price' => $m->price, 'currency' => $m->currency,
+                'server' => $m->server, 'traded_at' => $m->traded_at, 'source' => 'manual',
+            ]);
+
+        // 統計・グラフは有効データ（サイト内取引＋他サイト相場）をマージして算出
+        $history = $tradeValid->concat($market)->sortBy('traded_at')->values();
+
+        // 直近の取引一覧は同一IP取引（相場対象外）も含めて表示する
+        $tradeAll = TradeHistory::where('item_id', $id)
+            ->get(['id', 'price', 'currency', 'server', 'traded_at', 'is_valid'])
+            ->map(fn($h) => (object) [
+                'id' => $h->id, 'price' => $h->price, 'currency' => $h->currency,
+                'server' => $h->server, 'traded_at' => $h->traded_at,
+                'is_valid' => $isLocal ? true : (bool) $h->is_valid, 'source' => 'trade',
+            ]);
+        $allDeals = $tradeAll->concat(
+            $market->map(fn($m) => (object) [
+                'id' => $m->id, 'price' => $m->price, 'currency' => $m->currency,
+                'server' => $m->server, 'traded_at' => $m->traded_at,
+                'is_valid' => true, 'source' => 'manual',
+            ])
+        )->sortByDesc('traded_at')->take(10)->values();
 
         // 現在の出品（出品中の価格一覧・出品数）
         $listings = Listing::where('item_id', $id)
@@ -218,14 +428,16 @@ class ItemController extends Controller
                 ];
             })->values();
 
-        // 直近の取引成立（新しい順）
-        $recentDeals = $history->sortByDesc('traded_at')->take(10)->values()->map(fn($h) => [
+        // 直近の取引成立（新しい順・相場対象外も含む）
+        $recentDeals = $allDeals->map(fn($h) => [
             'id'        => $h->id,
             'price'     => $h->price,
             'currency'  => $h->currency,
             'server'    => $h->server,
             'traded_at' => $h->traded_at,
-        ]);
+            'is_valid'  => (bool) $h->is_valid,
+            'source'    => $h->source,
+        ])->values();
 
         // 出品中の価格一覧
         $recentListings = $listings->take(10)->map(fn($l) => [

@@ -36,4 +36,13 @@ export const usersApi = {
     }
     return client.post<User>(`/admin/users/${id}/unsuspend`)
   },
+
+  verifyEmail: (id: number): Promise<{ data: User }> => {
+    if (USE_MOCK) {
+      const user = mockUsers.find((u) => u.id === id)!
+      user.email_verified_at = new Date().toISOString()
+      return Promise.resolve({ data: { ...user } })
+    }
+    return client.post<User>(`/admin/users/${id}/verify`)
+  },
 }

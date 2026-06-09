@@ -84,29 +84,37 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('characters/{id}', [CharacterController::class, 'destroy']);
 
     // アイテム
+    Route::post('items/match',        [ItemController::class, 'matchNames']);
     Route::post('items',              [ItemController::class, 'store']);
     Route::put('items/{id}',          [ItemController::class, 'update']);
-    Route::post('items/{id}/verify',  [ItemController::class, 'verify']);
-    Route::delete('items/{id}',       [ItemController::class, 'destroy']);
+    Route::post('items/{id}/verify',  [ItemController::class, 'verify'])->middleware('role:editor');
+    // 相場登録は admin のみ（editor は不可）
+    Route::post('items/{id}/market-prices', [ItemController::class, 'storeMarketPrice'])->middleware('role:admin');
+    Route::delete('items/{id}',       [ItemController::class, 'destroy'])->middleware('role:admin');
+    Route::post('items/{id}/merge',   [ItemController::class, 'merge'])->middleware('role:admin');
 
     // カテゴリ
     Route::post('categories', [CategoryController::class, 'store']);
 
     // マイページ
     Route::get('mypage/listings', function (\Illuminate\Http\Request $request) {
-        $listings = \App\Models\Listing::with(['item.category', 'servers'])
+        $listings = \App\Models\Listing::with(['item.category', 'servers', 'user:id,email', 'user.characters'])
             ->where('user_id', $request->user()->id)
             ->orderByDesc('created_at')
-            ->get();
+            ->get()
+            ->each(fn(\App\Models\Listing $l) => $l->resolveServerContacts());
         return response()->json(['data' => $listings]);
     });
     Route::get('mypage/chats', function (\Illuminate\Http\Request $request) {
         $user  = $request->user()->load('characters');
-        $chats = \App\Models\TradeChat::with(['listing.item', 'listing.servers.character', 'messages.user:id,email', 'buyer:id,email'])
+        $chats = \App\Models\TradeChat::with(['listing.item', 'listing.servers', 'listing.user:id,email', 'listing.user.characters', 'messages.user:id,email', 'buyer:id,email'])
             ->where('buyer_id', $user->id)
             ->orderByDesc('updated_at')
             ->get()
             ->map(function ($chat) use ($user) {
+                // 出品の連絡先キャラ名（出品者の現在のキャラクター）を解決
+                $chat->listing?->resolveServerContacts();
+                // 自分（買い手）のそのサーバーでのキャラ名
                 $char = $user->characters->firstWhere('server', $chat->server);
                 $chat->buyer_character_name = $char?->character_name;
                 return $chat;
@@ -140,6 +148,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('listings/{id}/chats',    [ListingController::class, 'chats']);
     Route::post('listings/{id}/chats',   [ListingController::class, 'createChat']);
 
+    // 通知サマリー（5秒ポーリング用）
+    Route::get('notifications/summary', [\App\Http\Controllers\NotificationController::class, 'summary']);
+
     // チャット
     Route::get('chats/unread-count',   [ChatController::class, 'unreadCount']);
     Route::get('chats/{id}',           [ChatController::class, 'show']);
@@ -155,19 +166,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('board/threads',           [BoardController::class, 'store']);
     Route::get('board/threads/{id}',       [BoardController::class, 'show']);
     Route::post('board/threads/{id}/posts',[BoardController::class, 'storePost']);
+    Route::put('board/posts/{id}',         [BoardController::class, 'updatePost']);
 
     // 運営掲示板：管理者のみ（状態変更・削除）
     Route::middleware('role:admin')->group(function () {
-        Route::patch('board/threads/{id}/status', [BoardController::class, 'updateStatus']);
-        Route::delete('board/threads/{id}',        [BoardController::class, 'destroyThread']);
-        Route::delete('board/posts/{id}',          [BoardController::class, 'destroyPost']);
+        Route::patch('board/threads/{id}/status',     [BoardController::class, 'updateStatus']);
+        Route::patch('board/threads/{id}/visibility', [BoardController::class, 'updateVisibility']);
+        Route::delete('board/threads/{id}',           [BoardController::class, 'destroyThread']);
+        Route::delete('board/posts/{id}',             [BoardController::class, 'destroyPost']);
     });
 
-    // 管理（editor/admin）
-    Route::middleware('role:editor')->group(function () {
+    // ユーザー管理（admin限定）
+    Route::middleware('role:admin')->group(function () {
         Route::get('admin/users',                [AdminController::class, 'users']);
         Route::put('admin/users/{id}/role',      [AdminController::class, 'updateRole']);
         Route::post('admin/users/{id}/suspend',  [AdminController::class, 'suspend']);
         Route::post('admin/users/{id}/unsuspend',[AdminController::class, 'unsuspend']);
+        Route::post('admin/users/{id}/verify',   [AdminController::class, 'verifyEmail']);
     });
 });
