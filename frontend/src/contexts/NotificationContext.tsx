@@ -2,13 +2,19 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import client from '../api/client'
 import { useAuth } from './AuthContext'
 import { USE_MOCK } from '../api/mock'
+import { announcementsApi } from '../api/announcements'
+import type { Announcement } from '../types'
 
 // /api/notifications/summary のレスポンス型
 interface UnreadChat {
   chat_id: number
-  listing_id: number
+  source_type?: 'listing' | 'buy_request'
+  listing_id: number | null
+  buy_request_id?: number | null
   buyer_id: number
-  listing_user_id: number
+  listing_user_id: number | null
+  buy_request_user_id?: number | null
+  owner_id?: number | null
   last_message_at: string
   last_message: string
   last_sender: string
@@ -37,6 +43,8 @@ interface NotificationContextValue {
   unreadChatIds: Set<number>
   // 未読の出品IDセット（売り手として）
   unreadListingIds: Set<number>
+  // 未読の買取IDセット（買取登録者として）
+  unreadBuyRequestIds: Set<number>
   // 未読の買い手チャットがあるか
   hasBuyerUnread: boolean
   // チャットを既読にする
@@ -60,6 +68,8 @@ interface NotificationContextValue {
   unverifiedTechniqueCount: number
   unverifiedAssetCount: number
   unverifiedItemCount: number
+  // お知らせ（管理者がDBで設定。通知と同じ5秒間隔で更新）
+  announcements: Announcement[]
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null)
@@ -89,6 +99,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [board, setBoard] = useState<BoardSummary | null>(null)
   const [boardThreads, setBoardThreads] = useState<BoardThreadUnread[]>([])
   const [unverifiedItems, setUnverifiedItems] = useState<UnverifiedItems | null>(null)
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
   // localStorage 更新を画面に反映させるためのバージョンカウンタ
   const [, setSeenVersion] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
@@ -100,6 +111,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // 初回ポーリングではブラウザ通知しない（リロードのたびに既存未読を再通知しないため）
   const initializedRef = useRef(false)
   const summaryRef = useRef<UnreadChat[]>([])
+
+  // お知らせのポーリング（5秒間隔・ログイン有無に関わらず）
+  useEffect(() => {
+    if (USE_MOCK) return
+    const loadAnnouncements = () => {
+      announcementsApi.list().then((r) => setAnnouncements(r.data)).catch(() => {})
+    }
+    loadAnnouncements()
+    const timer = setInterval(loadAnnouncements, 5000)
+    return () => clearInterval(timer)
+  }, [])
 
   // 5秒ポーリング（ログイン時のみ）
   useEffect(() => {
@@ -186,7 +208,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const unreadChatIds = new Set(unreadChats.map((c) => c.chat_id))
   const unreadListingIds = new Set(
-    unreadChats.filter((c) => c.listing_user_id === user?.id).map((c) => c.listing_id)
+    unreadChats
+      .filter((c) => c.listing_user_id === user?.id && c.listing_id != null)
+      .map((c) => c.listing_id as number)
+  )
+  const unreadBuyRequestIds = new Set(
+    unreadChats
+      .filter((c) => c.buy_request_user_id === user?.id && c.buy_request_id != null)
+      .map((c) => c.buy_request_id as number)
   )
   const hasBuyerUnread = unreadChats.some((c) => c.buyer_id === user?.id)
   const boardSeenAt = localStorage.getItem(BOARD_SEEN_KEY) ?? ''
@@ -209,6 +238,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     <NotificationContext.Provider value={{
       unreadChatIds,
       unreadListingIds,
+      unreadBuyRequestIds,
       hasBuyerUnread,
       markAsRead,
       hasNewBoard,
@@ -222,6 +252,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       unverifiedTechniqueCount: unverifiedItems?.technique ?? 0,
       unverifiedAssetCount: unverifiedItems?.asset ?? 0,
       unverifiedItemCount: unverifiedItems?.total ?? 0,
+      announcements,
     }}>
       {children}
     </NotificationContext.Provider>

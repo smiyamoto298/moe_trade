@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BuyRequest;
 use App\Models\Item;
 use App\Models\Listing;
 use App\Models\MarketPrice;
@@ -355,16 +356,19 @@ class ItemController extends Controller
                 : $sorted[(int)($c / 2)];
         };
 
-        // ローカル環境ではテストのため、同一IP取引も相場対象外にしない（全件を有効扱い）
-        $isLocal = app()->environment('local');
+        // TREAT_ALL_TRADES_VALID=true のとき、同一IP取引も相場対象外にしない（全件を有効扱い）。
+        // 既定は false。テストは既定値で実行されるため IP による相場除外が有効になる。
+        $isLocal = config('app.treat_all_trades_valid');
 
         // サイト内の取引成立履歴（有効データのみ。local では全件）
+        // origin: listing=出品由来（売り相場）/ buy_request=買取由来（買い相場）
         $tradeValid = TradeHistory::where('item_id', $id)
             ->when(!$isLocal, fn($q) => $q->where('is_valid', true))
-            ->get(['id', 'price', 'currency', 'server', 'traded_at'])
+            ->get(['id', 'price', 'currency', 'server', 'traded_at', 'listing_id', 'buy_request_id'])
             ->map(fn($h) => (object) [
                 'id' => $h->id, 'price' => $h->price, 'currency' => $h->currency,
                 'server' => $h->server, 'traded_at' => $h->traded_at, 'source' => 'trade',
+                'origin' => $h->buy_request_id ? 'buy_request' : 'listing',
             ]);
 
         // 手動登録された他サイト相場（すべて有効データとして扱う）
@@ -380,11 +384,12 @@ class ItemController extends Controller
 
         // 直近の取引一覧は同一IP取引（相場対象外）も含めて表示する
         $tradeAll = TradeHistory::where('item_id', $id)
-            ->get(['id', 'price', 'currency', 'server', 'traded_at', 'is_valid'])
+            ->get(['id', 'price', 'currency', 'server', 'traded_at', 'is_valid', 'listing_id', 'buy_request_id'])
             ->map(fn($h) => (object) [
                 'id' => $h->id, 'price' => $h->price, 'currency' => $h->currency,
                 'server' => $h->server, 'traded_at' => $h->traded_at,
                 'is_valid' => $isLocal ? true : (bool) $h->is_valid, 'source' => 'trade',
+                'origin' => $h->buy_request_id ? 'buy_request' : 'listing',
             ]);
         $allDeals = $tradeAll->concat(
             $market->map(fn($m) => (object) [
@@ -414,22 +419,25 @@ class ItemController extends Controller
         ];
 
         // 日次グラフデータ（recharts 用）
-        $chart = $history->groupBy(fn($h) => $h->traded_at->toDateString())
-            ->map(function ($group) use ($median) {
-                $p = $group->pluck('price');
-                $s = $p->sort()->values();
-                return [
-                    'date'   => $group->first()->traded_at->toDateString(),
-                    'min'    => $p->min(),
-                    'max'    => $p->max(),
-                    'avg'    => (int) round($p->avg()),
-                    'median' => $median($s),
-                    'count'  => $p->count(),
-                ];
-            })->values();
+        $buildChart = function ($deals) use ($median) {
+            return $deals->groupBy(fn($h) => $h->traded_at->toDateString())
+                ->map(function ($group) use ($median) {
+                    $p = $group->pluck('price');
+                    $s = $p->sort()->values();
+                    return [
+                        'date'   => $group->first()->traded_at->toDateString(),
+                        'min'    => $p->min(),
+                        'max'    => $p->max(),
+                        'avg'    => (int) round($p->avg()),
+                        'median' => $median($s),
+                        'count'  => $p->count(),
+                    ];
+                })->values();
+        };
+        $chart = $buildChart($history);
 
         // 直近の取引成立（新しい順・相場対象外も含む）
-        $recentDeals = $allDeals->map(fn($h) => [
+        $mapDeals = fn($deals) => $deals->map(fn($h) => [
             'id'        => $h->id,
             'price'     => $h->price,
             'currency'  => $h->currency,
@@ -438,14 +446,57 @@ class ItemController extends Controller
             'is_valid'  => (bool) $h->is_valid,
             'source'    => $h->source,
         ])->values();
+        $recentDeals = $mapDeals($allDeals);
 
-        // 出品中の価格一覧
-        $recentListings = $listings->take(10)->map(fn($l) => [
-            'price'      => $l->price,
-            'currency'   => $l->currency,
-            'trade_type' => $l->trade_type,
-            'listed_at'  => $l->created_at,
+        // 現在の募集価格一覧（出品 or 買取）を整形
+        $mapOffers = fn($offers) => $offers->take(10)->map(fn($o) => [
+            'price'      => $o->price,
+            'currency'   => $o->currency,
+            'trade_type' => $o->trade_type,
+            'listed_at'  => $o->created_at,
         ])->values();
+        $recentListings = $mapOffers($listings);
+
+        // ---- 売り相場（出品由来）/ 買い相場（買取由来）の分割分析 ----
+        // 成立履歴を由来で分割。サイト内取引のみ（他サイト相場 manual は由来不明のため総合のみに含める）。
+        $statsOf = function ($validDeals, int $offerCount) use ($median) {
+            $p = $validDeals->pluck('price');
+            $s = $p->sort()->values();
+            $c = $s->count();
+            return [
+                'min'           => $c ? $p->min() : 0,
+                'max'           => $c ? $p->max() : 0,
+                'avg'           => $c ? (int) round($p->avg()) : 0,
+                'median'        => $median($s),
+                'deal_count'    => $c,
+                'listing_count' => $offerCount,
+            ];
+        };
+
+        // 由来別の成立履歴（local では全件、本番は is_valid のみが統計対象）
+        $sellValid = $tradeValid->where('origin', 'listing')->values();
+        $buyValid  = $tradeValid->where('origin', 'buy_request')->values();
+        $sellAll   = $tradeAll->where('origin', 'listing')->sortByDesc('traded_at')->take(10)->values();
+        $buyAll    = $tradeAll->where('origin', 'buy_request')->sortByDesc('traded_at')->take(10)->values();
+
+        // 現在の買取募集（買取希望価格一覧）
+        $buyRequests = BuyRequest::where('item_id', $id)
+            ->where('status', 'active')
+            ->orderByDesc('created_at')
+            ->get(['price', 'currency', 'trade_type', 'created_at']);
+
+        $sell = [
+            'stats'         => $statsOf($sellValid, $listings->count()),
+            'history'       => $buildChart($sellValid),
+            'recent_deals'  => $mapDeals($sellAll),
+            'recent_offers' => $mapOffers($listings),
+        ];
+        $buy = [
+            'stats'         => $statsOf($buyValid, $buyRequests->count()),
+            'history'       => $buildChart($buyValid),
+            'recent_deals'  => $mapDeals($buyAll),
+            'recent_offers' => $mapOffers($buyRequests),
+        ];
 
         return response()->json([
             'item_id'         => $id,
@@ -453,6 +504,8 @@ class ItemController extends Controller
             'history'         => $chart,
             'recent_deals'    => $recentDeals,
             'recent_listings' => $recentListings,
+            'sell'            => $sell,
+            'buy'             => $buy,
         ]);
     }
 }

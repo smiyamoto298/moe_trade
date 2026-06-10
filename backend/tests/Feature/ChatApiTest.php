@@ -105,9 +105,11 @@ class ChatApiTest extends TestCase
 
     public function test_出品者が取引成立にすると履歴が記録される(): void
     {
-        $seller = $this->makeUser(['register_ip' => '203.0.113.1']);
+        $seller = $this->makeUser();
         $buyer  = $this->makeUser();
         $chat   = $this->makeChat($seller, $buyer);
+        // 取引希望を送ったときのIP（買い手）。取引成立は出品者がリクエストIP 127.0.0.1 で操作する。
+        $chat->update(['request_ip' => '203.0.113.2']);
 
         $res = $this->actingAs($seller, 'sanctum')->postJson("/api/chats/{$chat->id}/deal");
 
@@ -115,25 +117,32 @@ class ChatApiTest extends TestCase
         $this->assertSame('deal', $chat->fresh()->status);
         $this->assertSame('completed', $chat->listing->fresh()->status);
 
-        // 取引履歴が記録され、IPが異なるため相場データとして有効
+        // seller_ip=取引成立IP(127.0.0.1) / buyer_ip=取引希望IP(203.0.113.2)。IPが異なるため有効。
         $this->assertDatabaseHas('trade_history', [
             'listing_id' => $chat->listing_id,
             'seller_id'  => $seller->id,
+            'buyer_id'   => $buyer->id,
+            'seller_ip'  => '127.0.0.1',
+            'buyer_ip'   => '203.0.113.2',
             'price'      => 1000,
             'is_valid'   => true,
         ]);
     }
 
-    public function test_出品者と購入者のIPが同一なら相場データは無効(): void
+    public function test_取引希望と取引成立のIPが同一なら相場データは無効(): void
     {
-        // テストのリクエスト元IP（127.0.0.1）と同じIPを出品者に設定
-        $seller = $this->makeUser(['register_ip' => '127.0.0.1']);
-        $chat   = $this->makeChat($seller);
+        // 取引希望を送ったIPと取引成立を送ったIPが同一 → 同一人物の取引とみなし相場対象外
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChat($seller, $buyer);
+        $chat->update(['request_ip' => '127.0.0.1']); // 取引成立のリクエストIP（127.0.0.1）と同一
 
         $this->actingAs($seller, 'sanctum')->postJson("/api/chats/{$chat->id}/deal")->assertOk();
 
         $this->assertDatabaseHas('trade_history', [
             'listing_id' => $chat->listing_id,
+            'seller_ip'  => '127.0.0.1',
+            'buyer_ip'   => '127.0.0.1',
             'is_valid'   => false,
         ]);
     }
@@ -166,7 +175,7 @@ class ChatApiTest extends TestCase
         $this->assertTrue((bool) $fresh->buyer_completed);
     }
 
-    public function test_取引不成立で出品がdeal_failedになりチャットはopenに戻る(): void
+    public function test_取引不成立で出品とチャットがdeal_failedになる(): void
     {
         $seller = $this->makeUser();
         $chat   = $this->makeChat($seller, null, 'deal');
@@ -176,7 +185,8 @@ class ChatApiTest extends TestCase
             ->postJson("/api/chats/{$chat->id}/deal-failed")
             ->assertOk();
 
-        $this->assertSame('open', $chat->fresh()->status);
+        // チャット・出品ともに不成立にする（再取引は relist で新規出品し直す）
+        $this->assertSame('deal_failed', $chat->fresh()->status);
         $this->assertSame('deal_failed', $chat->listing->fresh()->status);
     }
 

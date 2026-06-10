@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
+import client from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { useDialog } from '../contexts/DialogContext'
 import NewItemForm from '../components/NewItemForm'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import CandidateSelectModal from '../components/CandidateSelectModal'
-import type { Item } from '../types'
+import type { Item, MyItemCounts } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL } from '../utils/constants'
 
@@ -105,6 +107,7 @@ function parsePaste(text: string): { rows: Row[]; excluded: number; skipped: num
 
 export default function BulkListingPage() {
   const { user } = useAuth()
+  const { confirm } = useDialog()
   const navigate = useNavigate()
 
   const { run: runLoad, loading: loadingRows } = useAsync()
@@ -128,6 +131,12 @@ export default function BulkListingPage() {
 
   const [errors, setErrors] = useState<string[]>([])
   const [result, setResult] = useState<string | null>(null)
+  const [itemCounts, setItemCounts] = useState<MyItemCounts | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    client.get<MyItemCounts>('/mypage/item-counts').then((r) => setItemCounts(r.data)).catch(() => {})
+  }, [user])
 
   const modalRow = rows.find((r) => r.key === modalRowKey) ?? null
   const candidateRow = rows.find((r) => r.key === candidateRowKey) ?? null
@@ -160,13 +169,81 @@ export default function BulkListingPage() {
     setModalRowKey(null)
   }
 
-  // 候補から既存アイテムを選択 → 同名（省略名）の行すべてに反映
-  const handleCandidateSelected = (item: Item) => {
-    const selectedName = candidateRow?.name
-    setRows((prev) =>
-      prev.map((r) => (r.key === candidateRowKey || r.name === selectedName ? { ...r, item } : r))
-    )
+  // 候補から既存アイテムを選択。
+  // 同名（省略名）の他の行が存在する場合は、それらにも反映するか確認する。
+  const handleCandidateSelected = async (item: Item) => {
+    const key = candidateRowKey
+    const name = candidateRow?.name
+    const others = rows.filter((r) => r.key !== key && r.name === name)
     setCandidateRowKey(null)
+
+    let applyAll = false
+    if (others.length > 0) {
+      applyAll = await confirm(
+        `他にも「${name}」の行が ${others.length} 件あります。それらにも同じ登録アイテム（${item.name}）を反映しますか？`,
+        { title: '同名の行への反映', confirmLabel: 'すべてに反映', cancelLabel: 'この行だけ' }
+      )
+    }
+
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.key === key) return { ...r, item }
+        if (applyAll && r.name === name) return { ...r, item }
+        return r
+      })
+    )
+  }
+
+  // 登録アイテムが重複している行（同一アイテムが複数行）をアイテム単位に集計
+  const duplicateGroups = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; rowCount: number; totalCount: number }>()
+    rows.forEach((r) => {
+      if (!r.item) return
+      const g = map.get(r.item.id)
+      if (g) { g.rowCount += 1; g.totalCount += r.count }
+      else map.set(r.item.id, { id: r.item.id, name: r.item.name, rowCount: 1, totalCount: r.count })
+    })
+    return [...map.values()].filter((g) => g.rowCount > 1)
+  }, [rows])
+
+  // まとめ対象を選択するモーダル
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeSel, setMergeSel] = useState<Set<number>>(new Set())
+
+  const openMerge = () => {
+    setMergeSel(new Set(duplicateGroups.map((g) => g.id)))
+    setMergeOpen(true)
+  }
+  const toggleMergeSel = (id: number) =>
+    setMergeSel((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  // 選択したアイテムの行をアイテムごとに1行へまとめる（個数・出品数は合算）
+  const doMerge = () => {
+    const sel = mergeSel
+    setRows((prev) => {
+      const byItem = new Map<number, Row>()
+      const result: Row[] = []
+      for (const r of prev) {
+        if (!r.item || !sel.has(r.item.id)) { result.push(r); continue }
+        const existing = byItem.get(r.item.id)
+        if (existing) {
+          existing.count += r.count
+          existing.listQty = String((Number(existing.listQty) || 0) + (Number(r.listQty) || 0))
+          if (!existing.price && r.price) existing.price = r.price
+        } else {
+          const copy = { ...r }
+          byItem.set(r.item.id, copy)
+          result.push(copy)
+        }
+      }
+      return result
+    })
+    setMergeOpen(false)
   }
 
   const matchedRows = rows.filter((r) => r.item)
@@ -354,30 +431,43 @@ export default function BulkListingPage() {
             </div>
           </div>
 
+          {/* 同一登録アイテムの行をまとめる案内 */}
+          {duplicateGroups.length > 0 && (
+            <div className="mb-4 bg-sky-900/30 border border-sky-700/50 rounded-lg px-4 py-3 text-sm text-sky-200 flex flex-wrap items-center justify-between gap-2">
+              <span>同じ登録アイテムの行が {duplicateGroups.length} 種類あります。アイテムごとに1行へまとめられます。</span>
+              <button
+                type="button"
+                onClick={openMerge}
+                className="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded transition-colors shrink-0"
+              >
+                1行にまとめる
+              </button>
+            </div>
+          )}
+
           {/* 登録用テーブル */}
           <div className="bg-surface-card border border-surface-border rounded-lg overflow-hidden mb-6">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[680px] text-sm">
                 <thead>
                   <tr className="bg-surface text-gray-400 text-xs">
-                    <th className="px-3 py-2 text-left font-medium">No</th>
                     <th className="px-3 py-2 text-left font-medium">アイテム名</th>
-                    <th className="px-3 py-2 text-left font-medium">カテゴリ</th>
-                    <th className="px-3 py-2 text-right font-medium">個数</th>
                     <th className="px-3 py-2 text-left font-medium">登録アイテム</th>
-                    <th className="px-3 py-2 text-right font-medium">価格(AC)</th>
+                    <th className="px-3 py-2 text-right font-medium whitespace-nowrap">出品済</th>
+                    <th className="px-3 py-2 text-right font-medium">個数</th>
                     <th className="px-3 py-2 text-right font-medium">出品数</th>
+                    <th className="px-3 py-2 text-right font-medium">価格(AC)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {rows.map((r) => {
                     const linked = !!r.item
+                    const alreadyListed = r.item ? (itemCounts?.listings[r.item.id] ?? 0) : 0
+                    // 出品数 + 出品済 が所持個数を超える行は背景を強調する
+                    const overQuantity = linked && (Number(r.listQty) || 0) + alreadyListed > r.count
                     return (
-                      <tr key={r.key} className={linked ? '' : 'bg-yellow-900/5'}>
-                        <td className="px-3 py-2 text-gray-500">{r.no}</td>
+                      <tr key={r.key} className={overQuantity ? 'bg-red-900/30' : linked ? '' : 'bg-yellow-900/5'}>
                         <td className="px-3 py-2 text-white">{r.name}</td>
-                        <td className="px-3 py-2 text-gray-400 text-xs">{r.category}</td>
-                        <td className="px-3 py-2 text-right text-gray-300">{r.count}</td>
                         <td className="px-3 py-2">
                           {linked ? (
                             <span className="flex items-center gap-1.5 flex-wrap">
@@ -420,17 +510,11 @@ export default function BulkListingPage() {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            disabled={!linked}
-                            value={r.price}
-                            onChange={(e) => setRow(r.key, { price: e.target.value.replace(/[^\d]/g, '') })}
-                            placeholder="—"
-                            className="w-24 bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white text-right placeholder-gray-600 focus:outline-none focus:border-primary-500 disabled:opacity-40"
-                          />
+                          {r.item
+                            ? <span className={(itemCounts?.listings[r.item.id] ?? 0) > 0 ? 'text-amber-300' : 'text-gray-500'}>{itemCounts?.listings[r.item.id] ?? 0}</span>
+                            : <span className="text-gray-600">—</span>}
                         </td>
+                        <td className="px-3 py-2 text-right text-gray-300">{r.count}</td>
                         <td className="px-3 py-2 text-right">
                           <input
                             type="number"
@@ -440,6 +524,18 @@ export default function BulkListingPage() {
                             value={r.listQty}
                             onChange={(e) => setRow(r.key, { listQty: e.target.value })}
                             className="w-20 bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-primary-500 disabled:opacity-40"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            disabled={!linked}
+                            value={r.price}
+                            onChange={(e) => setRow(r.key, { price: e.target.value.replace(/[^\d]/g, '') })}
+                            placeholder="—"
+                            className="w-24 bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white text-right placeholder-gray-600 focus:outline-none focus:border-primary-500 disabled:opacity-40"
                           />
                         </td>
                       </tr>
@@ -489,6 +585,73 @@ export default function BulkListingPage() {
               onRegistered={handleRegistered}
               onCancel={() => setModalRowKey(null)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* まとめ対象選択モーダル */}
+      {mergeOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+          <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-white">行をまとめる</h3>
+              <p className="text-xs text-gray-400 mt-1">まとめるアイテムを選択してください。個数・出品数は合算されます。</p>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => setMergeSel(new Set(duplicateGroups.map((g) => g.id)))}
+                className="text-primary-400 hover:text-primary-300 transition-colors"
+              >
+                すべて選択
+              </button>
+              <button
+                type="button"
+                onClick={() => setMergeSel(new Set())}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                すべて解除
+              </button>
+            </div>
+
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {duplicateGroups.map((g) => (
+                <label
+                  key={g.id}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded border cursor-pointer transition-colors ${
+                    mergeSel.has(g.id) ? 'border-primary-500 bg-primary-500/10' : 'border-surface-border hover:border-gray-500'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={mergeSel.has(g.id)}
+                    onChange={() => toggleMergeSel(g.id)}
+                    className="accent-primary-500"
+                  />
+                  <span className="flex-1 text-sm text-white truncate">{g.name}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{g.rowCount}行 / 計{g.totalCount}個</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setMergeOpen(false)}
+                className="text-sm text-gray-400 hover:text-white px-4 py-2 rounded transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={doMerge}
+                disabled={mergeSel.size === 0}
+                className="text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-5 py-2 rounded-md transition-colors"
+              >
+                まとめる（{mergeSel.size}）
+              </button>
+            </div>
           </div>
         </div>
       )}

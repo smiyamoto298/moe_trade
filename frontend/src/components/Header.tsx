@@ -6,7 +6,7 @@ import VerifyEmailBanner from './VerifyEmailBanner'
 
 export default function Header() {
   const { user, logout } = useAuth()
-  const { totalUnread, hasNewBoard, unverifiedItemCount } = useNotification()
+  const { totalUnread, hasNewBoard, unverifiedItemCount, announcements } = useNotification()
   const navigate = useNavigate()
   const [adminOpen, setAdminOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -37,22 +37,15 @@ export default function Header() {
       >
         出品一覧
       </Link>
+      <Link
+        to="/buy-requests"
+        onClick={closeMobile}
+        className="text-gray-300 hover:text-white transition-colors"
+      >
+        買取一覧
+      </Link>
       {user && (
         <>
-          <Link
-            to="/listings/new"
-            onClick={closeMobile}
-            className="text-gray-300 hover:text-white transition-colors"
-          >
-            出品する
-          </Link>
-          <Link
-            to="/listings/bulk"
-            onClick={closeMobile}
-            className="text-gray-300 hover:text-white transition-colors"
-          >
-            一括出品
-          </Link>
           <Link
             to="/board"
             onClick={closeMobile}
@@ -122,13 +115,22 @@ export default function Header() {
                   )}
                 </Link>
                 {user?.role === 'admin' && (
-                  <Link
-                    to="/admin/users"
-                    onClick={() => setAdminOpen(false)}
-                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                  >
-                    ユーザー管理
-                  </Link>
+                  <>
+                    <Link
+                      to="/admin/users"
+                      onClick={() => setAdminOpen(false)}
+                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                    >
+                      ユーザー管理
+                    </Link>
+                    <Link
+                      to="/admin/announcements"
+                      onClick={() => setAdminOpen(false)}
+                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                    >
+                      お知らせ管理
+                    </Link>
+                  </>
                 )}
               </div>
             )}
@@ -191,14 +193,11 @@ export default function Header() {
             <Link to="/listings" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
               出品一覧
             </Link>
+            <Link to="/buy-requests" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+              買取一覧
+            </Link>
             {user && (
               <>
-                <Link to="/listings/new" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-                  出品する
-                </Link>
-                <Link to="/listings/bulk" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-                  一括出品
-                </Link>
                 <Link to="/board" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
                   <span>運営掲示板</span>
                   {hasNewBoard && <span className="w-2 h-2 rounded-full bg-red-500" />}
@@ -228,13 +227,22 @@ export default function Header() {
                 )}
               </Link>
               {user?.role === 'admin' && (
-                <Link
-                  to="/admin/users"
-                  onClick={closeMobile}
-                  className="block py-3 text-gray-300 hover:text-white transition-colors"
-                >
-                  ユーザー管理
-                </Link>
+                <>
+                  <Link
+                    to="/admin/users"
+                    onClick={closeMobile}
+                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                  >
+                    ユーザー管理
+                  </Link>
+                  <Link
+                    to="/admin/announcements"
+                    onClick={closeMobile}
+                    className="block py-3 text-gray-300 hover:text-white transition-colors"
+                  >
+                    お知らせ管理
+                  </Link>
+                </>
               )}
             </div>
             <div className="mt-auto pt-4 border-t border-surface-border">
@@ -271,22 +279,35 @@ export default function Header() {
       {/* メール未認証ユーザー向けバナー */}
       <VerifyEmailBanner />
 
-      {/* テスト運用中のお知らせ */}
-      <div className="bg-yellow-900/30 border-t border-yellow-700/40 text-yellow-200 text-xs sm:text-sm">
-        <div className="max-w-7xl mx-auto px-4 py-2 leading-relaxed">
-          現在テスト運用中です！大規模な修正が必要になった場合データがリセットされる場合があります！
-          最新情報はX（
-          <a
-            href="https://x.com/senir_moe"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-yellow-100 underline hover:text-white transition-colors"
-          >
-            @senir_moe
-          </a>
-          ）でご確認ください！
-        </div>
-      </div>
+      {/* お知らせ（管理者がDBで設定） */}
+      {announcements.map((a) => {
+        const c =
+          a.level === 'info'
+            ? { wrap: 'bg-sky-900/30 border-sky-700/40 text-sky-200', link: 'text-sky-100' }
+            : a.level === 'error'
+            ? { wrap: 'bg-red-900/40 border-red-700/50 text-red-200', link: 'text-red-100' }
+            : { wrap: 'bg-yellow-900/30 border-yellow-700/40 text-yellow-200', link: 'text-yellow-100' }
+        return (
+          <div key={a.id} className={`border-t text-xs sm:text-sm ${c.wrap}`}>
+            <div className="max-w-7xl mx-auto px-4 py-2 leading-relaxed whitespace-pre-wrap">
+              {a.message}
+              {a.link_url && (
+                <>
+                  {' '}
+                  <a
+                    href={a.link_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`underline hover:text-white transition-colors ${c.link}`}
+                  >
+                    {a.link_label || a.link_url}
+                  </a>
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })}
     </header>
   )
 }

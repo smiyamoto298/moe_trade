@@ -15,6 +15,7 @@ interface Props {
   chat: TradeChat
   currentUserId: number | null
   isOwner: boolean
+  kind?: 'listing' | 'buy_request'
   // 取引成立時に呼ばれる（同じ出品の他チャットも更新するため）
   onDeal?: (updatedChats: TradeChat[]) => void
   onStatusChange?: (chat: TradeChat) => void
@@ -22,7 +23,7 @@ interface Props {
   onListingsChanged?: () => void
 }
 
-export default function ChatThread({ chat: initialChat, currentUserId, isOwner, onDeal, onStatusChange, onListingsChanged }: Props) {
+export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', onDeal, onStatusChange, onListingsChanged }: Props) {
   const { confirm } = useDialog()
   const [chat, setChat] = useState(initialChat)
   const [input, setInput] = useState('')
@@ -141,8 +142,9 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
   const isOpen = chat.status === 'open'
   const isDeal = chat.status === 'deal'
   const isDealFailed = chat.status === 'deal_failed'
-  // 他ユーザーの取引が成立（この出品がcompletedで自分のチャットはopen）
-  const otherDealCompleted = isOpen && (chat as any).listing?.status === 'completed'
+  // 他ユーザーの取引が成立（取引対象がcompletedで自分のチャットはopen）
+  const sourceStatus = ((chat as any).listing ?? (chat as any).buy_request)?.status
+  const otherDealCompleted = isOpen && sourceStatus === 'completed'
   const canSend = (isOpen || isDeal) && !otherDealCompleted
   // 自分側の受け渡し完了済みかどうか
   const myCompleted = isDeal && (isOwner ? chat.seller_completed : chat.buyer_completed)
@@ -155,7 +157,9 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
         <div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-white">
-              {isOwner ? chat.buyer_character_name : '出品者とのチャット'}
+              {isOwner
+                ? chat.buyer_character_name
+                : kind === 'buy_request' ? '買取登録者とのチャット' : '出品者とのチャット'}
             </p>
             <span className={`text-xs px-1.5 py-0.5 rounded ${SERVER_COLORS[chat.server]}`}>
               {chat.server}

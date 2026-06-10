@@ -5,6 +5,9 @@ import ListingsPage from './pages/ListingsPage'
 import ListingDetailPage from './pages/ListingDetailPage'
 import NewListingPage from './pages/NewListingPage'
 import BulkListingPage from './pages/BulkListingPage'
+import BuyRequestsPage from './pages/BuyRequestsPage'
+import BuyRequestDetailPage from './pages/BuyRequestDetailPage'
+import NewBuyRequestPage from './pages/NewBuyRequestPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
@@ -15,6 +18,7 @@ import BoardThreadPage from './pages/BoardThreadPage'
 import AdminItemsPage from './pages/admin/AdminItemsPage'
 import AdminItemEditPage from './pages/admin/AdminItemEditPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AnnouncementsAdminPage from './pages/admin/AnnouncementsAdminPage'
 import { useAuth } from './contexts/AuthContext'
 import type { UserRole } from './types'
 
@@ -51,6 +55,12 @@ export default function App() {
             path="/listings/bulk"
             element={<PrivateRoute><BulkListingPage /></PrivateRoute>}
           />
+          <Route path="/buy-requests" element={<BuyRequestsPage />} />
+          <Route path="/buy-requests/:id" element={<BuyRequestDetailPage />} />
+          <Route
+            path="/buy-requests/new"
+            element={<PrivateRoute><NewBuyRequestPage /></PrivateRoute>}
+          />
           <Route path="/auth/login" element={<LoginPage />} />
           <Route path="/auth/register" element={<RegisterPage />} />
           <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
@@ -83,6 +93,10 @@ export default function App() {
           <Route
             path="/admin/users"
             element={<RoleRoute roles={['admin']}><AdminUsersPage /></RoleRoute>}
+          />
+          <Route
+            path="/admin/announcements"
+            element={<RoleRoute roles={['admin']}><AnnouncementsAdminPage /></RoleRoute>}
           />
         </Routes>
       </main>

@@ -114,6 +114,34 @@ export interface Listing {
   created_at: string
 }
 
+// ---- 買取（買いたい） ----
+export interface BuyRequest {
+  id: number
+  user_id: number
+  item: Item
+  price: number
+  currency: string
+  quantity: number
+  trade_type: TradeType
+  comment: string
+  status: ListingStatus
+  expires_at: string
+  servers: ListingServer[]
+  created_at: string
+}
+
+export interface BuyRequestSearchParams {
+  item_name?: string
+  item_names?: string[]
+  trade_type?: TradeType
+  price_min?: number
+  price_max?: number
+  servers?: Server[]
+  include_completed?: boolean
+  sort?: string
+  page?: number
+}
+
 // ---- 相場 ----
 export interface PriceHistory {
   date: string
@@ -145,12 +173,31 @@ export interface PriceStats {
   listing_count: number // 現在の出品数
 }
 
+export interface PriceOffer {
+  price: number
+  currency: string
+  trade_type: string
+  listed_at: string
+}
+
+// 売り相場（出品由来）/ 買い相場（買取由来）の分割分析
+export interface PriceMarketSection {
+  stats: PriceStats
+  history: PriceHistory[]
+  recent_deals: TradeRecord[]
+  recent_offers: PriceOffer[]
+}
+
 export interface ItemPriceAnalytics {
   item_id: number
   stats: PriceStats
   history: PriceHistory[]
   recent_deals: TradeRecord[]
-  recent_listings: { price: number; currency: string; trade_type: string; listed_at: string }[]
+  recent_listings: PriceOffer[]
+  /** 売り相場（出品由来）。古いレスポンスでは未定義 */
+  sell?: PriceMarketSection
+  /** 買い相場（買取由来）。古いレスポンスでは未定義 */
+  buy?: PriceMarketSection
 }
 
 export interface StatRange {
@@ -201,10 +248,14 @@ export interface TradeMessage {
 
 export interface TradeChat {
   id: number
-  listing_id: number
+  listing_id?: number | null
+  buy_request_id?: number | null
+  source_type?: 'listing' | 'buy_request'
   buyer_id: number
   buyer?: { id: number; email: string }
   buyer_character_name: string
+  listing?: Listing | null
+  buy_request?: BuyRequest | null
   server: Server
   status: ChatStatus
   seller_completed: boolean
@@ -248,6 +299,27 @@ export interface BoardThread {
   author_name: string
   created_at: string
   posts: BoardPost[]
+}
+
+// 自分のアクティブな出品・買取件数（item_id ごと、JSONキーは文字列）
+export interface MyItemCounts {
+  listings: Record<string, number>
+  buy_requests: Record<string, number>
+}
+
+// ---- お知らせ ----
+export type AnnouncementLevel = 'info' | 'warning' | 'error'
+
+export interface Announcement {
+  id: number
+  message: string
+  level: AnnouncementLevel
+  link_url: string | null
+  link_label: string | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
 }
 
 // ---- ページネーション ----

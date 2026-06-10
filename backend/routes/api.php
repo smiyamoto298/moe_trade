@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BoardController;
+use App\Http\Controllers\BuyRequestController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\ChatController;
@@ -35,6 +37,7 @@ Route::get('email/verify/{id}/{hash}', function (Request $request, $id, $hash) {
     return redirect(rtrim(config('app.frontend_url'), '/') . '/auth/login?verified=1');
 })->name('verification.verify');
 
+Route::get('announcements',      [AnnouncementController::class, 'index']);
 Route::get('categories',         [CategoryController::class, 'index']);
 Route::get('bonus-effect-types', fn() => response()->json(\App\Models\BonusEffectType::orderBy('category')->orderBy('label')->get()));
 Route::get('bonus-effect-names', fn() => response()->json(
@@ -60,6 +63,8 @@ Route::get('items/{id}', [ItemController::class, 'show']);
 Route::get('items/{id}/price-analytics', [ItemController::class, 'priceAnalytics']);
 Route::get('listings',      [ListingController::class, 'index']);
 Route::get('listings/{id}', [ListingController::class, 'show']);
+Route::get('buy-requests',      [BuyRequestController::class, 'index']);
+Route::get('buy-requests/{id}', [BuyRequestController::class, 'show']);
 
 // 認証必須
 Route::middleware('auth:sanctum')->group(function () {
@@ -107,14 +112,79 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     Route::get('mypage/chats', function (\Illuminate\Http\Request $request) {
         $user  = $request->user()->load('characters');
-        $chats = \App\Models\TradeChat::with(['listing.item', 'listing.servers', 'listing.user:id,email', 'listing.user.characters', 'messages.user:id,email', 'buyer:id,email'])
+        // 出品に対する取引希望（＝自分が買い手）。買取由来のチャットは含めない。
+        $chats = \App\Models\TradeChat::with(['listing.item.category', 'listing.servers', 'listing.user:id,email', 'listing.user.characters', 'messages.user:id,email', 'buyer:id,email'])
             ->where('buyer_id', $user->id)
+            ->whereNotNull('listing_id')
             ->orderByDesc('updated_at')
             ->get()
             ->map(function ($chat) use ($user) {
                 // 出品の連絡先キャラ名（出品者の現在のキャラクター）を解決
                 $chat->listing?->resolveServerContacts();
                 // 自分（買い手）のそのサーバーでのキャラ名
+                $char = $user->characters->firstWhere('server', $chat->server);
+                $chat->buyer_character_name = $char?->character_name;
+                return $chat;
+            });
+        return response()->json($chats);
+    });
+
+    // 自分のアクティブな出品・買取の件数（item_id ごと）。登録時の重複案内に使用。
+    Route::get('mypage/item-counts', function (\Illuminate\Http\Request $request) {
+        $uid = $request->user()->id;
+        $listings = \App\Models\Listing::where('user_id', $uid)
+            ->where('status', 'active')
+            ->selectRaw('item_id, COUNT(*) as c')
+            ->groupBy('item_id')
+            ->pluck('c', 'item_id');
+        $buyRequests = \App\Models\BuyRequest::where('user_id', $uid)
+            ->where('status', 'active')
+            ->selectRaw('item_id, COUNT(*) as c')
+            ->groupBy('item_id')
+            ->pluck('c', 'item_id');
+        return response()->json([
+            'listings'      => (object) $listings,
+            'buy_requests'  => (object) $buyRequests,
+        ]);
+    });
+
+    // 自分の買取一覧
+    Route::get('mypage/buy-requests', function (\Illuminate\Http\Request $request) {
+        $buyRequests = \App\Models\BuyRequest::with(['item.category', 'servers', 'user:id,email', 'user.characters'])
+            ->where('user_id', $request->user()->id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->each(fn(\App\Models\BuyRequest $b) => $b->resolveServerContacts());
+        return response()->json(['data' => $buyRequests]);
+    });
+
+    // 買取登録者として受け取ったチャット一覧（buy_request_id でグループ化）
+    Route::get('mypage/buy-request-chats', function (\Illuminate\Http\Request $request) {
+        $chats = \App\Models\TradeChat::with(['messages.user:id,email', 'buyer:id,email', 'buyer.characters'])
+            ->whereHas('buyRequest', fn($q) => $q->where('user_id', $request->user()->id))
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(function ($chat) {
+                // チャットのサーバーに対応する相手（売り手）のキャラクター名を付加
+                $char = $chat->buyer?->characters->firstWhere('server', $chat->server);
+                $chat->buyer_character_name = $char?->character_name;
+                return $chat;
+            });
+
+        $grouped = $chats->groupBy('buy_request_id')->map->values();
+        return response()->json($grouped);
+    });
+
+    // 買取への取引希望（＝自分が売り手として申し出たチャット）
+    Route::get('mypage/selling-offers', function (\Illuminate\Http\Request $request) {
+        $user  = $request->user()->load('characters');
+        $chats = \App\Models\TradeChat::with(['buyRequest.item.category', 'buyRequest.servers', 'buyRequest.user:id,email', 'buyRequest.user.characters', 'messages.user:id,email', 'buyer:id,email'])
+            ->where('buyer_id', $user->id)
+            ->whereNotNull('buy_request_id')
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(function ($chat) use ($user) {
+                $chat->buyRequest?->resolveServerContacts();
                 $char = $user->characters->firstWhere('server', $chat->server);
                 $chat->buyer_character_name = $char?->character_name;
                 return $chat;
@@ -147,6 +217,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('listings/{id}/renew',   [ListingController::class, 'renew']);
     Route::get('listings/{id}/chats',    [ListingController::class, 'chats']);
     Route::post('listings/{id}/chats',   [ListingController::class, 'createChat']);
+
+    // 買取
+    Route::post('buy-requests',              [BuyRequestController::class, 'store']);
+    Route::put('buy-requests/{id}',          [BuyRequestController::class, 'update']);
+    Route::delete('buy-requests/{id}',       [BuyRequestController::class, 'destroy']);
+    Route::post('buy-requests/{id}/renew',   [BuyRequestController::class, 'renew']);
+    Route::get('buy-requests/{id}/chats',    [BuyRequestController::class, 'chats']);
+    Route::post('buy-requests/{id}/chats',   [BuyRequestController::class, 'createChat']);
 
     // 通知サマリー（5秒ポーリング用）
     Route::get('notifications/summary', [\App\Http\Controllers\NotificationController::class, 'summary']);
@@ -183,5 +261,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('admin/users/{id}/suspend',  [AdminController::class, 'suspend']);
         Route::post('admin/users/{id}/unsuspend',[AdminController::class, 'unsuspend']);
         Route::post('admin/users/{id}/verify',   [AdminController::class, 'verifyEmail']);
+
+        // お知らせ管理
+        Route::get('admin/announcements',          [AnnouncementController::class, 'adminIndex']);
+        Route::post('admin/announcements',         [AnnouncementController::class, 'store']);
+        Route::put('admin/announcements/{id}',     [AnnouncementController::class, 'update']);
+        Route::delete('admin/announcements/{id}',  [AnnouncementController::class, 'destroy']);
     });
 });

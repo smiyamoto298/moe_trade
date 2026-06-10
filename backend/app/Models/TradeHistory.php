@@ -13,7 +13,7 @@ class TradeHistory extends Model
     const UPDATED_AT = null;
 
     protected $fillable = [
-        'listing_id', 'item_id', 'seller_id', 'seller_ip', 'buyer_ip',
+        'listing_id', 'buy_request_id', 'item_id', 'seller_id', 'buyer_id', 'seller_ip', 'buyer_ip',
         'price', 'currency', 'server', 'is_valid', 'traded_at',
     ];
 
@@ -28,5 +28,15 @@ class TradeHistory extends Model
     public function item()
     {
         return $this->belongsTo(Item::class);
+    }
+
+    public function seller()
+    {
+        return $this->belongsTo(User::class, 'seller_id');
+    }
+
+    public function buyer()
+    {
+        return $this->belongsTo(User::class, 'buyer_id');
     }
 }

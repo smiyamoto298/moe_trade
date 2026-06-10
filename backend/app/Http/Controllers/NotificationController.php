@@ -25,37 +25,48 @@ class NotificationController extends Controller
     {
         $user = $request->user();
 
-        // ---- チャット ----
+        // ---- チャット（出品・買取の両方） ----
         $chats = TradeChat::with([
                 'listing:id,user_id',
+                'buyRequest:id,user_id',
                 'messages' => fn($q) => $q->orderByDesc('id'),
                 'messages.user.characters',
             ])
             ->whereIn('status', ['open', 'deal'])
             ->where(function ($q) use ($user) {
                 $q->whereHas('listing', fn($lq) => $lq->where('user_id', $user->id))
+                  ->orWhereHas('buyRequest', fn($bq) => $bq->where('user_id', $user->id))
                   ->orWhere('buyer_id', $user->id);
             })
             ->get();
 
         $unreadChats = $chats->map(function (TradeChat $chat) use ($user) {
-            $last = $chat->messages->first();
+            // messages リレーションは created_at 昇順のため、最新メッセージは id 最大で取得する。
+            $last = $chat->messages->sortByDesc('id')->first();
 
             // 最後の発言者が自分なら未読扱いしない。
-            // メッセージが無いチャットは、買い手が作成した時点を「新規取引希望」とする。
+            // メッセージが無いチャットは、相手側が作成した時点を「新規取引希望」とする。
             $fromOther = $last ? $last->user_id !== $user->id : $chat->buyer_id !== $user->id;
             if (!$fromOther) {
                 return null;
             }
 
+            $ownerId  = $chat->ownerId();
+            $isBuyReq = $chat->isBuyRequest();
+
             return [
-                'chat_id'         => $chat->id,
-                'listing_id'      => $chat->listing_id,
-                'buyer_id'        => $chat->buyer_id,
-                'listing_user_id' => $chat->listing->user_id,
-                'last_message_at' => ($last?->created_at ?? $chat->created_at)->toISOString(),
-                'last_message'    => $last?->message ?? '新しい取引希望が届きました',
-                'last_sender'     => $last ? $this->displayName($last->user) : '取引希望者',
+                'chat_id'             => $chat->id,
+                'source_type'         => $chat->sourceType(),
+                'listing_id'          => $chat->listing_id,
+                'buy_request_id'      => $chat->buy_request_id,
+                'buyer_id'            => $chat->buyer_id,
+                // 後方互換: listing 由来のときだけ listing_user_id を埋める
+                'listing_user_id'     => $isBuyReq ? null : $ownerId,
+                'buy_request_user_id' => $isBuyReq ? $ownerId : null,
+                'owner_id'            => $ownerId,
+                'last_message_at'     => ($last?->created_at ?? $chat->created_at)->toISOString(),
+                'last_message'        => $last?->message ?? '新しい取引希望が届きました',
+                'last_sender'         => $last ? $this->displayName($last->user) : '取引希望者',
             ];
         })->filter()->values();
 

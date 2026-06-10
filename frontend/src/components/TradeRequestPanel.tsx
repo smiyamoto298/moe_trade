@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { chatApi } from '../api/chat'
+import { buyRequestsApi } from '../api/buyRequests'
 import { charactersApi } from '../api/characters'
 import { useAuth } from '../contexts/AuthContext'
-import type { Listing, Server } from '../types'
+import type { ListingServer, Server } from '../types'
 import { SERVER_COLORS } from '../utils/constants'
 
 const TIME_SLOTS = [
@@ -17,14 +18,15 @@ const TIME_SLOTS = [
 ]
 
 interface Props {
-  listing: Listing
+  source: { id: number; servers: ListingServer[] }
+  kind?: 'listing' | 'buy_request'
   onComplete: () => void
   onCancel: () => void
-  /** 送信時に出品が取り下げ／取引成立済みで取引不可だった場合の処理。未指定なら一覧へリダイレクト。 */
+  /** 送信時に対象が取り下げ／取引成立済みで取引不可だった場合の処理。未指定なら一覧へリダイレクト。 */
   onUnavailable?: () => void
 }
 
-export default function TradeRequestPanel({ listing, onComplete, onCancel, onUnavailable }: Props) {
+export default function TradeRequestPanel({ source: listing, kind = 'listing', onComplete, onCancel, onUnavailable }: Props) {
   const { user, refresh } = useAuth()
   const navigate = useNavigate()
   const [server, setServer] = useState<Server | ''>('')
@@ -54,7 +56,9 @@ export default function TradeRequestPanel({ listing, onComplete, onCancel, onUna
         await charactersApi.upsert(server, newCharName.trim())
         await refresh()
       }
-      const res = await chatApi.getOrCreate(listing.id, server)
+      const res = kind === 'buy_request'
+        ? await buyRequestsApi.createChat(listing.id, server)
+        : await chatApi.getOrCreate(listing.id, server)
       const lines = [
         `【取引希望】`,
         `サーバー: ${server}`,
@@ -73,9 +77,11 @@ export default function TradeRequestPanel({ listing, onComplete, onCancel, onUna
         if (onUnavailable) {
           onUnavailable()
         } else {
-          navigate('/listings', {
+          navigate(kind === 'buy_request' ? '/buy-requests' : '/listings', {
             state: {
-              tradeError: 'この出品は取り下げ、または取引成立済みのため取引できませんでした。',
+              tradeError: kind === 'buy_request'
+                ? 'この買取は取り下げ、または取引成立済みのため取引できませんでした。'
+                : 'この出品は取り下げ、または取引成立済みのため取引できませんでした。',
             },
           })
         }

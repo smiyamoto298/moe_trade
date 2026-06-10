@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
-import { listingsApi } from '../api/listings'
+import { buyRequestsApi } from '../api/buyRequests'
 import { itemsApi } from '../api/items'
 import client from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -11,7 +11,7 @@ import type { Item, MyItemCounts } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL } from '../utils/constants'
 
-export default function NewListingPage() {
+export default function NewBuyRequestPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -32,10 +32,9 @@ export default function NewListingPage() {
 
   const [form, setForm] = useState({
     price: '',
-    currency: 'AC', // ゲーム内通貨（固定）
+    currency: 'AC',
     trade_type: 'fixed',
     comment: '',
-    is_worn: false,
     servers: [] as string[],
   })
 
@@ -50,9 +49,8 @@ export default function NewListingPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedItem || !user) return
-    // 価格は1以上
     if (!(Number(form.price) >= 1)) {
-      setPriceError('価格は1以上で入力してください。')
+      setPriceError('買取希望価格は1以上で入力してください。')
       return
     }
     setPriceError('')
@@ -61,14 +59,13 @@ export default function NewListingPage() {
         const char = user.characters?.find((c) => c.server === s)
         return { server: s, character_id: char?.id ?? null }
       })
-      await listingsApi.create({
+      await buyRequestsApi.create({
         item_id: selectedItem.id,
         price: Number(form.price),
         currency: form.currency,
         quantity: 1,
         trade_type: form.trade_type,
         comment: form.comment,
-        is_worn: form.is_worn,
         servers: serverPayload,
       })
       navigate('/mypage')
@@ -85,18 +82,18 @@ export default function NewListingPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      <h1 className="text-xl font-bold text-white mb-6">出品する</h1>
+      <h1 className="text-xl font-bold text-white mb-6">買取する</h1>
 
       {!user?.email_verified_at && (
         <div className="mb-4 bg-red-900/40 border border-red-600/50 rounded-md px-4 py-3 text-sm text-red-300">
-          出品するにはメール認証が必要です。登録メールを確認してください。
+          買取するにはメール認証が必要です。登録メールを確認してください。
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* アイテム選択 */}
         <div className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-gray-300">アイテム</h2>
+          <h2 className="text-sm font-semibold text-gray-300">買いたいアイテム</h2>
 
           {selectedItem ? (
             <div className="flex items-center justify-between bg-surface rounded px-3 py-2">
@@ -211,11 +208,11 @@ export default function NewListingPage() {
 
         {/* 価格・取引方法 */}
         <div className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-gray-300">価格・取引方法</h2>
+          <h2 className="text-sm font-semibold text-gray-300">買取希望価格・取引方法</h2>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">価格</label>
+              <label className="block text-xs text-gray-400 mb-1">買取希望価格</label>
               <input
                 type="number"
                 required
@@ -261,17 +258,6 @@ export default function NewListingPage() {
               className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500 resize-none"
             />
           </div>
-
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.is_worn}
-              onChange={(e) => setForm((p) => ({ ...p, is_worn: e.target.checked }))}
-              className="accent-amber-500"
-            />
-            <span className="text-sm text-gray-300">削れあり</span>
-            <span className="text-xs text-gray-500">（耐久度に削れがある中古品）</span>
-          </label>
         </div>
 
         {/* サーバー選択 */}
@@ -318,8 +304,8 @@ export default function NewListingPage() {
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-lg px-4 py-3 text-xs text-gray-400 space-y-1">
-          <p>・出品は <span className="text-gray-200 font-medium">7日間</span> で期限切れになります。</p>
-          <p>・期限はマイページの出品一覧からいつでも更新（延長）できます。</p>
+          <p>・買取は <span className="text-gray-200 font-medium">7日間</span> で期限切れになります。</p>
+          <p>・期限はマイページの買取一覧からいつでも更新（延長）できます。</p>
         </div>
 
         <button
@@ -327,7 +313,7 @@ export default function NewListingPage() {
           disabled={!canSubmit || submitting}
           className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg font-medium transition-colors"
         >
-          {submitting ? '送信中...' : '出品する'}
+          {submitting ? '送信中...' : '買取する'}
         </button>
       </form>
 

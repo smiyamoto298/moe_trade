@@ -1,4 +1,5 @@
-import type { ItemPriceAnalytics } from '../types'
+import { useState } from 'react'
+import type { ItemPriceAnalytics, PriceHistory, PriceOffer, PriceStats, TradeRecord } from '../types'
 import { SERVER_COLORS, TRADE_TYPE_LABEL } from '../utils/constants'
 import type { TradeType } from '../types'
 import {
@@ -19,18 +20,100 @@ function relativeDate(iso: string) {
   return `${diff}日前`
 }
 
+type View = 'overall' | 'sell' | 'buy'
+
+const EMPTY_STATS: PriceStats = { min: 0, max: 0, avg: 0, median: 0, deal_count: 0, listing_count: 0 }
+
 export default function PriceAnalytics({ analytics }: Props) {
-  // バックエンドのレスポンス欠落に備えて安全なデフォルトを与える
-  const stats = analytics?.stats ?? {
-    min: 0, max: 0, avg: 0, median: 0, deal_count: 0, listing_count: 0,
-  }
-  const history = analytics?.history ?? []
-  const recent_deals = analytics?.recent_deals ?? []
-  const recent_listings = analytics?.recent_listings ?? []
+  const [view, setView] = useState<View>('overall')
+
+  const hasSell = !!analytics?.sell
+  const hasBuy = !!analytics?.buy
+
+  // 表示対象セクションのデータを view に応じて選択
+  const section: {
+    stats: PriceStats
+    history: PriceHistory[]
+    recent_deals: TradeRecord[]
+    offers: PriceOffer[]
+    offersLabel: string
+    dealsLabel: string
+    accent: string       // 価格テキストの色
+    emptyOffers: string
+  } = (() => {
+    if (view === 'sell' && analytics.sell) {
+      return {
+        stats: analytics.sell.stats ?? EMPTY_STATS,
+        history: analytics.sell.history ?? [],
+        recent_deals: analytics.sell.recent_deals ?? [],
+        offers: analytics.sell.recent_offers ?? [],
+        offersLabel: '出品中の価格',
+        dealsLabel: '売り取引の成立',
+        accent: 'text-primary-500',
+        emptyOffers: '現在の出品はありません',
+      }
+    }
+    if (view === 'buy' && analytics.buy) {
+      return {
+        stats: analytics.buy.stats ?? EMPTY_STATS,
+        history: analytics.buy.history ?? [],
+        recent_deals: analytics.buy.recent_deals ?? [],
+        offers: analytics.buy.recent_offers ?? [],
+        offersLabel: '買取募集中の価格',
+        dealsLabel: '買い取引の成立',
+        accent: 'text-emerald-400',
+        emptyOffers: '現在の買取募集はありません',
+      }
+    }
+    return {
+      stats: analytics?.stats ?? EMPTY_STATS,
+      history: analytics?.history ?? [],
+      recent_deals: analytics?.recent_deals ?? [],
+      offers: analytics?.recent_listings ?? [],
+      offersLabel: '出品中の価格',
+      dealsLabel: '過去の取引成立',
+      accent: 'text-primary-500',
+      emptyOffers: '現在の出品はありません',
+    }
+  })()
+
+  const { stats, history, recent_deals, offers } = section
   const hasData = stats.deal_count > 0
+
+  const tabs: { key: View; label: string }[] = [
+    { key: 'overall', label: '総合' },
+    ...(hasSell ? [{ key: 'sell' as View, label: '売り相場' }] : []),
+    ...(hasBuy ? [{ key: 'buy' as View, label: '買い相場' }] : []),
+  ]
 
   return (
     <div className="space-y-5">
+      {/* 売り相場 / 買い相場 切替 */}
+      {tabs.length > 1 && (
+        <div>
+          <div className="inline-flex rounded-lg border border-surface-border bg-surface p-0.5">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setView(t.key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  view === t.key ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-1.5">
+            {view === 'sell'
+              ? '出品（売りたい）由来の成立価格・出品中の価格です。'
+              : view === 'buy'
+              ? '買取（買いたい）由来の成立価格・買取募集中の価格です。'
+              : '出品・買取・他サイト相場をまとめた相場です。'}
+          </p>
+        </div>
+      )}
+
       {/* 統計サマリー */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
@@ -82,7 +165,7 @@ export default function PriceAnalytics({ analytics }: Props) {
         {/* 過去の取引成立 */}
         <div>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            過去の取引成立 ({recent_deals.length}件)
+            {section.dealsLabel} ({recent_deals.length}件)
           </h3>
           {recent_deals.length === 0 ? (
             <p className="text-sm text-gray-500">取引成立の記録がありません</p>
@@ -90,7 +173,7 @@ export default function PriceAnalytics({ analytics }: Props) {
             <div className="space-y-1.5">
               {recent_deals.map((d) => (
                 <div key={`${d.source ?? 'trade'}-${d.id}`} className="flex items-center gap-3 bg-surface rounded px-3 py-2 text-sm">
-                  <span className="font-bold text-primary-500 w-28 shrink-0">
+                  <span className={`font-bold w-28 shrink-0 ${section.accent}`}>
                     {fmt(d.price)} {d.currency}
                   </span>
                   <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[d.server]}`}>
@@ -119,18 +202,18 @@ export default function PriceAnalytics({ analytics }: Props) {
           )}
         </div>
 
-        {/* 現在の出品価格一覧 */}
+        {/* 現在の募集価格一覧 */}
         <div>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            出品中の価格 ({recent_listings.length}件)
+            {section.offersLabel} ({offers.length}件)
           </h3>
-          {recent_listings.length === 0 ? (
-            <p className="text-sm text-gray-500">現在の出品はありません</p>
+          {offers.length === 0 ? (
+            <p className="text-sm text-gray-500">{section.emptyOffers}</p>
           ) : (
             <div className="space-y-1.5">
-              {recent_listings.map((l, i) => (
+              {offers.map((l, i) => (
                 <div key={i} className="flex items-center gap-3 bg-surface rounded px-3 py-2 text-sm">
-                  <span className="font-bold text-white w-28 shrink-0">
+                  <span className={`font-bold w-28 shrink-0 ${view === 'buy' ? 'text-emerald-400' : 'text-white'}`}>
                     {fmt(l.price)} {l.currency}
                   </span>
                   <span className="text-xs bg-surface-card border border-surface-border text-gray-300 px-2 py-0.5 rounded shrink-0">

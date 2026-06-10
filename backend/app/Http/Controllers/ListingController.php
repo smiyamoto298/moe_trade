@@ -405,11 +405,13 @@ class ListingController extends Controller
             return response()->json($existing->load('messages.user:id,email'), 200);
         }
 
-        $chat = DB::transaction(function () use ($listing, $user, $data) {
+        $requestIp = $request->ip(); // 取引希望を送信したIP
+        $chat = DB::transaction(function () use ($listing, $user, $data, $requestIp) {
             $chat = TradeChat::create([
                 'listing_id' => $listing->id,
                 'buyer_id'   => $user->id,
                 'server'     => $data['server'],
+                'request_ip' => $requestIp,
             ]);
 
             // 最初のメッセージ（希望時間帯・備考）

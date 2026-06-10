@@ -235,12 +235,20 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
             </div>
           </div>
         {user && (
-          <Link
-            to="/listings/new"
-            className="bg-primary-500 hover:bg-primary-600 text-white text-sm px-4 py-2 rounded-md transition-colors whitespace-nowrap"
-          >
-            + 出品する
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/listings/new"
+              className="bg-primary-500 hover:bg-primary-600 text-white text-sm px-4 py-2 rounded-md transition-colors whitespace-nowrap"
+            >
+              + 出品する
+            </Link>
+            <Link
+              to="/listings/bulk"
+              className="border border-surface-border hover:border-primary-500 text-gray-200 text-sm px-4 py-2 rounded-md transition-colors whitespace-nowrap"
+            >
+              一括出品
+            </Link>
+          </div>
         )}
       </div>
 
@@ -884,7 +892,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         <tr key={`panel-${l.id}`}>
                           <td colSpan={7} className="px-4 pb-4">
                             <TradeRequestPanel
-                              listing={l}
+                              source={l}
+                              kind="listing"
                               onComplete={() => {
                                 setCompletedIds((prev) => new Set([...prev, l.id]))
                                 setRequestedListingIds((prev) => new Set([...prev, l.id]))
