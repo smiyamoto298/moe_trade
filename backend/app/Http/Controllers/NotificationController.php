@@ -71,11 +71,16 @@ class NotificationController extends Controller
         })->filter()->values();
 
         // ---- 運営掲示板 ----
+        // 管理者: すべてのスレッドの他人の投稿が対象。
+        // 一般ユーザー: 自分がコメント（投稿）したスレッドの他人の投稿のみ対象。
+        // （スレッド作成時に作成者の最初の投稿が作られるため、自分が立てたスレッドも含まれる）
         $boardQuery = BoardPost::where('user_id', '!=', $user->id);
 
         if (!$user->isAdmin()) {
-            // 一般ユーザーは自分が作成したスレッドへの返信のみ対象
-            $boardQuery->whereHas('thread', fn($q) => $q->where('user_id', $user->id));
+            $commentedThreadIds = BoardPost::where('user_id', $user->id)
+                ->distinct()
+                ->pluck('thread_id');
+            $boardQuery->whereIn('thread_id', $commentedThreadIds);
         }
 
         // スレッドごとの最新投稿日時（一覧の未読アイコン用）

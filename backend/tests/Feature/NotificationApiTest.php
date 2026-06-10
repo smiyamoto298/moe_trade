@@ -87,6 +87,37 @@ class NotificationApiTest extends TestCase
         $this->assertSame('問い合わせ', $ownerRes->json('board.thread_title'));
     }
 
+    public function test_掲示板はコメントしたスレッドの新着が通知される(): void
+    {
+        $owner     = $this->makeUser();
+        $commenter = $this->makeUser();
+        $third     = $this->makeUser();
+        $stranger  = $this->makeUser();
+
+        $threadId = $this->actingAs($owner, 'sanctum')
+            ->postJson('/api/board/threads', ['title' => '相談', 'message' => '本文'])
+            ->json('id');
+
+        // commenter がコメント（このスレッドの当事者になる）
+        $this->actingAs($commenter, 'sanctum')
+            ->postJson("/api/board/threads/{$threadId}/posts", ['message' => '私も気になります'])
+            ->assertStatus(201);
+
+        // third が新たに投稿
+        $this->actingAs($third, 'sanctum')
+            ->postJson("/api/board/threads/{$threadId}/posts", ['message' => '追記です'])
+            ->assertStatus(201);
+
+        // コメント済みの commenter には新着が付く（他人の投稿）
+        $this->assertNotNull(
+            $this->actingAs($commenter, 'sanctum')->getJson('/api/notifications/summary')->json('board')
+        );
+        // スレッドに一切関与していない stranger には付かない
+        $this->assertNull(
+            $this->actingAs($stranger, 'sanctum')->getJson('/api/notifications/summary')->json('board')
+        );
+    }
+
     public function test_未ログインではアクセスできない(): void
     {
         $this->getJson('/api/notifications/summary')->assertStatus(401);
