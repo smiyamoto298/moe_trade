@@ -8,6 +8,7 @@ import { mockChats, MOCK_MY_USER_ID, MOCK_MY_LISTING_IDS, USE_MOCK } from '../ap
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { useDialog } from '../contexts/DialogContext'
+import { useTour } from '../tours/TourContext'
 import ChatThread from '../components/ChatThread'
 import type { Listing, BuyRequest, TradeChat, Server } from '../types'
 import { SERVERS } from '../types'
@@ -24,6 +25,7 @@ export default function MyPage() {
     markAsRead, notifPermission, requestNotifPermission,
   } = useNotification()
   const { confirm, alert } = useDialog()
+  const { resetAllTours, startTour } = useTour()
 
   const [tab, setTab] = useState<Tab>('listings')
   const [editingChars, setEditingChars] = useState(false)
@@ -215,6 +217,17 @@ export default function MyPage() {
         <h1 className="text-xl font-bold text-white">マイページ</h1>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              const ok = await confirm('各ページの操作案内（初回ポップアップ）をもう一度表示するようにします。よろしいですか？')
+              if (!ok) return
+              resetAllTours()
+              startTour('mypage')
+            }}
+            className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+          >
+            ❔ 操作案内をリセット
+          </button>
           {notifPermission === 'default' && (
             <button
               onClick={requestNotifPermission}
@@ -277,8 +290,9 @@ export default function MyPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap border-b border-surface-border">
+      <div data-tour="mypage-tabs" className="flex flex-wrap border-b border-surface-border">
         <button
+          data-tour="mypage-tab-listings"
           onClick={() => switchTab('listings')}
           className={`relative px-4 py-2 text-sm font-medium transition-colors ${tab === 'listings' ? 'text-white border-b-2 border-primary-500' : 'text-gray-400 hover:text-white'}`}
         >
@@ -288,6 +302,7 @@ export default function MyPage() {
           )}
         </button>
         <button
+          data-tour="mypage-tab-buying"
           onClick={() => switchTab('buying')}
           className={`relative px-4 py-2 text-sm font-medium transition-colors ${tab === 'buying' ? 'text-white border-b-2 border-primary-500' : 'text-gray-400 hover:text-white'}`}
         >
@@ -297,6 +312,7 @@ export default function MyPage() {
           )}
         </button>
         <button
+          data-tour="mypage-tab-buyreq"
           onClick={() => switchTab('buy_requests')}
           className={`relative px-4 py-2 text-sm font-medium transition-colors ${tab === 'buy_requests' ? 'text-white border-b-2 border-primary-500' : 'text-gray-400 hover:text-white'}`}
         >
@@ -306,6 +322,7 @@ export default function MyPage() {
           )}
         </button>
         <button
+          data-tour="mypage-tab-selling"
           onClick={() => switchTab('selling')}
           className={`relative px-4 py-2 text-sm font-medium transition-colors ${tab === 'selling' ? 'text-white border-b-2 border-primary-500' : 'text-gray-400 hover:text-white'}`}
         >

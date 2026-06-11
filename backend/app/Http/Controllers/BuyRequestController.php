@@ -123,7 +123,7 @@ class BuyRequestController extends Controller
                 'trade_type' => $data['trade_type'],
                 'comment'    => $data['comment'] ?? null,
                 'currency'   => 'AC',
-                'expires_at' => now()->addDays(7),
+                'expires_at' => now()->addMonth(),
             ]);
 
             foreach ($data['servers'] as $srv) {
@@ -191,7 +191,7 @@ class BuyRequestController extends Controller
         $buyRequest = BuyRequest::where('user_id', $request->user()->id)->findOrFail($id);
         $buyRequest->update([
             'status'     => 'active',
-            'expires_at' => now()->addDays(7),
+            'expires_at' => now()->addMonth(),
         ]);
         return response()->json($buyRequest);
     }
@@ -244,6 +244,11 @@ class BuyRequestController extends Controller
 
         $requestIp = $request->ip(); // 取引希望を送信したIP
         $chat = DB::transaction(function () use ($buyRequest, $user, $data, $requestIp) {
+            // 取引希望を受けた買取の残りが3日以下なら、残り4日まで延長する
+            if ($buyRequest->expires_at && $buyRequest->expires_at->lte(now()->addDays(3))) {
+                $buyRequest->update(['expires_at' => now()->addDays(4)]);
+            }
+
             $chat = TradeChat::create([
                 'buy_request_id' => $buyRequest->id,
                 'buyer_id'       => $user->id,

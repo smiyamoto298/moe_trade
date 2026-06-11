@@ -300,21 +300,23 @@ class ItemController extends Controller
 
         $result = DB::transaction(function () use ($item, $id, $targetId) {
             // 紐づくデータの item_id を統合先へ付け替える
-            $listingCount = Listing::where('item_id', $id)->update(['item_id' => $targetId]);
-            $historyCount = TradeHistory::where('item_id', $id)->update(['item_id' => $targetId]);
-            $marketCount  = MarketPrice::where('item_id', $id)->update(['item_id' => $targetId]);
+            $listingCount    = Listing::where('item_id', $id)->update(['item_id' => $targetId]);
+            $buyRequestCount = BuyRequest::where('item_id', $id)->update(['item_id' => $targetId]);
+            $historyCount    = TradeHistory::where('item_id', $id)->update(['item_id' => $targetId]);
+            $marketCount     = MarketPrice::where('item_id', $id)->update(['item_id' => $targetId]);
 
             // 付け替え済みなので、元アイテムは関連データなしで削除（item_bonus_effects は cascade）
             $item->delete();
 
-            return compact('listingCount', 'historyCount', 'marketCount');
+            return compact('listingCount', 'buyRequestCount', 'historyCount', 'marketCount');
         });
 
         return response()->json([
-            'merged_into'   => $target->only(['id', 'name']),
-            'listing_count' => $result['listingCount'],
-            'history_count' => $result['historyCount'],
-            'market_count'  => $result['marketCount'],
+            'merged_into'       => $target->only(['id', 'name']),
+            'listing_count'     => $result['listingCount'],
+            'buy_request_count' => $result['buyRequestCount'],
+            'history_count'     => $result['historyCount'],
+            'market_count'      => $result['marketCount'],
         ]);
     }
 

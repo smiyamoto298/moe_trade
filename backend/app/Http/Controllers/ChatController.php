@@ -178,7 +178,7 @@ class ChatController extends Controller
                         'quantity'   => $source->quantity,
                         'trade_type' => $source->trade_type,
                         'comment'    => $source->comment,
-                        'expires_at' => now()->addDays(7),
+                        'expires_at' => now()->addMonth(),
                     ]);
                 } else {
                     $new = Listing::create([

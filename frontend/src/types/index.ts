@@ -318,6 +318,8 @@ export interface Announcement {
   link_label: string | null
   is_active: boolean
   sort_order: number
+  display_days: number | null
+  expires_at: string | null
   created_at: string
   updated_at: string
 }

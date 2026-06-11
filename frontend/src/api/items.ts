@@ -152,12 +152,12 @@ export const itemsApi = {
   merge: (
     sourceId: number,
     targetId: number,
-  ): Promise<{ data: { merged_into: { id: number; name: string }; listing_count: number; history_count: number; market_count: number } }> => {
+  ): Promise<{ data: { merged_into: { id: number; name: string }; listing_count: number; buy_request_count: number; history_count: number; market_count: number } }> => {
     if (USE_MOCK) {
       const idx = mockItems.findIndex((i) => i.id === sourceId)
       if (idx !== -1) mockItems.splice(idx, 1)
       const t = mockItems.find((i) => i.id === targetId)
-      return Promise.resolve({ data: { merged_into: { id: targetId, name: t?.name ?? '' }, listing_count: 0, history_count: 0, market_count: 0 } })
+      return Promise.resolve({ data: { merged_into: { id: targetId, name: t?.name ?? '' }, listing_count: 0, buy_request_count: 0, history_count: 0, market_count: 0 } })
     }
     return client.post(`/items/${sourceId}/merge`, { target_id: targetId }).then((r) => ({ data: r.data }))
   },

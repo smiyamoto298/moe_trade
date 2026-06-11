@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Header from './components/Header'
 import Footer from './components/Footer'
+import TourOverlay from './components/TourOverlay'
+import HelpButton from './components/HelpButton'
 import ListingsPage from './pages/ListingsPage'
 import ListingDetailPage from './pages/ListingDetailPage'
 import NewListingPage from './pages/NewListingPage'
@@ -101,6 +103,8 @@ export default function App() {
         </Routes>
       </main>
       <Footer />
+      <HelpButton />
+      <TourOverlay />
     </div>
   )
 }

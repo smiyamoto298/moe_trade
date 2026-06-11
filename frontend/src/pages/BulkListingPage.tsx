@@ -340,7 +340,7 @@ export default function BulkListingPage() {
       )}
 
       {/* 貼り付けエリア */}
-      <div className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3 mb-6">
+      <div data-tour="bulk-paste" className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3 mb-6">
         <h2 className="text-sm font-semibold text-gray-300">アイテム一覧を貼り付け</h2>
         <textarea
           rows={6}

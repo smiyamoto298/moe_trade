@@ -7,6 +7,7 @@ import { itemsApi } from '../api/items'
 import FilterPopup, { type FilterOption } from '../components/FilterPopup'
 import StatRangeFilter from '../components/StatRangeFilter'
 import TradeRequestPanel from '../components/TradeRequestPanel'
+import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
 import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
@@ -76,6 +77,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
     item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : 'equipment',
   })
   const [tradeTarget, setTradeTarget] = useState<Listing | null>(null)
+  // 相場情報ポップアップの対象アイテム（PCで「相場情報」を押したとき）
+  const [analyticsItem, setAnalyticsItem] = useState<{ id: number; name: string } | null>(null)
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set())
   // 既に取引希望済みの listing_id セット
   const [requestedListingIds, setRequestedListingIds] = useState<Set<number>>(new Set())
@@ -199,6 +202,27 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
   const [filterOpen, setFilterOpen] = useState(false)
 
+  // 操作列の末尾リンク：スマホでは「詳細 →」（出品詳細はスマホ専用画面）、
+  // PCでは「相場情報」ボタンを表示し、押すと相場ポップアップを開く。
+  const detailOrMarket = (l: Listing, withTour = false) => (
+    <>
+      <Link
+        to={`/listings/${l.id}`}
+        className="sm:hidden text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
+      >
+        詳細 →
+      </Link>
+      <button
+        type="button"
+        {...(withTour ? { 'data-tour': 'listings-detail' } : {})}
+        onClick={() => setAnalyticsItem({ id: l.item.id, name: l.item.name })}
+        className="hidden sm:inline-flex items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors"
+      >
+        相場情報
+      </button>
+    </>
+  )
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       {/* 取引希望が無効になった場合のエラーバナー */}
@@ -228,14 +252,14 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <h1 className="text-lg sm:text-xl font-bold text-white">出品一覧</h1>
-            <div className="flex border border-surface-border rounded-lg overflow-hidden text-xs sm:text-sm">
+            <div data-tour="listings-modes" className="flex border border-surface-border rounded-lg overflow-hidden text-xs sm:text-sm">
               <Link to="/listings" className={`px-3 sm:px-4 py-1.5 transition-colors ${isEquipmentMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>装備品</Link>
               <Link to="/skills" className={`px-3 sm:px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>テクニック</Link>
               <Link to="/assets" className={`px-3 sm:px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>アセット</Link>
             </div>
           </div>
         {user && (
-          <div className="flex items-center gap-2">
+          <div data-tour="listings-actions" className="flex items-center gap-2">
             <Link
               to="/listings/new"
               className="bg-primary-500 hover:bg-primary-600 text-white text-sm px-4 py-2 rounded-md transition-colors whitespace-nowrap"
@@ -257,7 +281,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         {/* フィルターサイドバー */}
-        <aside className="space-y-3">
+        <aside data-tour="listings-filter" className="space-y-3">
           <div className="bg-surface-card border border-surface-border rounded-lg overflow-hidden">
             {/* ヘッダー（スマホ時はボタン） */}
             <button
@@ -633,7 +657,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'}`}
                       >
                         {/* アイテム名・種別 */}
-                        <td className="px-4 py-3">
+                        <td data-tour="listings-itemname" className="px-4 py-3">
                           {l.item.verified_status === 'unverified' && (
                             <span
                               tabIndex={0}
@@ -823,7 +847,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
                         {/* 取引方法・サーバー */}
                         <td className="hidden sm:table-cell px-4 py-3">
-                          <div className="flex flex-wrap gap-1 mb-1">
+                          <div data-tour="listings-tradetype" className="flex flex-wrap gap-1 mb-1">
                             <span className="text-xs bg-surface text-gray-300 px-2 py-0.5 rounded">
                               {TRADE_TYPE_LABEL[l.trade_type]}
                             </span>
@@ -855,19 +879,20 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           {isMyListing || isCompleted ? (
                             <div className="flex flex-col gap-1 items-end">
                               {isCompleted && <span className="text-xs text-primary-500">✓ 取引完了</span>}
-                              <Link to={`/listings/${l.id}`} className="text-xs text-gray-500 hover:text-gray-300">詳細 →</Link>
+                              {detailOrMarket(l)}
                             </div>
                           ) : isDone ? (
                             <div className="flex flex-col gap-1 items-end">
                               <span className="text-xs text-primary-500">✓ 希望済み</span>
-                              <Link to={`/listings/${l.id}`} className="text-xs text-gray-500 hover:text-gray-300">詳細 →</Link>
+                              {detailOrMarket(l)}
                             </div>
                           ) : (
                             <div className="flex flex-col gap-1 items-end">
                               {user && !!user.email_verified_at && (
                                 <button
+                                  data-tour="listings-trade"
                                   onClick={() => setTradeTarget(isOpen ? null : l)}
-                                  className={`text-xs whitespace-nowrap px-3 py-1.5 rounded border transition-colors ${
+                                  className={`inline-flex items-center justify-center w-20 text-xs whitespace-nowrap px-2.5 py-1 rounded border transition-colors ${
                                     isOpen
                                       ? 'border-gray-500 text-gray-400 hover:text-white'
                                       : 'border-primary-500/60 bg-primary-500/10 text-primary-400 hover:bg-primary-500/20'
@@ -876,12 +901,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                                   {isOpen ? 'キャンセル' : '取引'}
                                 </button>
                               )}
-                              <Link
-                                to={`/listings/${l.id}`}
-                                className="text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
-                              >
-                                詳細 →
-                              </Link>
+                              {detailOrMarket(l, true)}
                             </div>
                           )}
                         </td>
@@ -940,6 +960,15 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
           )}
         </div>
       </div>
+      )}
+
+      {/* 相場情報ポップアップ（PCの「相場情報」ボタン用） */}
+      {analyticsItem && (
+        <PriceAnalyticsModal
+          itemId={analyticsItem.id}
+          itemName={analyticsItem.name}
+          onClose={() => setAnalyticsItem(null)}
+        />
       )}
     </div>
   )

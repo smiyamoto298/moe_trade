@@ -304,7 +304,7 @@ export default function NewBuyRequestPage() {
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-lg px-4 py-3 text-xs text-gray-400 space-y-1">
-          <p>・買取は <span className="text-gray-200 font-medium">7日間</span> で期限切れになります。</p>
+          <p>・買取は <span className="text-gray-200 font-medium">1か月</span> で期限切れになります。</p>
           <p>・期限はマイページの買取一覧からいつでも更新（延長）できます。</p>
         </div>
 

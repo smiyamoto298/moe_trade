@@ -407,6 +407,11 @@ class ListingController extends Controller
 
         $requestIp = $request->ip(); // 取引希望を送信したIP
         $chat = DB::transaction(function () use ($listing, $user, $data, $requestIp) {
+            // 取引希望を受けた出品の残りが3日以下なら、残り4日まで延長する
+            if ($listing->expires_at && $listing->expires_at->lte(now()->addDays(3))) {
+                $listing->update(['expires_at' => now()->addDays(4)]);
+            }
+
             $chat = TradeChat::create([
                 'listing_id' => $listing->id,
                 'buyer_id'   => $user->id,

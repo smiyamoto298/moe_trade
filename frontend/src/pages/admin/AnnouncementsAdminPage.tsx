@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { announcementsApi } from '../../api/announcements'
 import type { Announcement, AnnouncementLevel } from '../../types'
 import { useDialog } from '../../contexts/DialogContext'
@@ -10,7 +10,8 @@ interface Draft {
   link_url: string
   link_label: string
   is_active: boolean
-  sort_order: number
+  display_days: number | null
+  expires_at: string | null
 }
 
 const toDraft = (a: Announcement): Draft => ({
@@ -20,7 +21,8 @@ const toDraft = (a: Announcement): Draft => ({
   link_url: a.link_url ?? '',
   link_label: a.link_label ?? '',
   is_active: a.is_active,
-  sort_order: a.sort_order,
+  display_days: a.display_days ?? null,
+  expires_at: a.expires_at ?? null,
 })
 
 const newDraft = (): Draft => ({
@@ -30,7 +32,8 @@ const newDraft = (): Draft => ({
   link_url: '',
   link_label: '',
   is_active: true,
-  sort_order: 0,
+  display_days: null,
+  expires_at: null,
 })
 
 const LEVELS: { value: AnnouncementLevel; label: string }[] = [
@@ -39,11 +42,21 @@ const LEVELS: { value: AnnouncementLevel; label: string }[] = [
   { value: 'error', label: '警告（赤）' },
 ]
 
+const fmtDate = (iso: string | null): string => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 export default function AnnouncementsAdminPage() {
   const { confirm, alert } = useDialog()
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [loading, setLoading] = useState(true)
   const [savingIdx, setSavingIdx] = useState<number | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const orderDirty = useRef(false)
 
   const load = () => {
     setLoading(true)
@@ -71,7 +84,7 @@ export default function AnnouncementsAdminPage() {
       link_url: d.link_url.trim() || null,
       link_label: d.link_label.trim() || null,
       is_active: d.is_active,
-      sort_order: Number(d.sort_order) || 0,
+      display_days: d.display_days && d.display_days > 0 ? d.display_days : null,
     }
     setSavingIdx(idx)
     try {
@@ -100,6 +113,36 @@ export default function AnnouncementsAdminPage() {
     }
   }
 
+  // ---- ドラッグ＆ドロップ並び替え ----
+  const onDragStart = (idx: number) => setDragIdx(idx)
+
+  const onDragOver = (idx: number) => (e: React.DragEvent) => {
+    e.preventDefault()
+    if (dragIdx === null || dragIdx === idx) return
+    setDrafts((p) => {
+      const next = [...p]
+      const [moved] = next.splice(dragIdx, 1)
+      next.splice(idx, 0, moved)
+      return next
+    })
+    setDragIdx(idx)
+    orderDirty.current = true
+  }
+
+  const persistOrder = async () => {
+    setDragIdx(null)
+    if (!orderDirty.current) return
+    orderDirty.current = false
+    const ids = drafts.map((d) => d.id).filter((id): id is number => id != null)
+    if (ids.length < 2) return
+    try {
+      await announcementsApi.reorder(ids)
+    } catch {
+      await alert('並び順の保存に失敗しました。', { title: 'エラー' })
+      load()
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -113,6 +156,7 @@ export default function AnnouncementsAdminPage() {
       </div>
       <p className="text-sm text-gray-400 mb-5">
         ここで登録したお知らせがサイト上部に表示されます。「表示する」をオフにすると非表示になります。
+        左上の <span className="text-gray-300">⠿</span> をドラッグするとパネルの並び順（＝表示順）を変更できます。
       </p>
 
       {loading ? (
@@ -124,9 +168,27 @@ export default function AnnouncementsAdminPage() {
       ) : (
         <div className="space-y-4">
           {drafts.map((d, idx) => (
-            <div key={d.id ?? `new-${idx}`} className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
+            <div
+              key={d.id ?? `new-${idx}`}
+              onDragOver={onDragOver(idx)}
+              onDrop={persistOrder}
+              className={`bg-surface-card border rounded-lg p-4 space-y-3 transition-colors ${
+                dragIdx === idx ? 'border-primary-500 opacity-70' : 'border-surface-border'
+              }`}
+            >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-gray-500">{d.id == null ? '新規（未保存）' : `ID: ${d.id}`}</span>
+                <div className="flex items-center gap-2">
+                  <span
+                    draggable
+                    onDragStart={() => onDragStart(idx)}
+                    onDragEnd={persistOrder}
+                    title="ドラッグして並び替え"
+                    className="cursor-grab active:cursor-grabbing select-none text-gray-500 hover:text-gray-300 text-lg leading-none px-1"
+                  >
+                    ⠿
+                  </span>
+                  <span className="text-xs text-gray-500">{d.id == null ? '新規（未保存）' : `ID: ${d.id}`}</span>
+                </div>
                 <label className="flex items-center gap-1.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -181,14 +243,28 @@ export default function AnnouncementsAdminPage() {
                     className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">表示順</label>
-                  <input
-                    type="number"
-                    value={d.sort_order}
-                    onChange={(e) => setField(idx, { sort_order: Number(e.target.value) })}
-                    className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
-                  />
+                <div className="sm:col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">表示期間（日数・任意）</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={d.display_days ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setField(idx, { display_days: v === '' ? null : Math.max(1, Number(v)) })
+                      }}
+                      placeholder="無期限"
+                      className="w-28 bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                    />
+                    <span className="text-xs text-gray-500">
+                      {d.display_days && d.display_days > 0
+                        ? d.id != null && d.expires_at
+                          ? `日間（表示期限: ${fmtDate(d.expires_at)}）`
+                          : '日間（保存時の日時から起算）'
+                        : '空欄で無期限表示'}
+                    </span>
+                  </div>
                 </div>
               </div>
 

@@ -7,7 +7,8 @@ export interface AnnouncementPayload {
   link_url?: string | null
   link_label?: string | null
   is_active?: boolean
-  sort_order?: number
+  // 表示期間（日数）。null = 無期限。
+  display_days?: number | null
 }
 
 export const announcementsApi = {
@@ -18,4 +19,6 @@ export const announcementsApi = {
   create: (data: AnnouncementPayload) => client.post<Announcement>('/admin/announcements', data),
   update: (id: number, data: AnnouncementPayload) => client.put<Announcement>(`/admin/announcements/${id}`, data),
   remove: (id: number) => client.delete(`/admin/announcements/${id}`),
+  // パネルの並び順を保存（表示順に並んだ id 配列）
+  reorder: (ids: number[]) => client.post('/admin/announcements/reorder', { ids }),
 }

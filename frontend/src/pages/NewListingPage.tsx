@@ -95,7 +95,7 @@ export default function NewListingPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* アイテム選択 */}
-        <div className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
+        <div data-tour="new-item" className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
           <h2 className="text-sm font-semibold text-gray-300">アイテム</h2>
 
           {selectedItem ? (
@@ -210,7 +210,7 @@ export default function NewListingPage() {
         )}
 
         {/* 価格・取引方法 */}
-        <div className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
+        <div data-tour="new-price" className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
           <h2 className="text-sm font-semibold text-gray-300">価格・取引方法</h2>
 
           <div className="grid grid-cols-2 gap-3">
@@ -324,6 +324,7 @@ export default function NewListingPage() {
 
         <button
           type="submit"
+          data-tour="new-submit"
           disabled={!canSubmit || submitting}
           className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg font-medium transition-colors"
         >

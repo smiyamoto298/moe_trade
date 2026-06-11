@@ -12,6 +12,31 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const adminRef = useRef<HTMLDivElement>(null)
 
+  // ユーザーが「表示しない」にしたお知らせ（端末ごとに localStorage で保持）。
+  // 内容が更新された場合は再表示するため、id と updated_at を組にしてキーにする。
+  const DISMISSED_KEY = 'dismissedAnnouncements'
+  const announcementKey = (a: { id: number; updated_at: string }) => `${a.id}:${a.updated_at}`
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(DISMISSED_KEY)
+      return new Set<string>(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch {
+      return new Set<string>()
+    }
+  })
+  const dismissAnnouncement = (a: { id: number; updated_at: string }) => {
+    setDismissed((prev) => {
+      const next = new Set(prev).add(announcementKey(a))
+      try {
+        localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next]))
+      } catch {
+        /* localStorage 不可の環境では非表示はセッション内のみ有効 */
+      }
+      return next
+    })
+  }
+  const visibleAnnouncements = announcements.filter((a) => !dismissed.has(announcementKey(a)))
+
   // 画面遷移時にモバイルメニューを閉じる
   const closeMobile = () => setMobileOpen(false)
 
@@ -280,7 +305,7 @@ export default function Header() {
       <VerifyEmailBanner />
 
       {/* お知らせ（管理者がDBで設定） */}
-      {announcements.map((a) => {
+      {visibleAnnouncements.map((a) => {
         const c =
           a.level === 'info'
             ? { wrap: 'bg-sky-900/30 border-sky-700/40 text-sky-200', link: 'text-sky-100' }
@@ -289,21 +314,33 @@ export default function Header() {
             : { wrap: 'bg-yellow-900/30 border-yellow-700/40 text-yellow-200', link: 'text-yellow-100' }
         return (
           <div key={a.id} className={`border-t text-xs sm:text-sm ${c.wrap}`}>
-            <div className="max-w-7xl mx-auto px-4 py-2 leading-relaxed whitespace-pre-wrap">
-              {a.message}
-              {a.link_url && (
-                <>
-                  {' '}
-                  <a
-                    href={a.link_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`underline hover:text-white transition-colors ${c.link}`}
-                  >
-                    {a.link_label || a.link_url}
-                  </a>
-                </>
-              )}
+            <div className="max-w-7xl mx-auto px-4 py-2 leading-relaxed">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 whitespace-pre-wrap">
+                  {a.message}
+                  {a.link_url && (
+                    <>
+                      {' '}
+                      <a
+                        href={a.link_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`underline hover:text-white transition-colors ${c.link}`}
+                      >
+                        {a.link_label || a.link_url}
+                      </a>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => dismissAnnouncement(a)}
+                  title="このお知らせを表示しない"
+                  className="shrink-0 underline opacity-70 hover:opacity-100 hover:text-white transition-colors whitespace-nowrap"
+                >
+                  表示しない
+                </button>
+              </div>
             </div>
           </div>
         )

@@ -264,6 +264,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // お知らせ管理
         Route::get('admin/announcements',          [AnnouncementController::class, 'adminIndex']);
+        Route::post('admin/announcements/reorder', [AnnouncementController::class, 'reorder']);
         Route::post('admin/announcements',         [AnnouncementController::class, 'store']);
         Route::put('admin/announcements/{id}',     [AnnouncementController::class, 'update']);
         Route::delete('admin/announcements/{id}',  [AnnouncementController::class, 'destroy']);

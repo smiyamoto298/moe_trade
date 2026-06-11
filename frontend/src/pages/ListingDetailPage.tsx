@@ -84,7 +84,7 @@ export default function ListingDetailPage() {
       {/* アイテム情報 */}
       <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
         <p className="text-sm text-gray-400 mb-1">{item.category.name}</p>
-        <h1 className="text-2xl font-bold text-white mb-4">{item.name}</h1>
+        <h1 data-tour="detail-info" className="text-2xl font-bold text-white mb-4">{item.name}</h1>
 
         {item.description && (
           <p className="text-sm text-gray-300 mb-4">{item.description}</p>
@@ -239,6 +239,7 @@ export default function ListingDetailPage() {
         </p>
 
         {/* 取引アクション（チャットのやり取りはマイページで行う） */}
+        <div data-tour="detail-trade">
         {isOwner ? (
           <Link
             to="/mypage"
@@ -285,6 +286,7 @@ export default function ListingDetailPage() {
             取引希望を送る
           </button>
         )}
+        </div>
       </div>
 
       {/* 価格解析 */}
