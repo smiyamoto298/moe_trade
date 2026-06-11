@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Item;
+use App\Models\ItemCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -11,6 +12,28 @@ use Tests\TestCase;
 class ListingApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_装備セットは構成部位の追加効果で絞り込める(): void
+    {
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        // 部位（atk=50）を持つ装備セットを出品
+        $piece = $this->makeItem(['name' => 'アタッカー部位', 'category_id' => $cats['sword']->id, 'base_stats' => ['atk' => 50]]);
+        $set   = $this->makeItem(['name' => 'アタックセット', 'category_id' => $equipSet->id, 'is_equipment_set' => true, 'base_stats' => []]);
+        $set->setMembers()->attach($piece->id, ['sort_order' => 0]);
+        $this->makeListing(null, $set);
+
+        // atk>=40 で絞り込むと、構成部位がヒットしてセットが表示される
+        $res = $this->getJson('/api/listings?' . http_build_query(['base_stat_ranges' => ['atk' => ['min' => 40]]]));
+        $res->assertOk();
+        $this->assertContains('アタックセット', collect($res->json('data'))->pluck('item.name')->all());
+
+        // atk>=60 では構成部位が満たさないため表示されない
+        $res2 = $this->getJson('/api/listings?' . http_build_query(['base_stat_ranges' => ['atk' => ['min' => 60]]]));
+        $res2->assertOk();
+        $this->assertNotContains('アタックセット', collect($res2->json('data'))->pluck('item.name')->all());
+    }
 
     public function test_出品一覧は未ログインでも閲覧できる(): void
     {
@@ -134,6 +157,73 @@ class ListingApiTest extends TestCase
         ]));
         $res->assertOk()->assertJsonCount(1, 'data');
         $this->assertSame('刀剣の書80', $res->json('data.0.item.name'));
+    }
+
+    public function test_通常検索と構成検索でテクニックの絞り込みが切り替わる(): void
+    {
+        $cats = $this->makeCategoryTree();
+
+        // WAR（刀剣・キック・盾・戦闘技術）を必要とするテクニック
+        $warTech = Item::create([
+            'category_id' => $cats['noah']->id, 'name' => 'ウォーリアー技',
+            'verified_status' => 'verified', 'mastery_requirements' => ['WAR'],
+        ]);
+        // 刀剣のみを必要とするテクニック
+        $swordTech = Item::create([
+            'category_id' => $cats['noah']->id, 'name' => '刀剣の書',
+            'verified_status' => 'verified', 'skill_requirements' => ['刀剣' => 50],
+        ]);
+        // 刀剣と料理を必要とするテクニック
+        $swordCookTech = Item::create([
+            'category_id' => $cats['noah']->id, 'name' => '刀剣料理の書',
+            'verified_status' => 'verified', 'skill_requirements' => ['刀剣' => 50, '料理' => 30],
+        ]);
+
+        $this->makeListing(null, $warTech);
+        $this->makeListing(null, $swordTech);
+        $this->makeListing(null, $swordCookTech);
+
+        // 通常検索（既定）: 刀剣 を含む必要スキルを持つもの → 刀剣の書・刀剣料理の書。WARは必要スキルが無く非表示
+        $res = $this->getJson('/api/listings?' . http_build_query(['skill_keys' => ['刀剣']]));
+        $res->assertOk()->assertJsonCount(2, 'data');
+        $names = collect($res->json('data'))->pluck('item.name')->all();
+        $this->assertContains('刀剣の書', $names);
+        $this->assertContains('刀剣料理の書', $names);
+        $this->assertNotContains('ウォーリアー技', $names);
+
+        // 通常検索: 刀剣 と 料理 を両方必要とするもの（AND）→ 刀剣料理の書のみ
+        $res = $this->getJson('/api/listings?' . http_build_query(['skill_keys' => ['刀剣', '料理']]));
+        $res->assertOk()->assertJsonCount(1, 'data');
+        $this->assertSame('刀剣料理の書', $res->json('data.0.item.name'));
+
+        // 通常検索 + マスタリ構成スキルも対象: 刀剣 → 必要スキルに刀剣を持つ2件 + 刀剣を構成に含むWAR
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'skill_keys'            => ['刀剣'],
+            'skill_include_mastery' => '1',
+        ]));
+        $res->assertOk()->assertJsonCount(3, 'data');
+        $names = collect($res->json('data'))->pluck('item.name')->all();
+        $this->assertContains('ウォーリアー技', $names);
+
+        // 構成検索: 刀剣のみ選択 → 必要スキルが刀剣だけの刀剣の書のみ。
+        // WARは構成スキルが揃わず、刀剣料理は料理が選択外のため非表示
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'skill_keys'  => ['刀剣'],
+            'skill_match' => 'composition',
+        ]));
+        $res->assertOk()->assertJsonCount(1, 'data');
+        $this->assertSame('刀剣の書', $res->json('data.0.item.name'));
+
+        // 構成検索: WAR の全構成スキルを選択 → WARテクニック + 刀剣の書（刀剣⊆選択）。刀剣料理は料理が選択外で非表示
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'skill_keys'  => ['刀剣', 'キック', '盾', '戦闘技術'],
+            'skill_match' => 'composition',
+        ]));
+        $res->assertOk()->assertJsonCount(2, 'data');
+        $names = collect($res->json('data'))->pluck('item.name')->all();
+        $this->assertContains('ウォーリアー技', $names);
+        $this->assertContains('刀剣の書', $names);
+        $this->assertNotContains('刀剣料理の書', $names);
     }
 
     public function test_価格でフィルタとソートができる(): void

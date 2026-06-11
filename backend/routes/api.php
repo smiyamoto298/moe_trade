@@ -120,6 +120,8 @@ Route::middleware('auth:sanctum')->group(function () {
                 $chat->buyer_character_name = $char?->character_name;
                 return $chat;
             });
+        // 取引希望の順番待ち（出品の open キュー内での自分の順位・待ち人数）を付与
+        \App\Models\TradeChat::annotateBuyerQueue($chats, 'listing_id');
         return response()->json($chats);
     });
 
@@ -165,7 +167,8 @@ Route::middleware('auth:sanctum')->group(function () {
                 return $chat;
             });
 
-        $grouped = $chats->groupBy('buy_request_id')->map->values();
+        $grouped = $chats->groupBy('buy_request_id')
+            ->map(fn($group) => \App\Models\TradeChat::annotateOwnerQueue($group->values()));
         return response()->json($grouped);
     });
 
@@ -183,6 +186,8 @@ Route::middleware('auth:sanctum')->group(function () {
                 $chat->buyer_character_name = $char?->character_name;
                 return $chat;
             });
+        // 販売希望の順番待ち（買取の open キュー内での自分の順位・待ち人数）を付与
+        \App\Models\TradeChat::annotateBuyerQueue($chats, 'buy_request_id');
         return response()->json($chats);
     });
 
@@ -199,8 +204,9 @@ Route::middleware('auth:sanctum')->group(function () {
                 return $chat;
             });
 
-        // listing_id でグループ化して返す
-        $grouped = $chats->groupBy('listing_id')->map->values();
+        // listing_id でグループ化して返す（各グループに順番待ち情報を付与・2番目以降は匿名化）
+        $grouped = $chats->groupBy('listing_id')
+            ->map(fn($group) => \App\Models\TradeChat::annotateOwnerQueue($group->values()));
         return response()->json($grouped);
     });
 

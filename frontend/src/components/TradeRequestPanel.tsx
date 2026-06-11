@@ -18,7 +18,7 @@ const TIME_SLOTS = [
 ]
 
 interface Props {
-  source: { id: number; servers: ListingServer[] }
+  source: { id: number; servers: ListingServer[]; waiting_count?: number }
   kind?: 'listing' | 'buy_request'
   onComplete: () => void
   onCancel: () => void
@@ -99,6 +99,13 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
         <p className="text-sm font-semibold text-white">取引を希望する</p>
         <button onClick={onCancel} className="text-xs text-gray-400 hover:text-white">✕</button>
       </div>
+
+      {/* すでに他の取引希望がある場合、順番待ち人数を案内する（先着順で対応されます） */}
+      {(listing.waiting_count ?? 0) > 0 && (
+        <p className="text-center text-sm text-orange-300 bg-orange-900/20 border border-orange-700/40 rounded-lg py-2 px-3">
+          ⏳ この取引は現在 {listing.waiting_count}人待ちです（先着順で対応されます）
+        </p>
+      )}
 
       {/* サーバー選択 */}
       <div>

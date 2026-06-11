@@ -86,6 +86,54 @@ export const SKILL_GROUPS: { group: string; skills: string[] }[] = [
 
 export const ALL_SKILLS: string[] = SKILL_GROUPS.flatMap((g) => g.skills)
 
+// ---- マスタリ ----
+// マスタリは構成スキルを全て40取得することで発動する効果で、テクニックの発動条件になることがある。
+// skills の各スキル名は SKILL_GROUPS のスキル名と完全一致させること（絞り込みがスキル名で突き合わせるため）。
+export interface Mastery {
+  code: string
+  name: string
+  skills: string[]
+}
+
+export const MASTERIES: Mastery[] = [
+  { code: 'WAR', name: 'ウォーリアー',         skills: ['刀剣', 'キック', '盾', '戦闘技術'] },
+  { code: 'ALC', name: 'アルケミスト',         skills: ['破壊魔法', '回復魔法', '強化魔法', '神秘魔法'] },
+  { code: 'FOR', name: 'フォレスター',         skills: ['弓', '自然調和', '物まね', '調教'] },
+  { code: 'NEC', name: 'ネクロマンサー',       skills: ['召喚魔法', '死の魔法', '牙', '暗黒命令'] },
+  { code: 'CRE', name: 'クリエイター',         skills: ['鍛冶', '木工', '伐採', '採掘'] },
+  { code: 'BOM', name: '爆弾男',               skills: ['罠', '自然調和', '持久力', '物まね'] },
+  { code: 'BRE', name: 'ブリーダー',           skills: ['取引', '料理', '自然調和', '調教'] },
+  { code: 'TEM', name: 'テンプルナイト',       skills: ['回復魔法', '神秘魔法', 'こんぼう', '戦闘技術', '集中力'] },
+  { code: 'DRU', name: 'ドルイド',             skills: ['回復魔法', '自然調和', '魔法熟練', '暗黒命令'] },
+  { code: 'SAG', name: '紺碧の賢者',           skills: ['破壊魔法', '回復魔法', '強化魔法', '神秘魔法', '召喚魔法', '死の魔法'] },
+  { code: 'GRE', name: 'グレート クリエイター', skills: ['鍛冶', '木工', '裁縫', '薬調合', '装飾細工', '料理', '複製', '醸造'] },
+  { code: 'MER', name: '傭兵',                 skills: ['銃器', '罠', '物まね', '戦闘技術', '料理'] },
+  { code: 'SAM', name: 'サムライ',             skills: ['刀剣', '戦闘技術', '攻撃回避', '筋力', '包帯', '精神力'] },
+  { code: 'MIN', name: 'マイン ビショップ',     skills: ['神秘魔法', '魔法熟練', '召喚魔法', '鍛冶'] },
+  { code: 'KIT', name: '厨房師',               skills: ['料理', '醸造', '呪文抵抗力'] },
+  { code: 'ASS', name: 'アサシン',             skills: ['刀剣', '罠', '物まね', '投げ', '自然調和', '薬調合', '落下耐性'] },
+  { code: 'SEA', name: '海戦士',               skills: ['水泳', '槍', '料理', '釣り', '取引'] },
+  { code: 'BRA', name: 'ブレイブナイト',       skills: ['戦闘技術', 'こんぼう', '盾', '呪文抵抗力', '着こなし'] },
+  { code: 'EVI', name: 'イビルナイト',         skills: ['刀剣', '牙', '死体回収', '死の魔法'] },
+  { code: 'COS', name: 'コスプレイヤー',       skills: ['装飾細工', '裁縫', '着こなし', '物まね', '攻撃回避', 'ﾊﾟﾌｫｰﾏﾝｽ'] },
+  { code: 'DAB', name: '物好き',               skills: ['水泳', '収穫', '酩酊', '落下耐性', '死体回収', 'ﾊﾟﾌｫｰﾏﾝｽ'] },
+  { code: 'ATH', name: 'アスリート',           skills: ['落下耐性', '水泳', '自然回復', '自然調和'] },
+  { code: 'DKF', name: '酔拳士',               skills: ['素手', 'キック', '酩酊', '攻撃回避', '持久力'] },
+  { code: 'ROW', name: '荒くれ者',             skills: ['素手', 'キック', '落下耐性', '生命力', '自然回復', 'ﾊﾟﾌｫｰﾏﾝｽ'] },
+  { code: 'IDL', name: '新人アイドル',         skills: ['ダンス', '音楽', '水泳', 'ﾊﾟﾌｫｰﾏﾝｽ'] },
+  { code: 'HOU', name: 'ハウスキーパー',       skills: ['料理', '裁縫', '美容'] },
+  { code: 'ADV', name: 'アドベンチャラー',     skills: ['落下耐性', '水泳', '採掘', '解読', '盗み'] },
+  { code: 'SPY', name: 'スパイ',               skills: ['物まね', '投げ', '盗み'] },
+  { code: 'YAN', name: 'チンピラ/レディース',   skills: ['こんぼう', '取引', '盗み', '酩酊'] },
+  { code: 'BBD', name: 'ブラッドバード',       skills: ['シャウト', '持久力', '牙', '音楽'] },
+  { code: 'DUE', name: 'デュエリスト',         skills: ['槍', '筋力', '着こなし', '自然回復', 'シャウト'] },
+  { code: 'COL', name: 'コレクター',           skills: ['採掘', '伐採', '収穫', '釣り', '栽培'] },
+  { code: 'ELM', name: 'エレメンタルナイト',   skills: ['槍', '強化魔法', '召喚魔法', '攻撃回避'] },
+]
+
+export const MASTERY_BY_CODE: Record<string, Mastery> =
+  Object.fromEntries(MASTERIES.map((m) => [m.code, m]))
+
 // ---- アセット ----
 export const ASSET_PLACEMENTS: AssetPlacement[] = ['床', '壁', '天井']
 export const ASSET_FUNCTIONS: AssetFunction[] = ['販売員', '銀行', 'タイプカプセル', '栽培', '生産施設', 'カタログ']

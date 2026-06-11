@@ -335,6 +335,91 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseMissing('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $victim->id]);
     }
 
+    public function test_一般ユーザーは構成部位なしで装備セットを登録できる(): void
+    {
+        $user     = $this->makeUser();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        // 構成部位は管理者に任せる想定で、pieces 空でも登録できる
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '部位未設定セット',
+            'is_equipment_set' => true,
+            'pieces'           => [],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('is_equipment_set', true)
+            ->assertJsonCount(0, 'set_members')
+            ->assertJsonPath('verified_status', 'unverified');
+    }
+
+    public function test_装備セットの部位を付け替えるとセットの構成も統合先に切り替わる(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $create = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '付け替えセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                ['category_id' => $cats['sword']->id, 'name' => '旧部位'],
+            ],
+        ])->assertStatus(201);
+        $setId   = $create->json('id');
+        $pieceId = $create->json('set_members.0.id');
+
+        // 付け替え先（重複扱いの別アイテム）
+        $target = $this->makeItem(['name' => '正部位', 'category_id' => $cats['sword']->id]);
+
+        // 旧部位 → 正部位 へ付け替え
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/items/{$pieceId}/merge", ['target_id' => $target->id])
+            ->assertOk()
+            ->assertJsonPath('set_member_count', 1);
+
+        // 旧部位は削除され、セットは付け替え先を参照する（黙って外れない）
+        $this->assertDatabaseMissing('items', ['id' => $pieceId]);
+        $this->assertDatabaseHas('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $target->id]);
+        $show = $this->getJson("/api/items/{$setId}")->assertOk();
+        $this->assertEqualsCanonicalizing([$target->id], collect($show->json('set_members'))->pluck('id')->all());
+    }
+
+    public function test_装備セットの部位削除は確認を要求しセットから外れる(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $create = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '削除テストセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                ['category_id' => $cats['sword']->id, 'name' => '部位A'],
+                ['category_id' => $cats['sword']->id, 'name' => '部位B'],
+            ],
+        ])->assertStatus(201);
+        $setId    = $create->json('id');
+        $pieceAId = $create->json('set_members.0.id');
+
+        // 出品も履歴も無いが、セット参加のため確認を要求（409）
+        $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/items/{$pieceAId}")
+            ->assertStatus(409)
+            ->assertJsonPath('set_usage_count', 1);
+
+        // force で削除 → セットから外れ、メンバーは1件に
+        $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/items/{$pieceAId}?force=1")
+            ->assertStatus(204);
+
+        $this->assertDatabaseMissing('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $pieceAId]);
+        $this->assertDatabaseCount('equipment_set_members', 1);
+    }
+
     public function test_スキルアイテムは必要スキル値を保存できる(): void
     {
         $user = $this->makeUser();

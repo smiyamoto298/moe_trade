@@ -70,6 +70,7 @@ export const itemsApi = {
     is_equipment_set?: boolean
     set_piece_category_ids?: number[]
     skill_requirements?: Record<string, number> | null
+    mastery_requirements?: string[] | null
     dyeable?: boolean | null
     mithril?: boolean
     exclusive_skill?: boolean
@@ -104,6 +105,7 @@ export const itemsApi = {
         set_piece_category_ids: data.set_piece_category_ids ?? null,
         set_members: [],
         skill_requirements: data.skill_requirements ?? null,
+        mastery_requirements: data.mastery_requirements ?? null,
         placement: data.placement ?? null,
         asset_width: data.asset_width ?? null,
         asset_height: data.asset_height ?? null,

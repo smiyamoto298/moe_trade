@@ -77,6 +77,9 @@ class BuyRequestController extends Controller
             default      => $query->latest(),
         };
 
+        // 現在の売却申し出者数（順番待ち人数）。一覧の取引パネルで「N人待ち」を表示するのに使う。
+        $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
+
         $result = $query->paginate(20);
         $result->getCollection()->each(fn(BuyRequest $b) => $b->resolveServerContacts());
 
@@ -89,6 +92,8 @@ class BuyRequestController extends Controller
             ->whereIn('status', ['active', 'completed'])
             ->findOrFail($id);
         $buyRequest->resolveServerContacts();
+        // 現在の売却申し出者数（順番待ち人数）。「この取引はN人待ちです」の表示に使う。
+        $buyRequest->waiting_count = $buyRequest->chats()->where('status', 'open')->count();
         return response()->json($buyRequest);
     }
 

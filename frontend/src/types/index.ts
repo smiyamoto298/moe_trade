@@ -73,6 +73,8 @@ export interface Item {
   // 装備セットの構成部位（通常アイテムとして登録された部位）。セット本体のときのみ存在。
   set_members?: Item[]
   skill_requirements: Record<string, number> | null
+  // テクニックの発動に必要なマスタリのコード配列（例: ["WAR"]）。テクニック以外では null。
+  mastery_requirements: string[] | null
   // ---- アセット固有（装備品・テクニックでは null） ----
   placement?: AssetPlacement | null      // 設置個所: 床 / 壁 / 天井
   asset_width?: number | null            // サイズ: 横
@@ -118,6 +120,8 @@ export interface Listing {
   expires_at: string
   servers: ListingServer[]
   created_at: string
+  /** 現在の取引希望者数（順番待ち人数）。詳細取得時のみ付与。 */
+  waiting_count?: number
 }
 
 // ---- 買取（買いたい） ----
@@ -134,6 +138,8 @@ export interface BuyRequest {
   expires_at: string
   servers: ListingServer[]
   created_at: string
+  /** 現在の売却申し出者数（順番待ち人数）。詳細取得時のみ付与。 */
+  waiting_count?: number
 }
 
 export interface BuyRequestSearchParams {
@@ -235,6 +241,10 @@ export interface ListingSearchParams {
   base_stat_ranges?: Record<string, StatRange>
   skill_keys?: string[]
   skill_ranges?: Record<string, StatRange>
+  // スキル検索モード。'normal'=指定スキルを含むテクニック / 'composition'=必要スキル・マスタリ構成スキルが全て検索条件内。既定は 'normal'。
+  skill_match?: 'normal' | 'composition'
+  // 通常検索で、指定スキルを構成に含むマスタリを必要とするテクニックも対象にするか。
+  skill_include_mastery?: boolean
   special_conditions?: string[]
   sort?: string  // 'newest' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
   page?: number
@@ -269,6 +279,13 @@ export interface TradeChat {
   messages: TradeMessage[]
   created_at: string
   updated_at: string
+  // ---- 順番待ち（先着順キュー）情報 ----
+  /** open キュー内での順位（1始まり）。open 以外や未付与のときは null/undefined。 */
+  queue_position?: number | null
+  /** その取引対象の open チャット総数（＝待ち人数）。 */
+  queue_total?: number
+  /** owner 視点で2番目以降の順番待ち（匿名・操作不可）かどうか。 */
+  is_locked?: boolean
 }
 
 // ---- 運営掲示板 ----

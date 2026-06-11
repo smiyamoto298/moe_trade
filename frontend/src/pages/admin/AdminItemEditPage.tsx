@@ -7,7 +7,7 @@ import ComboInput from '../../components/ComboInput'
 import Spinner from '../../components/Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces, membersToForm } from '../../components/EquipmentSetPiecesEditor'
 import type { ItemCategory, AssetPlacement, AssetFunction } from '../../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
@@ -67,6 +67,7 @@ export default function AdminItemEditPage() {
     exclusive_skill: false as boolean,
     is_equipment_set: false as boolean,
     skill_requirements: {} as Record<string, string>,
+    mastery_requirements: [] as string[],
     placement: '' as '' | AssetPlacement,
     asset_width: '',
     asset_height: '',
@@ -111,6 +112,7 @@ export default function AdminItemEditPage() {
           skill_requirements: Object.fromEntries(
             Object.entries(item.skill_requirements ?? {}).map(([k, v]) => [k, String(v)])
           ),
+          mastery_requirements: [...(item.mastery_requirements ?? [])],
           placement: (item.placement ?? '') as '' | AssetPlacement,
           asset_width: item.asset_width != null ? String(item.asset_width) : '',
           asset_height: item.asset_height != null ? String(item.asset_height) : '',
@@ -183,6 +185,14 @@ export default function AdminItemEditPage() {
         : [...p.special_conditions, c],
     }))
 
+  const toggleMastery = (code: string) =>
+    setForm((p) => ({
+      ...p,
+      mastery_requirements: p.mastery_requirements.includes(code)
+        ? p.mastery_requirements.filter((x) => x !== code)
+        : [...p.mastery_requirements, code],
+    }))
+
   const setBonus = (idx: number, key: 'effect_name' | 'description', val: string) =>
     setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, [key]: val } : e))
 
@@ -216,7 +226,8 @@ export default function AdminItemEditPage() {
     let pieces: ReturnType<typeof formToPieces> = []
     if (isEquipSet) {
       pieces = formToPieces(equipSetForm)
-      if (pieces.length === 0) {
+      // editor/admin は構成部位を必須に。一般ユーザーは未入力でも登録可（運営が後から設定）。
+      if (pieces.length === 0 && isEditor) {
         await alert('装備セットは構成部位を1つ以上登録してください。', { title: '入力エラー' })
         return
       }
@@ -249,6 +260,7 @@ export default function AdminItemEditPage() {
                 .map(([k, v]) => [k, Number(v)])
             )
           : null,
+        mastery_requirements: isSkill ? form.mastery_requirements : null,
         placement: isAsset ? (form.placement || null) : null,
         asset_width: isAsset && form.asset_width !== '' ? Number(form.asset_width) : null,
         asset_height: isAsset && form.asset_height !== '' ? Number(form.asset_height) : null,
@@ -335,22 +347,6 @@ export default function AdminItemEditPage() {
             </select>
           </div>
 
-          {/* 装備セット：構成部位（設定グループ単位で編集） */}
-          {isEquipSet && (
-            <div className="border border-amber-600/40 bg-amber-900/10 rounded-lg p-4 space-y-2">
-              <p className="text-xs font-semibold text-amber-300">
-                ⚔ 構成部位 <span className="text-red-400">*</span>
-                <span className="text-gray-400 font-normal ml-1">（部位ごとに名前・効果を設定。同じ設定の部位はまとめて入力できます）</span>
-              </p>
-              <EquipmentSetPiecesEditor
-                categories={categories}
-                value={equipSetForm}
-                onChange={setEquipSetForm}
-                bonusValueLabelOptions={bonusValueLabelOptions}
-              />
-            </div>
-          )}
-
           <div>
             <label className="block text-xs text-gray-400 mb-1">アイテム名</label>
             <input
@@ -369,6 +365,27 @@ export default function AdminItemEditPage() {
             />
           </div>
         </div>
+
+        {/* 装備セット：構成部位（アイテム名・説明の下で入力） */}
+        {isEquipSet && (
+        <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-gray-300">
+            構成部位 {isEditor && <span className="text-red-400">*</span>}
+            <span className="text-gray-500 font-normal ml-1 text-xs">（部位ごとに名前・効果を設定。同じ設定の部位はまとめて入力できます）</span>
+          </h2>
+          {!isEditor && (
+            <p className="text-xs text-amber-200 bg-amber-900/20 border border-amber-700/40 rounded px-2 py-1.5 leading-relaxed">
+              構成部位の設定は管理者に丸投げでも登録できます！個人で運営しているので入力いただけたらとても助かります・・！
+            </p>
+          )}
+          <EquipmentSetPiecesEditor
+            categories={categories}
+            value={equipSetForm}
+            onChange={setEquipSetForm}
+            bonusValueLabelOptions={bonusValueLabelOptions}
+          />
+        </div>
+        )}
 
         {/* アセット情報（アセットのみ） */}
         {isAsset && (
@@ -575,6 +592,38 @@ export default function AdminItemEditPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 必要マスタリ（テクニックのみ） */}
+        {isSkill && (
+          <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-gray-300">必要マスタリ</h2>
+            <p className="text-xs text-gray-500">発動に必要なマスタリがあれば選択してください（構成スキルを全て40で発動）。</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {MASTERIES.map((m) => (
+                <label
+                  key={m.code}
+                  className={`flex flex-col gap-0.5 px-3 py-2 rounded border cursor-pointer transition-colors ${
+                    form.mastery_requirements.includes(m.code)
+                      ? 'border-primary-500/60 bg-primary-500/10'
+                      : 'border-surface-border hover:border-gray-500'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.mastery_requirements.includes(m.code)}
+                      onChange={() => toggleMastery(m.code)}
+                      className="accent-primary-500 w-4 h-4"
+                    />
+                    <span className="font-medium text-gray-200">{m.name}</span>
+                    <span className="text-xs text-gray-500">【{m.code}】</span>
+                  </span>
+                  <span className="text-[11px] text-gray-500 pl-6">{m.skills.join('・')}</span>
+                </label>
+              ))}
+            </div>
           </div>
         )}
 

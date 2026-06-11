@@ -74,63 +74,164 @@ class ListingController extends Controller
         }
 
         // 追加効果（base_stats）フィルター
-        // チェックされたキーは値の有無に関わらず「そのキーが存在する」ことを必須条件とする
+        // チェックされたキーは値の有無に関わらず「そのキーが存在する」ことを必須条件とする。
+        // 装備セットは本体に効果を持たないため、構成部位（setMembers）のいずれかが条件を満たせば一致とする。
         if ($request->base_stat_keys) {
             foreach ((array) $request->base_stat_keys as $key) {
-                $query->whereHas('item', function ($iq) use ($key) {
-                    $iq->whereRaw("JSON_EXTRACT(base_stats, '$.$key') IS NOT NULL")
-                       ->whereRaw("CAST(JSON_EXTRACT(base_stats, '$.$key') AS DECIMAL(15,4)) != 0");
-                });
+                $cond = function ($q) use ($key) {
+                    $q->whereRaw("JSON_EXTRACT(base_stats, '$.$key') IS NOT NULL")
+                      ->whereRaw("CAST(JSON_EXTRACT(base_stats, '$.$key') AS DECIMAL(15,4)) != 0");
+                };
+                $query->whereHas('item', fn($iq) =>
+                    $iq->where(fn($w) => $w->where($cond)->orWhereHas('setMembers', $cond))
+                );
             }
         }
-        // 数値範囲指定がある場合はさらに絞り込む
+        // 数値範囲指定がある場合はさらに絞り込む（セットは構成部位のいずれかが範囲内なら一致）
         if ($request->base_stat_ranges) {
             foreach ($request->base_stat_ranges as $key => $range) {
-                $query->whereHas('item', function ($iq) use ($key, $range) {
-                    $min = $range['min'] ?? '';
-                    $max = $range['max'] ?? '';
+                $min = $range['min'] ?? '';
+                $max = $range['max'] ?? '';
+                if (($min === '' || $min === null) && ($max === '' || $max === null)) {
+                    continue;
+                }
+                $cond = function ($q) use ($key, $min, $max) {
                     if ($min !== '' && $min !== null) {
-                        $iq->whereRaw(
-                            "CAST(JSON_EXTRACT(base_stats, '$.$key') AS DECIMAL(15,4)) >= ?",
-                            [(float) $min]
-                        );
+                        $q->whereRaw("CAST(JSON_EXTRACT(base_stats, '$.$key') AS DECIMAL(15,4)) >= ?", [(float) $min]);
                     }
                     if ($max !== '' && $max !== null) {
-                        $iq->whereRaw(
-                            "CAST(JSON_EXTRACT(base_stats, '$.$key') AS DECIMAL(15,4)) <= ?",
-                            [(float) $max]
-                        );
+                        $q->whereRaw("CAST(JSON_EXTRACT(base_stats, '$.$key') AS DECIMAL(15,4)) <= ?", [(float) $max]);
                     }
-                });
+                };
+                $query->whereHas('item', fn($iq) =>
+                    $iq->where(fn($w) => $w->where($cond)->orWhereHas('setMembers', $cond))
+                );
             }
         }
 
-        // 必要スキル値フィルター（スキルタブ用・AND条件）
-        // チェックされたスキルは「必要スキルに含まれる」ことを必須条件とし、範囲指定でさらに絞り込む
+        // 必要スキル値フィルター（スキルタブ用）
+        // skill_match で検索モードを切り替える:
+        //   normal（既定・通常検索）= 指定したスキルを（すべて）必要スキルに含むテクニックを表示
+        //   composition（構成検索）  = マスタリの構成スキルを含む必要スキルが、すべて検索条件に入っているテクニックを表示
         if ($request->skill_keys) {
-            foreach ((array) $request->skill_keys as $key) {
-                // スキル名は日本語のためJSONパスはバインドで渡す（インジェクション防止）
-                $path  = '$."' . str_replace(['"', '\\'], '', $key) . '"';
-                $range = $request->skill_ranges[$key] ?? [];
-                $min   = $range['min'] ?? '';
-                $max   = $range['max'] ?? '';
+            $selectedSkills = array_values((array) $request->skill_keys);
+            $composition    = $request->skill_match === 'composition';
+            $skillRanges    = $request->skill_ranges ?? [];
 
-                $query->whereHas('item', function ($iq) use ($path, $min, $max) {
-                    $iq->whereRaw('JSON_EXTRACT(skill_requirements, ?) IS NOT NULL', [$path]);
-                    if ($min !== '' && $min !== null) {
-                        $iq->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) >= ?', [$path, (float) $min]);
+            // JSONパス（スキル名は日本語のためバインドで渡す。インジェクション防止）
+            $jsonPath = fn($key) => '$."' . str_replace(['"', '\\'], '', $key) . '"';
+
+            if (!$composition) {
+                // 通常検索: 指定したスキルをすべて必要スキルに含む（AND）。範囲指定でさらに絞り込む。
+                // skill_include_mastery が真なら、そのスキルを構成に含むマスタリを必要とするテクニックも対象に含める。
+                $includeMastery = $request->boolean('skill_include_mastery');
+
+                foreach ($selectedSkills as $key) {
+                    $path = $jsonPath($key);
+                    $r    = $skillRanges[$key] ?? [];
+                    $min  = $r['min'] ?? '';
+                    $max  = $r['max'] ?? '';
+
+                    // このスキルを構成に含むマスタリ（範囲指定が40を許容する場合のみ。マスタリは構成スキルを全て40で発動）
+                    $masteryCodes = [];
+                    if ($includeMastery) {
+                        $permits40 = ($min === '' || $min === null || (float) $min <= 40)
+                            && ($max === '' || $max === null || (float) $max >= 40);
+                        if ($permits40) {
+                            $masteryCodes = \App\Support\Mastery::codesForSkill($key);
+                        }
                     }
-                    if ($max !== '' && $max !== null) {
-                        $iq->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) <= ?', [$path, (float) $max]);
+
+                    $query->whereHas('item', function ($iq) use ($path, $min, $max, $masteryCodes) {
+                        $iq->where(function ($w) use ($path, $min, $max, $masteryCodes) {
+                            // 必要スキル値による一致
+                            $w->where(function ($sq) use ($path, $min, $max) {
+                                $sq->whereRaw('JSON_EXTRACT(skill_requirements, ?) IS NOT NULL', [$path]);
+                                if ($min !== '' && $min !== null) {
+                                    $sq->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) >= ?', [$path, (float) $min]);
+                                }
+                                if ($max !== '' && $max !== null) {
+                                    $sq->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) <= ?', [$path, (float) $max]);
+                                }
+                            });
+                            // 必要マスタリによる一致（このスキルを構成に含むマスタリ）
+                            if (!empty($masteryCodes)) {
+                                $w->orWhere(function ($mq) use ($masteryCodes) {
+                                    foreach ($masteryCodes as $i => $code) {
+                                        $i === 0
+                                            ? $mq->whereJsonContains('mastery_requirements', $code)
+                                            : $mq->orWhereJsonContains('mastery_requirements', $code);
+                                    }
+                                });
+                            }
+                        });
+                    });
+                }
+            } else {
+                // 構成検索: アイテムの必要スキル + 必要マスタリの構成スキルが、すべて選択スキルに含まれる（部分集合）。
+
+                // 範囲指定が 40 を許容するスキルだけマスタリ判定に使う（マスタリは構成スキルを全て40で発動）
+                $permits40 = function (string $key) use ($skillRanges): bool {
+                    $r   = $skillRanges[$key] ?? [];
+                    $min = $r['min'] ?? '';
+                    $max = $r['max'] ?? '';
+                    return ($min === '' || $min === null || (float) $min <= 40)
+                        && ($max === '' || $max === null || (float) $max >= 40);
+                };
+                $masterySkills = array_values(array_filter($selectedSkills, $permits40));
+
+                $query->whereHas('item', function ($iq) use ($selectedSkills, $skillRanges, $masterySkills, $jsonPath) {
+                    // 必要スキル: 選択されていないスキルを必要としない（部分集合チェック）
+                    $notSelected = array_values(array_diff(\App\Support\Skills::ALL, $selectedSkills));
+                    foreach ($notSelected as $u) {
+                        $iq->whereRaw('JSON_EXTRACT(skill_requirements, ?) IS NULL', [$jsonPath($u)]);
                     }
+                    // 範囲指定があるスキルは、必要とする場合に値が範囲内であること
+                    foreach ($selectedSkills as $key) {
+                        $r = $skillRanges[$key] ?? [];
+                        $min = $r['min'] ?? '';
+                        $max = $r['max'] ?? '';
+                        if (($min === '' || $min === null) && ($max === '' || $max === null)) {
+                            continue;
+                        }
+                        $path = $jsonPath($key);
+                        $iq->where(function ($c) use ($path, $min, $max) {
+                            $c->whereRaw('JSON_EXTRACT(skill_requirements, ?) IS NULL', [$path]);
+                            $c->orWhere(function ($d) use ($path, $min, $max) {
+                                if ($min !== '' && $min !== null) {
+                                    $d->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) >= ?', [$path, (float) $min]);
+                                }
+                                if ($max !== '' && $max !== null) {
+                                    $d->whereRaw('CAST(JSON_EXTRACT(skill_requirements, ?) AS DECIMAL(15,4)) <= ?', [$path, (float) $max]);
+                                }
+                            });
+                        });
+                    }
+                    // 必要マスタリ: 構成スキルが全て選択されていない（＝完全被覆でない）マスタリを必要としない。
+                    // マスタリ未設定（NULL）のテクニックはこの条件を満たす（MySQL の JSON_CONTAINS は
+                    // NULL 列に対して NULL を返し WHERE で除外されてしまうため、明示的に NULL を許可する）。
+                    $covered    = \App\Support\Mastery::fullyCoveredCodes($masterySkills);
+                    $notCovered = array_values(array_diff(\App\Support\Mastery::codes(), $covered));
+                    $iq->where(function ($mw) use ($notCovered) {
+                        $mw->whereNull('mastery_requirements')
+                           ->orWhere(function ($m2) use ($notCovered) {
+                               foreach ($notCovered as $code) {
+                                   $m2->whereJsonDoesntContain('mastery_requirements', $code);
+                               }
+                           });
+                    });
                 });
             }
         }
 
         // 特殊条件フィルター（選択された条件をすべて持つアイテムに絞り込み、AND条件）
+        // 装備セットは構成部位のいずれかが条件を持てば一致とする。
         if ($request->special_conditions) {
             foreach ((array) $request->special_conditions as $cond) {
-                $query->whereHas('item', fn($iq) => $iq->whereJsonContains('special_conditions', $cond));
+                $apply = fn($q) => $q->whereJsonContains('special_conditions', $cond);
+                $query->whereHas('item', fn($iq) =>
+                    $iq->where(fn($w) => $w->where($apply)->orWhereHas('setMembers', $apply))
+                );
             }
         }
 
@@ -153,11 +254,15 @@ class ListingController extends Controller
         }
 
         // 付加効果フィルター（effect_nameで絞り込み、AND条件）
+        // 装備セットは構成部位（setMembers）の付加効果も対象にする。
         if ($request->bonus_effect_names) {
             foreach ((array) $request->bonus_effect_names as $name) {
-                $query->whereHas('item.bonusEffects', function ($bq) use ($name) {
-                    $bq->where('effect_name', $name);
-                });
+                $cond = fn($bq) => $bq->where('effect_name', $name);
+                $query->whereHas('item', fn($iq) =>
+                    $iq->where(fn($w) =>
+                        $w->whereHas('bonusEffects', $cond)->orWhereHas('setMembers.bonusEffects', $cond)
+                    )
+                );
             }
         }
 
@@ -168,7 +273,7 @@ class ListingController extends Controller
                 $min   = $range['min'] ?? '';
                 $max   = $range['max'] ?? '';
 
-                $query->whereHas('item.bonusEffects', function ($bq) use ($label, $min, $max) {
+                $cond = function ($bq) use ($label, $min, $max) {
                     if ($min !== '' || $max !== '') {
                         // 数値範囲あり: JSON_TABLE で同一要素のラベル＋値を一緒にチェック
                         $bq->whereRaw("EXISTS (
@@ -186,7 +291,12 @@ class ListingController extends Controller
                             [$label]
                         );
                     }
-                });
+                };
+                $query->whereHas('item', fn($iq) =>
+                    $iq->where(fn($w) =>
+                        $w->whereHas('bonusEffects', $cond)->orWhereHas('setMembers.bonusEffects', $cond)
+                    )
+                );
             }
         }
 
@@ -236,6 +346,10 @@ class ListingController extends Controller
             };
         }
 
+        // 現在の取引希望者数（順番待ち人数）。一覧の取引パネルで「N人待ち」を表示するのに使う。
+        // ソート分岐の select('listings.*') で消えないよう、ここで addSelect する。
+        $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
+
         $result = $query->paginate(20);
         // 連絡先キャラ名を出品者の現在のキャラクターで解決
         $result->getCollection()->each(fn(Listing $l) => $l->resolveServerContacts());
@@ -250,6 +364,8 @@ class ListingController extends Controller
             ->whereIn('status', ['active', 'completed'])
             ->findOrFail($id);
         $listing->resolveServerContacts();
+        // 現在の取引希望者数（順番待ち人数）。「この取引はN人待ちです」の表示に使う。
+        $listing->waiting_count = $listing->chats()->where('status', 'open')->count();
         return response()->json($listing);
     }
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { itemsApi } from '../api/items'
 import { useDialog } from '../contexts/DialogContext'
+import { useAuth } from '../contexts/AuthContext'
 import ComboInput from './ComboInput'
 import Spinner from './Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces } from './EquipmentSetPiecesEditor'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
 
 interface BonusValueForm {
@@ -41,6 +42,9 @@ interface Props {
 
 export default function NewItemForm({ onRegistered, onCancel, initialName = '' }: Props) {
   const { alert } = useDialog()
+  const { user } = useAuth()
+  // editor/admin は構成部位の入力を必須とする。一般ユーザーは未入力でも登録でき、運営に任せられる。
+  const isStaff = user?.role === 'editor' || user?.role === 'admin'
   const bonusValueLabelOptions = useBonusValueLabels()
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
@@ -53,6 +57,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     base_stats: {} as Record<string, string>,
     special_conditions: [] as string[],
     skill_requirements: {} as Record<string, string>,
+    mastery_requirements: [] as string[],
     dyeable: null as boolean | null,
     mithril: false,
     exclusive_skill: false,
@@ -98,6 +103,14 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const removeStat = (key: string) =>
     setForm((p) => { const n = { ...p.base_stats }; delete n[key]; return { ...p, base_stats: n } })
 
+  const toggleMastery = (code: string) =>
+    setForm((p) => ({
+      ...p,
+      mastery_requirements: p.mastery_requirements.includes(code)
+        ? p.mastery_requirements.filter((x) => x !== code)
+        : [...p.mastery_requirements, code],
+    }))
+
   const toggleCond = (c: string) =>
     setForm((p) => ({
       ...p,
@@ -128,7 +141,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     let pieces: ReturnType<typeof formToPieces> = []
     if (isEquipSet) {
       pieces = formToPieces(equipSetForm)
-      if (pieces.length === 0) {
+      // editor/admin は構成部位を必須に。一般ユーザーは未入力でも登録可（運営が後から設定）。
+      if (pieces.length === 0 && isStaff) {
         await alert('装備セットは構成部位を1つ以上登録してください。', { title: '入力エラー' })
         return
       }
@@ -160,6 +174,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
                 .map(([k, v]) => [k, Number(v)])
             )
           : null,
+        mastery_requirements: isSkill ? form.mastery_requirements : null,
         // アセット固有
         placement: isAsset ? (form.placement || null) : null,
         asset_width: isAsset && form.asset_width !== '' ? Number(form.asset_width) : null,
@@ -267,9 +282,14 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
       {isEquipSet && (
         <div className="border border-amber-600/40 bg-amber-900/10 rounded-lg p-3 space-y-2">
           <p className="text-xs font-semibold text-amber-300">
-            ⚔ 構成部位 <span className="text-red-400">*</span>
+            ⚔ 構成部位 {isStaff && <span className="text-red-400">*</span>}
             <span className="text-gray-400 font-normal ml-1">（部位ごとに名前・効果を設定。同じ設定の部位はまとめて入力できます）</span>
           </p>
+          {!isStaff && (
+            <p className="text-xs text-amber-200 bg-amber-900/20 border border-amber-700/40 rounded px-2 py-1.5 leading-relaxed">
+              構成部位の設定は管理者に丸投げでも登録できます！個人で運営しているので入力いただけたらとても助かります・・！
+            </p>
+          )}
           <EquipmentSetPiecesEditor
             categories={categories}
             value={equipSetForm}
@@ -306,6 +326,38 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 必要マスタリ（テクニックのみ） */}
+      {isSkill && (
+        <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-primary-400">必要マスタリ</p>
+          <p className="text-[10px] text-gray-500">発動に必要なマスタリがあれば選択してください（構成スキルを全て40で発動）。</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {MASTERIES.map((m) => (
+              <label
+                key={m.code}
+                className={`flex flex-col gap-0.5 px-2 py-1.5 rounded border cursor-pointer text-xs transition-colors ${
+                  form.mastery_requirements.includes(m.code)
+                    ? 'border-primary-500/60 bg-primary-500/10 text-gray-200'
+                    : 'border-surface-border text-gray-400 hover:border-gray-500'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.mastery_requirements.includes(m.code)}
+                    onChange={() => toggleMastery(m.code)}
+                    className="accent-primary-500"
+                  />
+                  <span className="font-medium text-gray-200">{m.name}</span>
+                  <span className="text-gray-500">【{m.code}】</span>
+                </span>
+                <span className="text-[10px] text-gray-500 pl-6">{m.skills.join('・')}</span>
+              </label>
+            ))}
+          </div>
         </div>
       )}
 

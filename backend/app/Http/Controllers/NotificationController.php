@@ -40,7 +40,33 @@ class NotificationController extends Controller
             })
             ->get();
 
-        $unreadChats = $chats->map(function (TradeChat $chat) use ($user) {
+        // owner 視点の順番待ち（2番目以降）チャットIDを求める。
+        // owner が登録した出品/買取の open チャットはすべてこの $chats に含まれるため、
+        // 同一 source の open チャットのうち先頭（最古）以外を「順番待ち」とみなす。
+        // 順番待ちは owner からは開けない（匿名・操作不可）ため、通知の未読対象から除外する。
+        $waitingChatIds = collect();
+        foreach (['listing_id', 'buy_request_id'] as $key) {
+            $chats->filter(fn(TradeChat $c) => $c->{$key} !== null)
+                ->groupBy($key)
+                ->each(function ($group) use ($waitingChatIds) {
+                    $open = $group->where('status', 'open')
+                        ->sortBy(fn(TradeChat $c) => sprintf('%s|%012d', (string) $c->created_at, $c->id))
+                        ->values();
+                    // 進行中の取引成立(deal)があるなら、全ての順番待ちを通知対象外にする
+                    // （先頭の open も含めて owner からは対応できないため）。
+                    // deal が無いときは先頭(open)のみ通知し、2番目以降を対象外にする。
+                    $skip = $group->contains(fn(TradeChat $c) => $c->status === 'deal') ? $open : $open->slice(1);
+                    $skip->each(fn(TradeChat $c) => $waitingChatIds->push($c->id));
+                });
+        }
+        $waitingChatIds = $waitingChatIds->all();
+
+        $unreadChats = $chats->map(function (TradeChat $chat) use ($user, $waitingChatIds) {
+            // 順番待ち（2番目以降）の取引希望は、先頭を見送るまで通知しない。
+            if (in_array($chat->id, $waitingChatIds, true)) {
+                return null;
+            }
+
             // messages リレーションは created_at 昇順のため、最新メッセージは id 最大で取得する。
             $last = $chat->messages->sortByDesc('id')->first();
 

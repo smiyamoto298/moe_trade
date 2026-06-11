@@ -131,6 +131,8 @@ class ItemController extends Controller
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'skill_requirements'       => 'nullable|array',
             'skill_requirements.*'     => 'integer|min:0|max:100',
+            'mastery_requirements'     => 'nullable|array',
+            'mastery_requirements.*'   => ['string', \Illuminate\Validation\Rule::in(\App\Support\Mastery::codes())],
             'set_piece_category_ids'   => 'nullable|array',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'placement'                => 'nullable|in:床,壁,天井',
@@ -230,6 +232,8 @@ class ItemController extends Controller
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'skill_requirements'       => 'nullable|array',
             'skill_requirements.*'     => 'integer|min:0|max:100',
+            'mastery_requirements'     => 'nullable|array',
+            'mastery_requirements.*'   => ['string', \Illuminate\Validation\Rule::in(\App\Support\Mastery::codes())],
             'set_piece_category_ids'   => 'nullable|array',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'placement'                => 'nullable|in:床,壁,天井',
@@ -425,6 +429,25 @@ class ItemController extends Controller
         $set->update(['set_piece_category_ids' => array_values(array_unique($categoryIds))]);
     }
 
+    /**
+     * 指定セットの set_piece_category_ids（派生キャッシュ）を現在のメンバーから再計算する。
+     * 部位アイテムの削除・付け替えでメンバー構成が変わった後に呼ぶ。
+     */
+    private function refreshSetCategoryCache(array $setIds): void
+    {
+        foreach (array_unique($setIds) as $setId) {
+            $set = Item::find($setId);
+            if (!$set || !$set->is_equipment_set) {
+                continue;
+            }
+            $catIds = $set->setMembers()
+                ->pluck('items.category_id')
+                ->map(fn($v) => (int) $v)
+                ->unique()->values()->all();
+            $set->update(['set_piece_category_ids' => $catIds]);
+        }
+    }
+
     public function verify(Request $request, int $id)
     {
         $item = Item::findOrFail($id);
@@ -441,28 +464,53 @@ class ItemController extends Controller
     {
         $item = Item::findOrFail($id);
 
-        // 出品・取引履歴と紐づいている場合は、禁止せず確認を促す。
+        // 出品・取引履歴・装備セットへの参加と紐づいている場合は、禁止せず確認を促す。
         // force=true で確認済みとして関連データごと削除する。
         $listingCount = Listing::where('item_id', $id)->count();
         $historyCount = TradeHistory::where('item_id', $id)->count();
-        $hasRelated   = $listingCount > 0 || $historyCount > 0;
+        // この部位を構成に含む装備セット数（部位アイテムを削除するとセットから外れる）
+        $setUsageCount = DB::table('equipment_set_members')->where('piece_item_id', $id)->count();
+        // 自身が装備セットの場合の構成部位数（部位アイテムは独立アイテムとして残る）
+        $pieceCount = $item->is_equipment_set ? $item->setMembers()->count() : 0;
+
+        $hasRelated = $listingCount > 0 || $historyCount > 0 || $setUsageCount > 0;
 
         if ($hasRelated && !$request->boolean('force')) {
+            $lines = [];
+            if ($listingCount > 0 || $historyCount > 0) {
+                $lines[] = "このアイテムには出品（{$listingCount}件）・取引履歴（{$historyCount}件）が紐づいています。";
+                $lines[] = "削除すると、関連する出品・取引チャット・取引履歴もすべて削除されます。";
+            }
+            if ($setUsageCount > 0) {
+                $lines[] = "このアイテムは装備セット{$setUsageCount}件の構成部位です。削除するとそれらのセットから外れます。";
+            }
+            if ($pieceCount > 0) {
+                $lines[] = "この装備セットの構成部位アイテム（{$pieceCount}件）は独立したアイテムとして残ります。";
+            }
+            $lines[] = '本当に削除してよろしいですか？';
+
             return response()->json([
                 'requires_confirmation' => true,
-                'listing_count' => $listingCount,
-                'history_count' => $historyCount,
-                'message' => "このアイテムには出品（{$listingCount}件）・取引履歴（{$historyCount}件）が紐づいています。\n削除すると、関連する出品・取引チャット・取引履歴もすべて削除されます。\n本当に削除してよろしいですか？",
+                'listing_count'   => $listingCount,
+                'history_count'   => $historyCount,
+                'set_usage_count' => $setUsageCount,
+                'message'         => implode("\n", $lines),
             ], 409);
         }
 
         DB::transaction(function () use ($item, $id) {
+            // 削除でメンバーが減る装備セットを記録（cascade 前に取得）
+            $affectedSetIds = DB::table('equipment_set_members')->where('piece_item_id', $id)->pluck('set_item_id')->all();
+
             // 取引履歴（items / listings を RESTRICT 参照）を先に削除
             TradeHistory::where('item_id', $id)->delete();
             // 出品を削除（listing_servers / trade_chats / trade_messages は外部キー cascade）
             Listing::where('item_id', $id)->delete();
-            // アイテム削除（item_bonus_effects は外部キー cascade）
+            // アイテム削除（item_bonus_effects / equipment_set_members は外部キー cascade）
             $item->delete();
+
+            // 部位が外れたセットの派生キャッシュを再計算
+            $this->refreshSetCategoryCache($affectedSetIds);
         });
 
         return response()->json(null, 204);
@@ -494,10 +542,33 @@ class ItemController extends Controller
             $historyCount    = TradeHistory::where('item_id', $id)->update(['item_id' => $targetId]);
             $marketCount     = MarketPrice::where('item_id', $id)->update(['item_id' => $targetId]);
 
-            // 付け替え済みなので、元アイテムは関連データなしで削除（item_bonus_effects は cascade）
+            // 元アイテムが装備セットの構成部位として参照されている場合、付け替え先へ統合して
+            // セットの構成を維持する（cascade で黙って外れるのを防ぐ）。
+            $memberRows = DB::table('equipment_set_members')->where('piece_item_id', $id)->get();
+            $affectedSetIds = [];
+            $setMemberCount = 0;
+            foreach ($memberRows as $row) {
+                $affectedSetIds[] = $row->set_item_id;
+                $dupExists = DB::table('equipment_set_members')
+                    ->where('set_item_id', $row->set_item_id)
+                    ->where('piece_item_id', $targetId)
+                    ->exists();
+                if ($dupExists) {
+                    // 付け替え先が既に同じセットのメンバー → 重複行を削除（unique制約回避）
+                    DB::table('equipment_set_members')->where('id', $row->id)->delete();
+                } else {
+                    DB::table('equipment_set_members')->where('id', $row->id)->update(['piece_item_id' => $targetId]);
+                }
+                $setMemberCount++;
+            }
+
+            // 付け替え済みなので、元アイテムは削除（残る equipment_set_members・item_bonus_effects は cascade）
             $item->delete();
 
-            return compact('listingCount', 'buyRequestCount', 'historyCount', 'marketCount');
+            // 構成が変わったセットの派生キャッシュを再計算
+            $this->refreshSetCategoryCache($affectedSetIds);
+
+            return compact('listingCount', 'buyRequestCount', 'historyCount', 'marketCount', 'setMemberCount');
         });
 
         return response()->json([
@@ -506,6 +577,7 @@ class ItemController extends Controller
             'buy_request_count' => $result['buyRequestCount'],
             'history_count'     => $result['historyCount'],
             'market_count'      => $result['marketCount'],
+            'set_member_count'  => $result['setMemberCount'],
         ]);
     }
 

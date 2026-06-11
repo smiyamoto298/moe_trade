@@ -160,6 +160,15 @@ export default function MyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unreadChatIds, activeChat])
 
+  // 順番待ち（新規の取引希望など）は未読通知に出ないため、未読変化だけでは一覧に反映されない。
+  // チャット一覧を定期的に再取得して、画面更新なしで順番待ちが表示されるようにする。
+  useEffect(() => {
+    if (USE_MOCK) return
+    const timer = setInterval(() => { fetchChats(true) }, 5000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const [actioningId, setActioningId] = useState<number | null>(null)
 
   const handleRenew = async (id: number) => {
@@ -220,6 +229,63 @@ export default function MyPage() {
       if (ua !== ub) return ub - ua
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     })
+
+  // owner 視点：取引希望チャットを「先着順（先頭→順番待ち）→ クローズ済み」で並べる
+  const orderOwnerChats = (chats: TradeChat[]) => {
+    const open = chats
+      .filter((c) => c.status === 'open')
+      .sort((a, b) => (a.queue_position ?? 0) - (b.queue_position ?? 0))
+    const closed = chats
+      .filter((c) => c.status !== 'open')
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    return [...open, ...closed]
+  }
+
+  const openChatCount = (chats: TradeChat[]) => chats.filter((c) => c.status === 'open').length
+
+  // buyer 視点：自分のチャットの順番待ちバッジ（待ち行列が2人以上のときだけ表示）
+  const queueBadge = (c: TradeChat) => {
+    if (c.status !== 'open' || c.queue_position == null || (c.queue_total ?? 0) <= 1) return null
+    // 進行中の取引成立があるとき（他のユーザーと取引成立中）は順番待ち表示しない
+    const src = c.listing ?? c.buy_request
+    if (src?.status === 'completed') return null
+    return (
+      <span className="text-xs text-orange-300 bg-orange-900/20 border border-orange-700/30 rounded px-1.5 py-0.5 shrink-0">
+        ⏳ 順番待ち {c.queue_position}番目 / 全{c.queue_total}人
+      </span>
+    )
+  }
+
+  // owner 視点：取引希望チャット1件分の行を描画する（先頭=操作可 / 2番目以降=匿名ロック）
+  const renderSellerChatRow = (c: TradeChat, source: SourceRecord) => {
+    if (c.is_locked) {
+      return (
+        <div
+          key={c.id}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded border border-surface-border/60 bg-surface/40 cursor-not-allowed select-none"
+          title="先頭の取引を見送ると、次の取引希望が表示されます"
+        >
+          <span className="shrink-0">🔒</span>
+          <span className="text-sm text-gray-400 flex-1">順番待ち（{c.queue_position}番目）</span>
+          <span className="text-xs text-gray-500 shrink-0">先頭を見送ると表示されます</span>
+        </div>
+      )
+    }
+    const isUnread = unreadChatIds.has(c.id)
+    return (
+      <button
+        key={c.id}
+        onClick={() => openChat(c, source)}
+        className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded border transition-colors ${activeChat?.id === c.id ? 'border-primary-500 bg-primary-500/10' : isUnread ? 'border-red-500/50 bg-red-900/10 hover:bg-red-900/20' : 'border-surface-border hover:bg-surface-border'}`}
+      >
+        {isUnread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
+        <span className="text-sm text-white flex-1">{c.buyer_character_name || c.buyer?.email || '不明'}</span>
+        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
+        <span className="text-xs text-gray-400 truncate max-w-[160px]">{c.messages?.at(-1)?.message ?? 'メッセージなし'}</span>
+        <span className={`text-xs shrink-0 ${chatStatusColor(c.status)}`}>{chatStatusLabel(c.status)}</span>
+      </button>
+    )
+  }
 
   const isOwnerTab = tab === 'listings' || tab === 'buy_requests'
   const chatKind: 'listing' | 'buy_request' = (tab === 'buy_requests' || tab === 'selling') ? 'buy_request' : 'listing'
@@ -418,23 +484,13 @@ export default function MyPage() {
 
                           {chats.length > 0 && (
                             <div className="mt-3 border-t border-surface-border pt-3 space-y-1.5">
-                              <p className="text-xs text-gray-400">取引希望チャット ({chats.length}件)</p>
-                              {sortChats(chats).map((c) => {
-                                const isUnread = unreadChatIds.has(c.id)
-                                return (
-                                  <button
-                                    key={c.id}
-                                    onClick={() => openChat(c, l)}
-                                    className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded border transition-colors ${activeChat?.id === c.id ? 'border-primary-500 bg-primary-500/10' : isUnread ? 'border-red-500/50 bg-red-900/10 hover:bg-red-900/20' : 'border-surface-border hover:bg-surface-border'}`}
-                                  >
-                                    {isUnread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
-                                    <span className="text-sm text-white flex-1">{c.buyer_character_name || c.buyer?.email || '不明'}</span>
-                                    <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
-                                    <span className="text-xs text-gray-400 truncate max-w-[160px]">{c.messages?.at(-1)?.message ?? 'メッセージなし'}</span>
-                                    <span className={`text-xs shrink-0 ${chatStatusColor(c.status)}`}>{chatStatusLabel(c.status)}</span>
-                                  </button>
-                                )
-                              })}
+                              <p className="text-xs text-gray-400">
+                                取引希望チャット ({chats.length}件)
+                                {openChatCount(chats) > 1 && (
+                                  <span className="text-gray-500"> ・先着順で先頭の1件のみ対応できます（見送ると次の方が表示されます）</span>
+                                )}
+                              </p>
+                              {orderOwnerChats(chats).map((c) => renderSellerChatRow(c, l))}
                             </div>
                           )}
                         </div>
@@ -497,9 +553,10 @@ export default function MyPage() {
                               {isUnread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
                               <p className="text-sm font-medium text-white truncate">{chatListing?.item?.name ?? `出品 #${c.listing_id}`}</p>
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
                               {sellerChar && <span className="text-xs text-gray-300">{sellerChar}</span>}
+                              {queueBadge(c)}
                             </div>
                             <p className="text-xs text-gray-400 truncate">{c.messages?.at(-1)?.message ?? 'メッセージなし'}</p>
                           </div>
@@ -566,23 +623,13 @@ export default function MyPage() {
 
                           {chats.length > 0 && (
                             <div className="mt-3 border-t border-surface-border pt-3 space-y-1.5">
-                              <p className="text-xs text-gray-400">売却の申し出チャット ({chats.length}件)</p>
-                              {sortChats(chats).map((c) => {
-                                const isUnread = unreadChatIds.has(c.id)
-                                return (
-                                  <button
-                                    key={c.id}
-                                    onClick={() => openChat(c, b)}
-                                    className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded border transition-colors ${activeChat?.id === c.id ? 'border-primary-500 bg-primary-500/10' : isUnread ? 'border-red-500/50 bg-red-900/10 hover:bg-red-900/20' : 'border-surface-border hover:bg-surface-border'}`}
-                                  >
-                                    {isUnread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
-                                    <span className="text-sm text-white flex-1">{c.buyer_character_name || c.buyer?.email || '不明'}</span>
-                                    <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
-                                    <span className="text-xs text-gray-400 truncate max-w-[160px]">{c.messages?.at(-1)?.message ?? 'メッセージなし'}</span>
-                                    <span className={`text-xs shrink-0 ${chatStatusColor(c.status)}`}>{chatStatusLabel(c.status)}</span>
-                                  </button>
-                                )
-                              })}
+                              <p className="text-xs text-gray-400">
+                                売却の申し出チャット ({chats.length}件)
+                                {openChatCount(chats) > 1 && (
+                                  <span className="text-gray-500"> ・先着順で先頭の1件のみ対応できます（見送ると次の方が表示されます）</span>
+                                )}
+                              </p>
+                              {orderOwnerChats(chats).map((c) => renderSellerChatRow(c, b))}
                             </div>
                           )}
                         </div>
@@ -648,9 +695,10 @@ export default function MyPage() {
                                 {br && <span className="text-emerald-400 ml-2">買取 {br.price?.toLocaleString?.() ?? br.price} {br.currency}</span>}
                               </p>
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
                               {buyerChar && <span className="text-xs text-gray-300">{buyerChar}</span>}
+                              {queueBadge(c)}
                             </div>
                             <p className="text-xs text-gray-400 truncate">{c.messages?.at(-1)?.message ?? 'メッセージなし'}</p>
                           </div>
@@ -690,6 +738,14 @@ export default function MyPage() {
                   fetchChats(true)
                 }}
                 onListingsChanged={() => fetchMyListings()}
+                hasWaitingNext={(() => {
+                  if (!activeSource) return false
+                  const group = chatKind === 'buy_request'
+                    ? (buyRequestChats[activeSource.id] ?? [])
+                    : (sellingChats[activeSource.id] ?? [])
+                  // このチャット以外に順番待ち（open）が残っているか
+                  return group.some((c) => c.status === 'open' && c.id !== activeChat.id)
+                })()}
               />
             </div>
           </div>

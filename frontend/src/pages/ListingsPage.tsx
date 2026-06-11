@@ -11,7 +11,7 @@ import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
 import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
-import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
 import { groupPiecesByBaseStats, groupPiecesByBonusEffects, hasBaseStats, hasBonusEffects } from '../utils/equipmentSet'
 import type { Item } from '../types'
 
@@ -35,6 +35,34 @@ function hasNonEquipSetCategory(selectedIds: string[], categories: ItemCategory[
   const equipSetCat = categories.find((c) => c.parent_id === null && c.name === '装備セット')
   if (!equipSetCat) return selectedIds.length > 0
   return selectedIds.some((id) => id !== String(equipSetCat.id))
+}
+
+// 必要マスタリのバッジ群。マスタリ名【コード】と、条件になっている構成スキルを並べて表示する。
+function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
+  if (!codes || codes.length === 0) return <span className="text-xs text-gray-600">—</span>
+  return (
+    <div className="flex flex-col gap-1.5">
+      {codes.map((code) => {
+        const m = MASTERY_BY_CODE[code]
+        return (
+          <div key={code} className="flex flex-col gap-0.5">
+            <span className="text-xs text-purple-200 bg-purple-900/30 border border-purple-700/40 rounded px-1.5 py-0.5 self-start">
+              {m ? `${m.name}【${code}】` : code}
+            </span>
+            {m && (
+              <span className="flex flex-wrap gap-0.5">
+                {m.skills.map((s) => (
+                  <span key={s} className="text-[10px] leading-tight bg-surface border border-surface-border text-gray-400 rounded px-1 py-px">
+                    {s}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 // 専用技バッジ
@@ -177,6 +205,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
   const [params, setParams] = useState<ListingSearchParams>({
     sort: 'newest', page: 1,
     item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : 'equipment',
+    // スキルタブの検索モード（通常検索 / 構成検索）。既定は通常検索。
+    ...(mode === 'skill' ? { skill_match: 'normal' as const } : {}),
   })
   const [tradeTarget, setTradeTarget] = useState<Listing | null>(null)
   // 相場情報ポップアップの対象アイテム（PCで「相場情報」を押したとき）
@@ -461,6 +491,34 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                   onChange={setSkillKeys}
                   searchable
                 />
+                {/* 検索モード: 通常検索 / 構成検索 */}
+                <div className="mt-2">
+                  <div className="flex rounded-md overflow-hidden border border-surface-border text-xs">
+                    {([
+                      { value: 'normal', label: '通常検索' },
+                      { value: 'composition', label: '構成検索' },
+                    ] as const).map((opt) => {
+                      const active = (params.skill_match ?? 'normal') === opt.value
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setParam('skill_match', opt.value)}
+                          className={`flex-1 px-2 py-1.5 transition-colors ${
+                            active ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-1 text-[10px] text-gray-500">
+                    {(params.skill_match ?? 'normal') === 'normal'
+                      ? '指定したスキルを必要スキルに含むテクニックを表示'
+                      : '条件に設定したスキル構成で使用できるテクニックを表示'}
+                  </p>
+                </div>
               </div>
             )}
 
@@ -659,6 +717,18 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 ranges={params.skill_ranges ?? {}}
                 onChange={setSkillRange}
               />
+              {/* 通常検索のとき、マスタリ構成スキルも対象にするか */}
+              {(params.skill_match ?? 'normal') === 'normal' && (
+                <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!params.skill_include_mastery}
+                    onChange={(e) => setParam('skill_include_mastery', e.target.checked)}
+                    className="accent-primary-500 w-4 h-4"
+                  />
+                  <span className="text-xs text-gray-300">マスタリに含まれるスキルも対象にする</span>
+                </label>
+              )}
             </div>
           )}
 
@@ -722,7 +792,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 <tr className="border-b border-surface-border">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-48">アイテム</th>
                   {isSkillMode ? (
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell" colSpan={3}>必要スキル</th>
+                    <>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell" colSpan={2}>必要スキル</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">必要マスタリ</th>
+                    </>
                   ) : isAssetMode ? (
                     <>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">設置・サイズ</th>
@@ -800,8 +873,9 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         </td>
 
                         {isSkillMode ? (
-                          /* スキル必要スキル値 */
-                          <td className="hidden sm:table-cell px-4 py-3" colSpan={3}>
+                          <>
+                          {/* 必要スキル値 */}
+                          <td className="hidden sm:table-cell px-4 py-3 align-top" colSpan={2}>
                             <div className="flex flex-wrap gap-1">
                               {!l.item.skill_requirements || Object.keys(l.item.skill_requirements).length === 0 ? (
                                 <span className="text-xs text-gray-600">—</span>
@@ -812,6 +886,12 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                               ))}
                             </div>
                           </td>
+
+                          {/* 必要マスタリ（条件スキルも表示） */}
+                          <td className="hidden sm:table-cell px-4 py-3 align-top">
+                            <MasteryBadges codes={l.item.mastery_requirements} />
+                          </td>
+                          </>
                         ) : isAssetMode ? (
                           <>
                           {/* 設置・サイズ */}

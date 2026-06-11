@@ -6,10 +6,38 @@ import { useNotification } from '../../contexts/NotificationContext'
 import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory } from '../../types'
 import { SERVERS } from '../../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS } from '../../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, MASTERY_BY_CODE } from '../../utils/constants'
 
 type Filter = 'all' | 'unverified' | 'verified'
 type Mode = 'equipment' | 'skill' | 'asset'
+
+// 必要マスタリのバッジ群。マスタリ名【コード】と、条件になっている構成スキルを並べて表示する。
+function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
+  if (!codes || codes.length === 0) return <span className="text-xs text-gray-600">—</span>
+  return (
+    <div className="flex flex-col gap-1.5">
+      {codes.map((code) => {
+        const m = MASTERY_BY_CODE[code]
+        return (
+          <div key={code} className="flex flex-col gap-0.5">
+            <span className="text-xs text-purple-200 bg-purple-900/30 border border-purple-700/40 rounded px-1.5 py-0.5 self-start">
+              {m ? `${m.name}【${code}】` : code}
+            </span>
+            {m && (
+              <span className="flex flex-wrap gap-0.5">
+                {m.skills.map((s) => (
+                  <span key={s} className="text-[10px] leading-tight bg-surface border border-surface-border text-gray-400 rounded px-1 py-px">
+                    {s}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function AdminItemsPage() {
   const { user } = useAuth()
@@ -344,7 +372,10 @@ export default function AdminItemsPage() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">アイテム名</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">種別</th>
               {isSkillMode ? (
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={3}>必要スキル</th>
+                <>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={2}>必要スキル</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">必要マスタリ</th>
+                </>
               ) : isAssetMode ? (
                 <>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">設置・サイズ</th>
@@ -379,7 +410,8 @@ export default function AdminItemsPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-300">{item.category.name}</td>
                   {isSkillMode ? (
-                    <td className="px-4 py-3" colSpan={3}>
+                    <>
+                    <td className="px-4 py-3 align-top" colSpan={2}>
                       <div className="flex flex-wrap gap-1">
                         {!item.skill_requirements || Object.keys(item.skill_requirements).length === 0 ? (
                           <span className="text-xs text-gray-600">—</span>
@@ -390,6 +422,10 @@ export default function AdminItemsPage() {
                         ))}
                       </div>
                     </td>
+                    <td className="px-4 py-3 align-top">
+                      <MasteryBadges codes={item.mastery_requirements} />
+                    </td>
+                    </>
                   ) : isAssetMode ? (
                   <>
                   <td className="px-4 py-3">

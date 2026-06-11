@@ -23,9 +23,12 @@ interface Props {
   onStatusChange?: (chat: TradeChat) => void
   // 出品の状態が変わり、出品一覧の再取得が必要なときに呼ばれる（取引不成立・再出品など）
   onListingsChanged?: () => void
+  // 同じ取引対象に他の順番待ち（open チャット）が残っているか。
+  // true の場合、取引不成立にすると次の取引希望に進む（再出品はしない）。
+  hasWaitingNext?: boolean
 }
 
-export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', source, onDeal, onStatusChange, onListingsChanged }: Props) {
+export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', source, onDeal, onStatusChange, onListingsChanged, hasWaitingNext = false }: Props) {
   const { confirm } = useDialog()
   const [chat, setChat] = useState(initialChat)
   const [input, setInput] = useState('')
@@ -242,12 +245,25 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
         <div className="mx-4 my-2 p-3 bg-red-900/20 border border-red-700/40 rounded-lg text-xs space-y-2">
           <p className="text-red-300 font-medium">取引不成立にしますか？</p>
           <p className="text-gray-400">取引成立後、長期間連絡が取れない等の理由がある時のみ不成立にしてください。</p>
-          <p className="text-gray-300">アイテムを再出品しますか？</p>
-          <div className="flex gap-2">
-            <button onClick={() => handleDealFailed(true)} className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded transition-colors">不成立にして再出品</button>
-            <button onClick={() => handleDealFailed(false)} className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-3 py-1.5 rounded transition-colors">不成立のみ</button>
-            <button onClick={() => setShowDealFailedConfirm(false)} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 transition-colors">キャンセル</button>
-          </div>
+          {hasWaitingNext ? (
+            <>
+              {/* 順番待ちが残っているので、次の取引希望に進む（再出品はしない） */}
+              <p className="text-gray-300">不成立にすると、次の順番待ちの取引希望に進みます。</p>
+              <div className="flex gap-2">
+                <button onClick={() => handleDealFailed(false)} className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded transition-colors">不成立にして次の取引希望へ進む</button>
+                <button onClick={() => setShowDealFailedConfirm(false)} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 transition-colors">キャンセル</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-300">アイテムを再出品しますか？</p>
+              <div className="flex gap-2">
+                <button onClick={() => handleDealFailed(true)} className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded transition-colors">不成立にして再出品</button>
+                <button onClick={() => handleDealFailed(false)} className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-3 py-1.5 rounded transition-colors">不成立のみ</button>
+                <button onClick={() => setShowDealFailedConfirm(false)} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 transition-colors">キャンセル</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
