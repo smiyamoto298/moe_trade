@@ -2,6 +2,24 @@ import client from './client'
 import { USE_MOCK, mockCategories, mockBonusTypes, mockItems, mockPriceAnalytics } from './mock'
 import type { Item, ItemCategory, BonusEffectType, PriceHistory, ItemPriceAnalytics, AssetPlacement, AssetFunction } from '../types'
 
+// 装備セットの構成部位（通常アイテムとして登録される）の入力。
+export interface EquipmentSetPieceInput {
+  id?: number              // 既存部位アイテムを更新する場合のID（新規は未指定）
+  category_id: number      // 部位カテゴリ
+  name: string             // 部位ごとの名前
+  base_stats: Record<string, number>
+  special_conditions: string[]
+  dyeable?: boolean | null
+  mithril?: boolean
+  exclusive_skill?: boolean
+  bonus_effects: {
+    effect_name: string
+    values: { value: number; value_unit: string; label?: string }[]
+    description: string
+    is_exclusive?: boolean
+  }[]
+}
+
 export const itemsApi = {
   list: (params?: { name?: string; category_id?: number }): Promise<{ data: Item[] }> => {
     if (USE_MOCK) {
@@ -64,7 +82,9 @@ export const itemsApi = {
       effect_name: string
       values: { value: number; value_unit: string; label?: string }[]
       description: string
+      is_exclusive?: boolean
     }[]
+    pieces?: EquipmentSetPieceInput[]
   }): Promise<{ data: Item }> => {
     if (USE_MOCK) {
       const allCategories = mockCategories.flatMap((c) => [c, ...(c.children ?? [])])
@@ -82,6 +102,7 @@ export const itemsApi = {
         exclusive_skill: data.exclusive_skill ?? false,
         is_equipment_set: data.is_equipment_set ?? false,
         set_piece_category_ids: data.set_piece_category_ids ?? null,
+        set_members: [],
         skill_requirements: data.skill_requirements ?? null,
         placement: data.placement ?? null,
         asset_width: data.asset_width ?? null,
@@ -112,6 +133,15 @@ export const itemsApi = {
     asset_height?: number | null
     storage_count?: number | null
     special_function?: AssetFunction | null
+    is_equipment_set?: boolean
+    set_piece_category_ids?: number[]
+    bonus_effects?: {
+      effect_name: string
+      values: { value: number; value_unit: string; label?: string }[]
+      description: string
+      is_exclusive?: boolean
+    }[]
+    pieces?: EquipmentSetPieceInput[]
   }): Promise<{ data: Item }> => {
     if (USE_MOCK) {
       const item = mockItems.find((i) => i.id === id)!

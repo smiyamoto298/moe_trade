@@ -3,6 +3,7 @@ import { itemsApi } from '../api/items'
 import { useDialog } from '../contexts/DialogContext'
 import ComboInput from './ComboInput'
 import Spinner from './Spinner'
+import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces } from './EquipmentSetPiecesEditor'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
@@ -51,7 +52,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     description: '',
     base_stats: {} as Record<string, string>,
     special_conditions: [] as string[],
-    set_piece_category_ids: [] as number[],
     skill_requirements: {} as Record<string, string>,
     dyeable: null as boolean | null,
     mithril: false,
@@ -63,6 +63,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     special_function: '' as '' | AssetFunction,
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
+  // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
+  const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
 
   useEffect(() => {
     setMastersLoading(true)
@@ -84,8 +86,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
       : selectedCategory
     return parent?.name === 'テクニック'
   })()
-  // 装備品（効果系の入力欄を出す通常アイテム）
-  const isPlain = !isSkill && !isAsset
+  // 装備品（効果系の入力欄を出す通常アイテム）。装備セット本体は効果を持たない（部位側で設定）。
+  const isPlain = !isSkill && !isAsset && !isEquipSet
 
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -104,14 +106,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         : [...p.special_conditions, c],
     }))
 
-  const togglePart = (id: number) =>
-    setForm((p) => ({
-      ...p,
-      set_piece_category_ids: p.set_piece_category_ids.includes(id)
-        ? p.set_piece_category_ids.filter((x) => x !== id)
-        : [...p.set_piece_category_ids, id],
-    }))
-
   const setBonus = (i: number, key: 'effect_name' | 'description', val: string) =>
     setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, [key]: val } : e))
 
@@ -120,21 +114,28 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
       ...e, values: e.values.map((v, j) => j === vi ? { ...v, [key]: val } : v),
     }))
 
-  // カテゴリ変更時に装備セット以外に切り替えたら部位選択をリセット
+  // カテゴリ変更時に装備セット以外に切り替えたら部位入力をリセット
   const handleCategoryChange = (val: string) => {
     const cat = categories.find((c) => String(c.id) === val)
     if (cat && !isEquipmentSetCategory(cat)) {
-      setForm((p) => ({ ...p, category_id: val, set_piece_category_ids: [] }))
-    } else {
-      setField('category_id', val)
+      setEquipSetForm(emptyEquipmentSetForm())
     }
+    setField('category_id', val)
   }
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (isEquipSet && form.set_piece_category_ids.length === 0) {
-      await alert('装備セットは構成部位を1つ以上選択してください。', { title: '入力エラー' })
-      return
+    let pieces: ReturnType<typeof formToPieces> = []
+    if (isEquipSet) {
+      pieces = formToPieces(equipSetForm)
+      if (pieces.length === 0) {
+        await alert('装備セットは構成部位を1つ以上登録してください。', { title: '入力エラー' })
+        return
+      }
+      if (pieces.some((p) => !p.name)) {
+        await alert('各部位の名前を入力してください。', { title: '入力エラー' })
+        return
+      }
     }
     setError('')
     setSaving(true)
@@ -176,7 +177,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
           })) : [],
         ...(isEquipSet && {
           is_equipment_set: true,
-          set_piece_category_ids: form.set_piece_category_ids,
+          pieces,
         }),
       })
       onRegistered(res.data)
@@ -262,48 +263,19 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         />
       </div>
 
-      {/* 装備セット：構成部位選択 */}
+      {/* 装備セット：構成部位（設定グループ単位で編集） */}
       {isEquipSet && (
-        <div className="border border-amber-600/40 bg-amber-900/10 rounded-lg p-3">
-          <p className="text-xs font-semibold text-amber-300 mb-2">
+        <div className="border border-amber-600/40 bg-amber-900/10 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-300">
             ⚔ 構成部位 <span className="text-red-400">*</span>
-            <span className="text-gray-400 font-normal ml-1">（複数選択可）</span>
+            <span className="text-gray-400 font-normal ml-1">（部位ごとに名前・効果を設定。同じ設定の部位はまとめて入力できます）</span>
           </p>
-          <div className="space-y-2">
-            {categories
-              .filter((cat) => !isEquipmentSetCategory(cat) && cat.name !== 'テクニック' && (cat.children ?? []).length > 0)
-              .map((cat) => (
-                <div key={cat.id}>
-                  <p className="text-xs text-gray-500 mb-1">{cat.name}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(cat.children ?? []).map((child) => {
-                      const checked = form.set_piece_category_ids.includes(child.id)
-                      return (
-                        <label
-                          key={child.id}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded border cursor-pointer text-xs transition-colors ${
-                            checked
-                              ? 'border-amber-500/60 bg-amber-900/30 text-amber-200'
-                              : 'border-surface-border text-gray-400 hover:border-gray-500'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => togglePart(child.id)}
-                            className="accent-amber-500"
-                          />
-                          {child.name}
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-          </div>
-          {form.set_piece_category_ids.length > 0 && (
-            <p className="text-xs text-amber-400 mt-2">選択中: {form.set_piece_category_ids.length}部位</p>
-          )}
+          <EquipmentSetPiecesEditor
+            categories={categories}
+            value={equipSetForm}
+            onChange={setEquipSetForm}
+            bonusValueLabelOptions={bonusValueLabelOptions}
+          />
         </div>
       )}
 

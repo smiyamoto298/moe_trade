@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import client from '../api/client'
@@ -7,7 +7,8 @@ import { itemsApi } from '../api/items'
 import UnverifiedBadge from '../components/UnverifiedBadge'
 import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsComp from '../components/PriceAnalytics'
-import type { BuyRequest, ItemPriceAnalytics, ItemCategory } from '../types'
+import EquipmentSetBreakdown from '../components/EquipmentSetBreakdown'
+import type { BuyRequest, ItemPriceAnalytics } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, SPECIAL_CONDITIONS, BASE_STAT_LABELS } from '../utils/constants'
 
 export default function BuyRequestDetailPage() {
@@ -15,17 +16,7 @@ export default function BuyRequestDetailPage() {
   const { user } = useAuth()
   const [buyRequest, setBuyRequest] = useState<BuyRequest | null>(null)
   const [analytics, setAnalytics] = useState<ItemPriceAnalytics | null>(null)
-  const [categories, setCategories] = useState<ItemCategory[]>([])
   const [notFound, setNotFound] = useState(false)
-
-  const categoryNameById = useMemo(() => {
-    const map = new Map<number, string>()
-    categories.forEach((c) => {
-      map.set(c.id, c.name)
-      ;(c.children ?? []).forEach((ch) => map.set(ch.id, ch.name))
-    })
-    return map
-  }, [categories])
 
   const [showTradePanel, setShowTradePanel] = useState(false)
   const [requested, setRequested] = useState(false)
@@ -38,9 +29,6 @@ export default function BuyRequestDetailPage() {
       .then((r) => {
         setBuyRequest(r.data)
         itemsApi.priceAnalytics(r.data.item.id).then((a) => setAnalytics(a.data))
-        if (r.data.item.is_equipment_set) {
-          itemsApi.categories().then((c) => setCategories(c.data)).catch(() => {})
-        }
       })
       .catch(() => setNotFound(true))
   }, [id])
@@ -87,23 +75,7 @@ export default function BuyRequestDetailPage() {
           <p className="text-sm text-gray-300 mb-4">{item.description}</p>
         )}
 
-        {item.is_equipment_set && (item.set_piece_category_ids?.length ?? 0) > 0 && (
-          <div className="mb-4 border border-amber-600/40 bg-amber-900/10 rounded-lg p-4">
-            <h2 className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">
-              ⚔ セット内訳（{item.set_piece_category_ids!.length}部位）
-            </h2>
-            <div className="flex flex-wrap gap-1.5">
-              {item.set_piece_category_ids!.map((cid) => (
-                <span
-                  key={cid}
-                  className="text-xs bg-amber-900/30 border border-amber-700/40 text-amber-100 rounded px-2 py-1"
-                >
-                  {categoryNameById.get(cid) ?? `#${cid}`}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        {item.is_equipment_set && <EquipmentSetBreakdown members={item.set_members} />}
 
         {(item.placement || (item.asset_width && item.asset_height) || (item.storage_count ?? 0) > 0 || item.special_function) && (
           <div className="mb-4">

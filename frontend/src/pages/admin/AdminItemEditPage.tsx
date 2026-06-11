@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import ComboInput from '../../components/ComboInput'
 import Spinner from '../../components/Spinner'
+import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces, membersToForm } from '../../components/EquipmentSetPiecesEditor'
 import type { ItemCategory, AssetPlacement, AssetFunction } from '../../types'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
@@ -65,7 +66,6 @@ export default function AdminItemEditPage() {
     mithril: false as boolean,
     exclusive_skill: false as boolean,
     is_equipment_set: false as boolean,
-    set_piece_category_ids: [] as number[],
     skill_requirements: {} as Record<string, string>,
     placement: '' as '' | AssetPlacement,
     asset_width: '',
@@ -74,6 +74,8 @@ export default function AdminItemEditPage() {
     special_function: '' as '' | AssetFunction,
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
+  // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
+  const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
 
   useEffect(() => {
     setMastersLoading(true)
@@ -106,7 +108,6 @@ export default function AdminItemEditPage() {
           mithril: item.mithril ?? false,
           exclusive_skill: item.exclusive_skill ?? false,
           is_equipment_set: item.is_equipment_set ?? false,
-          set_piece_category_ids: item.set_piece_category_ids ?? [],
           skill_requirements: Object.fromEntries(
             Object.entries(item.skill_requirements ?? {}).map(([k, v]) => [k, String(v)])
           ),
@@ -117,6 +118,10 @@ export default function AdminItemEditPage() {
           special_function: (item.special_function ?? '') as '' | AssetFunction,
         })
         setVerifiedStatus(item.verified_status)
+        // 装備セットの構成部位をフォーム状態へ復元（部位リスト＋追加効果/付加効果グループ）
+        if (item.is_equipment_set) {
+          setEquipSetForm(membersToForm(item.set_members ?? []))
+        }
         setBonusEffects(item.bonus_effects.map((e) => ({
           id: e.id,
           effect_name: e.effect_name,
@@ -143,8 +148,8 @@ export default function AdminItemEditPage() {
       : selectedCategory
     return parent?.name === 'テクニック'
   })()
-  // 装備品（効果系の入力欄を出す通常アイテム）
-  const isPlain = !isSkill && !isAsset
+  // 装備品（効果系の入力欄を出す通常アイテム）。装備セット本体は効果を持たない（部位側で設定）。
+  const isPlain = !isSkill && !isAsset && !isEquipSet
 
   // 一覧に戻るとき、編集中アイテムの種別タブを復元するための state
   const listState = {
@@ -159,19 +164,10 @@ export default function AdminItemEditPage() {
   const handleCategoryChange = (val: string) => {
     const cat = categories.find((c) => String(c.id) === val)
     if (cat && !isEquipmentSetCategory(cat)) {
-      setForm((p) => ({ ...p, category_id: val, set_piece_category_ids: [] }))
-    } else {
-      setField('category_id', val)
+      setEquipSetForm(emptyEquipmentSetForm())
     }
+    setField('category_id', val)
   }
-
-  const togglePart = (partId: number) =>
-    setForm((p) => ({
-      ...p,
-      set_piece_category_ids: p.set_piece_category_ids.includes(partId)
-        ? p.set_piece_category_ids.filter((x) => x !== partId)
-        : [...p.set_piece_category_ids, partId],
-    }))
 
   const setStat = (key: string, val: string) =>
     setForm((p) => ({ ...p, base_stats: { ...p.base_stats, [key]: val } }))
@@ -217,9 +213,17 @@ export default function AdminItemEditPage() {
     e.preventDefault()
     const andVerify = verifyAfterSaveRef.current
     verifyAfterSaveRef.current = false
-    if (isEquipSet && form.set_piece_category_ids.length === 0) {
-      await alert('装備セットは構成部位を1つ以上選択してください。', { title: '入力エラー' })
-      return
+    let pieces: ReturnType<typeof formToPieces> = []
+    if (isEquipSet) {
+      pieces = formToPieces(equipSetForm)
+      if (pieces.length === 0) {
+        await alert('装備セットは構成部位を1つ以上登録してください。', { title: '入力エラー' })
+        return
+      }
+      if (pieces.some((p) => !p.name)) {
+        await alert('各部位の名前を入力してください。', { title: '入力エラー' })
+        return
+      }
     }
     setSaving(true)
     try {
@@ -237,7 +241,7 @@ export default function AdminItemEditPage() {
         mithril: isPlain ? form.mithril : false,
         exclusive_skill: isPlain ? form.exclusive_skill : false,
         is_equipment_set: isEquipSet,
-        set_piece_category_ids: isEquipSet ? form.set_piece_category_ids : [],
+        ...(isEquipSet ? { pieces } : {}),
         skill_requirements: isSkill
           ? Object.fromEntries(
               Object.entries(form.skill_requirements)
@@ -331,48 +335,19 @@ export default function AdminItemEditPage() {
             </select>
           </div>
 
-          {/* 装備セット：構成部位選択 */}
+          {/* 装備セット：構成部位（設定グループ単位で編集） */}
           {isEquipSet && (
-            <div className="border border-amber-600/40 bg-amber-900/10 rounded-lg p-4">
-              <p className="text-xs font-semibold text-amber-300 mb-3">
+            <div className="border border-amber-600/40 bg-amber-900/10 rounded-lg p-4 space-y-2">
+              <p className="text-xs font-semibold text-amber-300">
                 ⚔ 構成部位 <span className="text-red-400">*</span>
-                <span className="text-gray-400 font-normal ml-1">（複数選択可）</span>
+                <span className="text-gray-400 font-normal ml-1">（部位ごとに名前・効果を設定。同じ設定の部位はまとめて入力できます）</span>
               </p>
-              <div className="space-y-3">
-                {categories
-                  .filter((cat) => !isEquipmentSetCategory(cat) && cat.name !== 'テクニック' && (cat.children ?? []).length > 0)
-                  .map((cat) => (
-                    <div key={cat.id}>
-                      <p className="text-xs text-gray-500 mb-1.5">{cat.name}</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(cat.children ?? []).map((child) => {
-                          const checked = form.set_piece_category_ids.includes(child.id)
-                          return (
-                            <label
-                              key={child.id}
-                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded border cursor-pointer text-xs transition-colors ${
-                                checked
-                                  ? 'border-amber-500/60 bg-amber-900/30 text-amber-200'
-                                  : 'border-surface-border text-gray-400 hover:border-gray-500'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => togglePart(child.id)}
-                                className="accent-amber-500"
-                              />
-                              {child.name}
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-              {form.set_piece_category_ids.length > 0 && (
-                <p className="text-xs text-amber-400 mt-2">選択中: {form.set_piece_category_ids.length}部位</p>
-              )}
+              <EquipmentSetPiecesEditor
+                categories={categories}
+                value={equipSetForm}
+                onChange={setEquipSetForm}
+                bonusValueLabelOptions={bonusValueLabelOptions}
+              />
             </div>
           )}
 
@@ -657,8 +632,8 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* 特殊条件（スキル以外） */}
-        {!isSkill && (
+        {/* 特殊条件（スキル・装備セット以外。装備セットは部位側で設定） */}
+        {!isSkill && !isEquipSet && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-3">
           <h2 className="text-sm font-semibold text-gray-300">特殊条件</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

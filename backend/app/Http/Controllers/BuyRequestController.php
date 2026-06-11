@@ -24,7 +24,7 @@ class BuyRequestController extends Controller
         $includeCompleted = $request->boolean('include_completed', false);
         $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
 
-        $query = BuyRequest::with(['item.category', 'item.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
+        $query = BuyRequest::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
             ->whereIn('status', $statuses)
             ->whereHas('user', fn($q) => $q->where('is_suspended', false));
 
@@ -85,7 +85,7 @@ class BuyRequestController extends Controller
 
     public function show(int $id)
     {
-        $buyRequest = BuyRequest::with(['item.category', 'item.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
+        $buyRequest = BuyRequest::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
             ->whereIn('status', ['active', 'completed'])
             ->findOrFail($id);
         $buyRequest->resolveServerContacts();

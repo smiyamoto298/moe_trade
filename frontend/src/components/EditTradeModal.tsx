@@ -3,7 +3,7 @@ import { listingsApi } from '../api/listings'
 import { buyRequestsApi } from '../api/buyRequests'
 import { useAuth } from '../contexts/AuthContext'
 import { SERVERS } from '../types'
-import type { Listing, BuyRequest } from '../types'
+import type { Listing, BuyRequest, Server } from '../types'
 import { SERVER_COLORS, TRADE_TYPE_LABEL } from '../utils/constants'
 
 interface Props {
@@ -19,13 +19,13 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
   const [tradeType, setTradeType] = useState<string>(record.trade_type)
   const [comment, setComment] = useState<string>(record.comment ?? '')
   const [isWorn, setIsWorn] = useState<boolean>(kind === 'listing' ? !!(record as Listing).is_worn : false)
-  const [servers, setServers] = useState<string[]>(record.servers.map((s) => s.server))
+  const [servers, setServers] = useState<Server[]>(record.servers.map((s) => s.server))
   // 登録時点で選択済みのサーバー。これらは外せない（追加のみ許可）。
   const [lockedServers] = useState(() => new Set(record.servers.map((s) => s.server)))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const toggleServer = (s: string) => {
+  const toggleServer = (s: Server) => {
     if (lockedServers.has(s)) return // 既存のサーバーは外せない
     setServers((p) => (p.includes(s) ? p.filter((x) => x !== s) : [...p, s]))
   }

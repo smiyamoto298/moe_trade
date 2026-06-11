@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Item;
+use App\Models\ItemCategory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -174,6 +175,164 @@ class ItemApiTest extends TestCase
             ->assertJsonPath('stats.deal_count', 0)
             ->assertJsonPath('stats.min', 0);
         $this->assertSame([], $res->json('recent_deals'));
+    }
+
+    public function test_装備セットは部位アイテムを生成してメンバーに紐付ける(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '炎のセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id'   => $cats['sword']->id,
+                    'name'          => '炎の剣',
+                    'base_stats'    => ['atk' => 10],
+                    'bonus_effects' => [
+                        ['effect_name' => '炎纏い', 'values' => [['value' => 5, 'value_unit' => '%', 'label' => '火力']]],
+                    ],
+                ],
+                [
+                    'category_id' => $cats['sword']->id,
+                    'name'        => '炎の盾',
+                    'base_stats'  => ['atk' => 3],
+                ],
+            ],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('is_equipment_set', true)
+            ->assertJsonCount(2, 'set_members');
+
+        $setId = $res->json('id');
+        // 部位は通常アイテムとして作成される
+        $this->assertDatabaseHas('items', ['name' => '炎の剣', 'is_equipment_set' => false]);
+        $this->assertDatabaseHas('items', ['name' => '炎の盾']);
+        $this->assertDatabaseCount('equipment_set_members', 2);
+        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '炎纏い']);
+        // 派生キャッシュ（部位カテゴリ）が更新される
+        $this->assertEqualsCanonicalizing([$cats['sword']->id], Item::find($setId)->set_piece_category_ids);
+    }
+
+    public function test_装備セット更新で部位を更新追加除外できる_除外部位は削除されない(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $create = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => 'セットA',
+            'is_equipment_set' => true,
+            'pieces' => [
+                ['category_id' => $cats['sword']->id, 'name' => '部位1'],
+                ['category_id' => $cats['sword']->id, 'name' => '部位2'],
+            ],
+        ])->assertStatus(201);
+
+        $setId    = $create->json('id');
+        $piece1Id = $create->json('set_members.0.id');
+
+        // 部位1を改名し残す / 部位2を除外 / 部位3を追加
+        $res = $this->actingAs($admin, 'sanctum')->putJson("/api/items/{$setId}", [
+            'is_equipment_set' => true,
+            'pieces' => [
+                ['id' => $piece1Id, 'category_id' => $cats['sword']->id, 'name' => '部位1改'],
+                ['category_id' => $cats['sword']->id, 'name' => '部位3'],
+            ],
+        ]);
+
+        $res->assertOk()->assertJsonCount(2, 'set_members');
+        $this->assertDatabaseHas('items', ['id' => $piece1Id, 'name' => '部位1改']);
+        // 除外された部位2は detach のみ。通常アイテムとして残る。
+        $this->assertDatabaseHas('items', ['name' => '部位2']);
+        $this->assertDatabaseCount('equipment_set_members', 2);
+    }
+
+    public function test_装備セットの部位名が重複すると422(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => 'セットB',
+            'is_equipment_set' => true,
+            'pieces' => [
+                ['category_id' => $cats['sword']->id, 'name' => '同名部位'],
+                ['category_id' => $cats['sword']->id, 'name' => '同名部位'],
+            ],
+        ])->assertStatus(422);
+    }
+
+    public function test_装備セットの部位は付加効果ごとに専用技を保存できる(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '専用技セット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id'     => $cats['sword']->id,
+                    'name'            => '専用技の剣',
+                    'exclusive_skill' => true,
+                    'bonus_effects'   => [
+                        ['effect_name' => '秘剣', 'is_exclusive' => true, 'values' => []],
+                        ['effect_name' => '通常効果', 'is_exclusive' => false, 'values' => []],
+                    ],
+                ],
+            ],
+        ]);
+
+        $res->assertStatus(201);
+        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '秘剣', 'is_exclusive' => true]);
+        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '通常効果', 'is_exclusive' => false]);
+        // show / set_members で付加効果ごとの is_exclusive が返る
+        $effects = collect($res->json('set_members.0.bonus_effects'));
+        $this->assertTrue((bool) $effects->firstWhere('effect_name', '秘剣')['is_exclusive']);
+        $this->assertFalse((bool) $effects->firstWhere('effect_name', '通常効果')['is_exclusive']);
+    }
+
+    public function test_装備セット更新で他アイテムのidを渡しても乗っ取れない(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        // 無関係なアイテム（セットの部位ではない）
+        $victim = $this->makeItem(['name' => '無関係アイテム', 'category_id' => $cats['sword']->id]);
+
+        $create = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '乗っ取りテストセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                ['category_id' => $cats['sword']->id, 'name' => '正規部位'],
+            ],
+        ])->assertStatus(201);
+        $setId = $create->json('id');
+
+        // victim->id を piece.id として渡す。乗っ取られず、victim 名は変わらないこと。
+        $this->actingAs($admin, 'sanctum')->putJson("/api/items/{$setId}", [
+            'is_equipment_set' => true,
+            'pieces' => [
+                ['id' => $victim->id, 'category_id' => $cats['sword']->id, 'name' => '乗っ取り後の名前'],
+            ],
+        ])->assertOk();
+
+        // victim は無傷
+        $this->assertDatabaseHas('items', ['id' => $victim->id, 'name' => '無関係アイテム']);
+        // victim はセットのメンバーにもなっていない
+        $this->assertDatabaseMissing('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $victim->id]);
     }
 
     public function test_スキルアイテムは必要スキル値を保存できる(): void

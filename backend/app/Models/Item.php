@@ -45,6 +45,20 @@ class Item extends Model
         return $this->hasMany(ItemBonusEffect::class);
     }
 
+    /**
+     * 装備セットの構成部位（通常アイテム）。多対多。
+     * 部位アイテムは独立した通常アイテムなので、セット削除時はピボット行のみ削除される。
+     */
+    public function setMembers()
+    {
+        return $this->belongsToMany(
+            Item::class,
+            'equipment_set_members',
+            'set_item_id',
+            'piece_item_id'
+        )->withPivot('sort_order')->orderBy('equipment_set_members.sort_order');
+    }
+
     public function submittedBy()
     {
         return $this->belongsTo(User::class, 'submitted_by');

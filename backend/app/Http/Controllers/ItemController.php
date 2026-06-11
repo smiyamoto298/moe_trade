@@ -14,7 +14,7 @@ class ItemController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Item::with(['category', 'bonusEffects'])
+        $query = Item::with(['category', 'bonusEffects', 'setMembers.category', 'setMembers.bonusEffects'])
             ->when($request->name, fn($q) => $q->where('name', 'like', "%{$request->name}%"))
             ->when($request->verified_status, fn($q) => $q->where('verified_status', $request->verified_status))
             ->when($request->special_conditions, function ($q) use ($request) {
@@ -61,7 +61,10 @@ class ItemController extends Controller
 
     public function show(int $id)
     {
-        $item = Item::with(['category', 'bonusEffects', 'submittedBy:id,email'])->findOrFail($id);
+        $item = Item::with([
+            'category', 'bonusEffects', 'submittedBy:id,email',
+            'setMembers.category', 'setMembers.bonusEffects',
+        ])->findOrFail($id);
         return response()->json($item);
     }
 
@@ -139,6 +142,8 @@ class ItemController extends Controller
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
+            'bonus_effects.*.is_exclusive' => 'nullable|boolean',
+            ...$this->pieceValidationRules(),
         ], [
             'name.unique' => '同じ名前のアイテムが既に登録されています。',
         ]);
@@ -147,9 +152,23 @@ class ItemController extends Controller
         // 管理者が登録したアイテムは自動的に確認済みにする
         $isAdmin = $user->isAdmin();
 
+        // 装備セットの場合: 新規セットなので既存メンバーは無し → 全 piece の id を除去（新規作成）
+        if (!empty($data['is_equipment_set'])) {
+            $data['pieces'] = $this->sanitizePieceIds($data['pieces'] ?? [], []);
+            $this->assertPieceNamesUnique($data['pieces']);
+        }
+
         $item = DB::transaction(function () use ($data, $user, $isAdmin) {
+            $setData = collect($data)->except(['bonus_effects', 'pieces'])->toArray();
+            $isSet = !empty($data['is_equipment_set']);
+            // 装備セット本体は効果を持たない（部位側に持たせる）
+            if ($isSet) {
+                $setData['base_stats'] = [];
+                $setData['set_piece_category_ids'] = [];
+            }
+
             $item = Item::create([
-                ...$data,
+                ...$setData,
                 'verified_status' => $isAdmin ? 'verified' : 'unverified',
                 'submitted_by'    => $user->id,
                 'verified_by'     => $isAdmin ? $user->id : null,
@@ -157,7 +176,7 @@ class ItemController extends Controller
                 'locked_by_staff' => $isAdmin,
             ]);
 
-            if (!empty($data['bonus_effects'])) {
+            if (!$isSet && !empty($data['bonus_effects'])) {
                 foreach ($data['bonus_effects'] as $effect) {
                     $item->bonusEffects()->create($effect);
                 }
@@ -165,10 +184,17 @@ class ItemController extends Controller
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
 
+            if ($isSet) {
+                $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $isAdmin, $isAdmin);
+            }
+
             return $item;
         });
 
-        return response()->json($item->load('bonusEffects', 'category'), 201);
+        return response()->json(
+            $item->load('bonusEffects', 'category', 'setMembers.category', 'setMembers.bonusEffects'),
+            201
+        );
     }
 
     public function update(Request $request, int $id)
@@ -215,19 +241,38 @@ class ItemController extends Controller
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
+            'bonus_effects.*.is_exclusive' => 'nullable|boolean',
+            ...$this->pieceValidationRules(),
         ], [
             'name.unique' => '同じ名前のアイテムが既に登録されています。',
         ]);
 
-        DB::transaction(function () use ($item, $data, $user) {
-            $payload = collect($data)->except('bonus_effects')->toArray();
+        $isSet = array_key_exists('pieces', $data)
+            && (($data['is_equipment_set'] ?? $item->is_equipment_set));
+
+        // 装備セットの場合: 更新できる部位は「このセットの現在のメンバー」に限定。
+        // それ以外の id は除去し新規作成扱いにする（他アイテムの乗っ取り防止）。
+        if ($isSet) {
+            $allowedIds = $item->setMembers()->pluck('items.id')->map(fn($v) => (int) $v)->all();
+            $data['pieces'] = $this->sanitizePieceIds($data['pieces'] ?? [], $allowedIds);
+            $this->assertPieceNamesUnique($data['pieces']);
+        }
+
+        DB::transaction(function () use ($item, $data, $user, $isSet) {
+            $isAdmin = $user->isAdmin();
+            $payload = collect($data)->except(['bonus_effects', 'pieces'])->toArray();
             // editor/admin が編集したら排他ロックを立て、登録者の上書きを防ぐ
             if ($user->isEditor()) {
                 $payload['locked_by_staff'] = true;
             }
+            // 装備セット本体は効果を持たない
+            if ($isSet) {
+                $payload['base_stats'] = [];
+                $payload['set_piece_category_ids'] = [];
+            }
             $item->update($payload);
 
-            if (isset($data['bonus_effects'])) {
+            if (!$isSet && isset($data['bonus_effects'])) {
                 $item->bonusEffects()->delete();
                 foreach ($data['bonus_effects'] as $effect) {
                     $item->bonusEffects()->create($effect);
@@ -235,9 +280,149 @@ class ItemController extends Controller
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
+
+            if ($isSet) {
+                $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $isAdmin, $user->isEditor());
+            }
         });
 
-        return response()->json($item->fresh()->load('bonusEffects', 'category'));
+        return response()->json(
+            $item->fresh()->load('bonusEffects', 'category', 'setMembers.category', 'setMembers.bonusEffects')
+        );
+    }
+
+    /**
+     * 装備セットの構成部位（pieces）入力のバリデーションルール。
+     * 各部位は通常アイテムとして登録される。
+     */
+    private function pieceValidationRules(): array
+    {
+        return [
+            'pieces'                          => 'nullable|array',
+            'pieces.*.id'                     => 'nullable|integer|exists:items,id',
+            'pieces.*.category_id'            => 'required_with:pieces|integer|exists:item_categories,id',
+            'pieces.*.name'                   => 'required_with:pieces|string|max:200',
+            'pieces.*.base_stats'             => 'nullable|array',
+            'pieces.*.special_conditions'     => 'nullable|array',
+            'pieces.*.special_conditions.*'   => 'string',
+            'pieces.*.dyeable'                => 'nullable|boolean',
+            'pieces.*.mithril'                => 'nullable|boolean',
+            'pieces.*.exclusive_skill'        => 'nullable|boolean',
+            'pieces.*.bonus_effects'          => 'nullable|array',
+            'pieces.*.bonus_effects.*.effect_name' => 'required|string|max:200',
+            'pieces.*.bonus_effects.*.values'      => 'nullable|array',
+            'pieces.*.bonus_effects.*.description' => 'nullable|string',
+            'pieces.*.bonus_effects.*.is_exclusive' => 'nullable|boolean',
+        ];
+    }
+
+    /**
+     * 部位の id を検証する。許可リスト（＝そのセットの現在のメンバー）に無い id は
+     * 他アイテムの乗っ取り防止のため除去し、新規部位として扱う。
+     */
+    private function sanitizePieceIds(array $pieces, array $allowedIds): array
+    {
+        return array_map(function ($p) use ($allowedIds) {
+            if (!empty($p['id']) && !in_array((int) $p['id'], $allowedIds, true)) {
+                unset($p['id']);
+            }
+            return $p;
+        }, $pieces);
+    }
+
+    /**
+     * 部位アイテム名が items.name のユニーク制約に違反しないか検証する。
+     * 入力内の重複と、既存アイテム（自分自身=piece.id は除外）との衝突を検出。
+     */
+    private function assertPieceNamesUnique(array $pieces): void
+    {
+        $seen = [];
+        foreach ($pieces as $i => $piece) {
+            $name = trim($piece['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $lower = mb_strtolower($name);
+            if (isset($seen[$lower])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    "pieces.$i.name" => "部位名「{$name}」が重複しています。",
+                ]);
+            }
+            $seen[$lower] = true;
+
+            $exists = Item::where('name', $name)
+                ->when(!empty($piece['id']), fn($q) => $q->where('id', '!=', $piece['id']))
+                ->exists();
+            if ($exists) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    "pieces.$i.name" => "同じ名前のアイテム「{$name}」が既に登録されています。",
+                ]);
+            }
+        }
+    }
+
+    /**
+     * 装備セット本体($set)に構成部位($pieces)を同期する。
+     * - id付き: 既存の部位アイテムを更新
+     * - id無し: 部位アイテムを新規作成
+     * - 今回送られなかった既存メンバー: セットから切り離す（部位アイテム自体は削除しない）
+     * 併せてセット本体の set_piece_category_ids（部位カテゴリの派生キャッシュ）を更新する。
+     *
+     * @param bool $verifyOnCreate 新規部位を確認済みにするか（管理者）
+     * @param bool $lockOnSave      部位に staff ロックを立てるか（editor/admin）
+     */
+    private function syncSetPieces(Item $set, array $pieces, $user, bool $verifyOnCreate, bool $lockOnSave): void
+    {
+        $sync = [];        // piece_item_id => ['sort_order' => n]
+        $categoryIds = []; // 派生キャッシュ用
+
+        foreach ($pieces as $sort => $piece) {
+            $payload = [
+                'category_id'        => $piece['category_id'],
+                'name'               => $piece['name'],
+                'base_stats'         => $piece['base_stats'] ?? [],
+                'special_conditions' => $piece['special_conditions'] ?? [],
+                'dyeable'            => $piece['dyeable'] ?? null,
+                'mithril'            => $piece['mithril'] ?? false,
+                'exclusive_skill'    => $piece['exclusive_skill'] ?? false,
+                'is_equipment_set'   => false,
+            ];
+
+            if (!empty($piece['id'])) {
+                $pieceItem = Item::findOrFail($piece['id']);
+                if ($lockOnSave) {
+                    $payload['locked_by_staff'] = true;
+                }
+                $pieceItem->update($payload);
+            } else {
+                $pieceItem = Item::create([
+                    ...$payload,
+                    'verified_status' => $verifyOnCreate ? 'verified' : 'unverified',
+                    'submitted_by'    => $user->id,
+                    'verified_by'     => $verifyOnCreate ? $user->id : null,
+                    'verified_at'     => $verifyOnCreate ? now() : null,
+                    'locked_by_staff' => $lockOnSave,
+                ]);
+            }
+
+            // 部位の付加効果を置き換え
+            $pieceItem->bonusEffects()->delete();
+            if (!empty($piece['bonus_effects'])) {
+                foreach ($piece['bonus_effects'] as $effect) {
+                    $pieceItem->bonusEffects()->create($effect);
+                }
+                \App\Models\BonusValueLabel::syncFromBonusEffects($piece['bonus_effects']);
+            }
+
+            $sync[$pieceItem->id] = ['sort_order' => $sort];
+            $categoryIds[] = (int) $piece['category_id'];
+        }
+
+        // ピボットを同期（送られなかった既存メンバーは detach。部位アイテム自体は残す）
+        $set->setMembers()->sync($sync);
+
+        // セット本体の派生キャッシュ（部位カテゴリ）を更新
+        $set->update(['set_piece_category_ids' => array_values(array_unique($categoryIds))]);
     }
 
     public function verify(Request $request, int $id)

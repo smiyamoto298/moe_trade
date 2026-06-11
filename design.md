@@ -185,9 +185,14 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 ## アイテム種別定義
 
 ### 装備セット
-複数の部位をまとめて1アイテムとして扱う特殊種別。
-登録時に既存の部位カテゴリ（武器・防具・装飾品の子カテゴリ）から構成部位を複数選択する。
-`items.is_equipment_set = true` かつ `items.set_piece_category_ids` に構成部位のカテゴリIDを配列で保持。
+複数の部位をまとめて1アイテムとして扱う特殊種別。`items.is_equipment_set = true` で表す。
+- 各部位は**通常アイテムとして独立登録**され（部位ごとに名前・追加効果・付加効果・特殊条件などを保持）、
+  `equipment_set_members`（set_item_id / piece_item_id / sort_order）でセット本体に紐付く。
+- 登録/編集（editor・admin・一般ユーザー）では「設定グループ」単位で入力する。1グループに複数部位をまとめ、
+  追加効果・付加効果・その他設定を1回だけ入力できる（同じ設定の部位はまとめて設定）。名前は部位ごとに個別。
+- `items.set_piece_category_ids` は構成部位カテゴリの派生キャッシュ（「装備セットを含める」フィルタ用）。
+- 一覧の追加効果/付加効果列は、部位を効果内容でグループ化して部位名つきで表示し、設定が異なる部位は両方表示する。
+- API（`GET /items` `show`、出品/買取の一覧・詳細）は `set_members` に部位アイテム（category・bonus_effects含む）を返す。
 
 ### スキル
 スキルそのものを取引対象とする種別。親カテゴリ「スキル」の配下に以下の子カテゴリを持つ。
@@ -352,8 +357,8 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 | dyeable | BOOLEAN | 染色可否（NULL = 未設定／装備品種別） |
 | mithril | BOOLEAN | ミスリル装備フラグ（デフォルト: false／装備品種別） |
 | exclusive_skill | BOOLEAN | 専用技フラグ（デフォルト: false／装備品種別） |
-| is_equipment_set | BOOLEAN | 装備セットフラグ（デフォルト: false） |
-| set_piece_category_ids | JSON | 装備セットの構成部位カテゴリID配列（例: [3,4,5]） |
+| is_equipment_set | BOOLEAN | 装備セットフラグ（デフォルト: false）。構成部位は `equipment_set_members` で紐付く |
+| set_piece_category_ids | JSON | 装備セットの構成部位カテゴリID配列の派生キャッシュ（フィルタ用。例: [3,4,5]） |
 | skill_requirements | JSON | スキル種別の必要スキル値（例: {"刀剣":80,"筋力":50}）。NULL = 非スキル |
 | placement | VARCHAR(20) | アセット: 設置個所（床/壁/天井）。NULL = 非アセット |
 | asset_width | SMALLINT | アセット: サイズ（横マス数）。NULL = 非アセット |
@@ -365,6 +370,16 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 | verified_by | BIGINT FK(users) | 確認者（admin/editor） |
 | verified_at | TIMESTAMP | 確認日時 |
 | created_at / updated_at | TIMESTAMP | |
+
+### equipment_set_members（装備セット構成部位）
+装備セット本体（items）と構成部位アイテム（items）の多対多。部位は独立した通常アイテム。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| id | BIGINT PK | |
+| set_item_id | BIGINT FK(items) | セット本体（cascade delete） |
+| piece_item_id | BIGINT FK(items) | 構成部位アイテム（cascade delete。セット削除時はピボット行のみ削除され、部位アイテム自体は残る） |
+| sort_order | INT | 表示順 |
 
 ### bonus_effect_types（付加効果種別マスタ）
 検索フィルターで使用する付加効果の種別定義。

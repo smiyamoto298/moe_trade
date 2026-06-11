@@ -15,7 +15,7 @@ class ListingController extends Controller
         $includeCompleted = $request->boolean('include_completed', false);
         $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
 
-        $query = Listing::with(['item.category', 'item.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
+        $query = Listing::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
             ->whereIn('status', $statuses)
             ->whereHas('user', fn($q) => $q->where('is_suspended', false));
 
@@ -246,7 +246,7 @@ class ListingController extends Controller
     public function show(int $id)
     {
         // 公開対象（出品中・取引成立）のみ閲覧可。取り下げ・期限切れ等は404。
-        $listing = Listing::with(['item.category', 'item.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
+        $listing = Listing::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
             ->whereIn('status', ['active', 'completed'])
             ->findOrFail($id);
         $listing->resolveServerContacts();

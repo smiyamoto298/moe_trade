@@ -53,6 +53,8 @@ export interface ItemBonusEffect {
   type: BonusEffectType
   values: BonusEffectValue[]  // 複数の数値
   description: string
+  // この付加効果が専用技か（装備セットの部位では付加効果ごとに設定）。古いレスポンスでは未定義
+  is_exclusive?: boolean
 }
 
 export interface Item {
@@ -68,6 +70,8 @@ export interface Item {
   exclusive_skill: boolean
   is_equipment_set: boolean
   set_piece_category_ids: number[] | null
+  // 装備セットの構成部位（通常アイテムとして登録された部位）。セット本体のときのみ存在。
+  set_members?: Item[]
   skill_requirements: Record<string, number> | null
   // ---- アセット固有（装備品・テクニックでは null） ----
   placement?: AssetPlacement | null      // 設置個所: 床 / 壁 / 天井
