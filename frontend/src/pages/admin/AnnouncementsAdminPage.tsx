@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { announcementsApi } from '../../api/announcements'
 import type { Announcement, AnnouncementLevel } from '../../types'
 import { useDialog } from '../../contexts/DialogContext'
+import { useDragReorder } from '../../hooks/useDragReorder'
 
 interface Draft {
   id: number | null
@@ -55,8 +56,17 @@ export default function AnnouncementsAdminPage() {
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [loading, setLoading] = useState(true)
   const [savingIdx, setSavingIdx] = useState<number | null>(null)
-  const [dragIdx, setDragIdx] = useState<number | null>(null)
-  const orderDirty = useRef(false)
+
+  const { dragIdx, onDragStart, onDragOver, onDrop } = useDragReorder<Draft>(setDrafts, async (items) => {
+    const ids = items.map((d) => d.id).filter((id): id is number => id != null)
+    if (ids.length < 2) return
+    try {
+      await announcementsApi.reorder(ids)
+    } catch {
+      await alert('並び順の保存に失敗しました。', { title: 'エラー' })
+      load()
+    }
+  })
 
   const load = () => {
     setLoading(true)
@@ -113,35 +123,6 @@ export default function AnnouncementsAdminPage() {
     }
   }
 
-  // ---- ドラッグ＆ドロップ並び替え ----
-  const onDragStart = (idx: number) => setDragIdx(idx)
-
-  const onDragOver = (idx: number) => (e: React.DragEvent) => {
-    e.preventDefault()
-    if (dragIdx === null || dragIdx === idx) return
-    setDrafts((p) => {
-      const next = [...p]
-      const [moved] = next.splice(dragIdx, 1)
-      next.splice(idx, 0, moved)
-      return next
-    })
-    setDragIdx(idx)
-    orderDirty.current = true
-  }
-
-  const persistOrder = async () => {
-    setDragIdx(null)
-    if (!orderDirty.current) return
-    orderDirty.current = false
-    const ids = drafts.map((d) => d.id).filter((id): id is number => id != null)
-    if (ids.length < 2) return
-    try {
-      await announcementsApi.reorder(ids)
-    } catch {
-      await alert('並び順の保存に失敗しました。', { title: 'エラー' })
-      load()
-    }
-  }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
@@ -171,7 +152,7 @@ export default function AnnouncementsAdminPage() {
             <div
               key={d.id ?? `new-${idx}`}
               onDragOver={onDragOver(idx)}
-              onDrop={persistOrder}
+              onDrop={onDrop}
               className={`bg-surface-card border rounded-lg p-4 space-y-3 transition-colors ${
                 dragIdx === idx ? 'border-primary-500 opacity-70' : 'border-surface-border'
               }`}
@@ -181,7 +162,7 @@ export default function AnnouncementsAdminPage() {
                   <span
                     draggable
                     onDragStart={() => onDragStart(idx)}
-                    onDragEnd={persistOrder}
+                    onDragEnd={onDrop}
                     title="ドラッグして並び替え"
                     className="cursor-grab active:cursor-grabbing select-none text-gray-500 hover:text-gray-300 text-lg leading-none px-1"
                   >

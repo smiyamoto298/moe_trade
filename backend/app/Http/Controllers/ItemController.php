@@ -161,6 +161,8 @@ class ItemController extends Controller
                 foreach ($data['bonus_effects'] as $effect) {
                     $item->bonusEffects()->create($effect);
                 }
+                // 未登録の項目名（values[*].label）を候補テーブルに自動追加
+                \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
 
             return $item;
@@ -230,6 +232,8 @@ class ItemController extends Controller
                 foreach ($data['bonus_effects'] as $effect) {
                     $item->bonusEffects()->create($effect);
                 }
+                // 未登録の項目名（values[*].label）を候補テーブルに自動追加
+                \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
         });
 

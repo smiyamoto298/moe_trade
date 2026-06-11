@@ -89,11 +89,19 @@ class ChatController extends Controller
             return response()->json(['message' => '既にクローズされています。'], 400);
         }
 
-        DB::transaction(function () use ($chat, $request) {
+        // 交渉可の場合、登録者が成立価格を入力できる。未指定なら出品/買取価格を使用する。
+        $validated = $request->validate([
+            'final_price' => 'nullable|integer|min:1',
+        ]);
+
+        DB::transaction(function () use ($chat, $request, $validated) {
             $chat->update(['status' => 'deal']);
 
             $source = $chat->source();
             $source->update(['status' => 'completed']);
+
+            // 取引履歴に記録する価格（交渉可で成立価格が指定されていればそれを優先）
+            $dealPrice = $validated['final_price'] ?? $source->price;
 
             // IPは「取引希望を送信したときのIP（chat.request_ip）」と
             // 「取引成立を送信したときのIP（リクエストIP）」で突き合わせる。
@@ -127,7 +135,7 @@ class ChatController extends Controller
                 'buyer_id'       => $buyerId,
                 'seller_ip'      => $sellerIp,
                 'buyer_ip'       => $buyerIp,
-                'price'          => $source->price,
+                'price'          => $dealPrice,
                 'currency'       => $source->currency,
                 'server'         => $chat->server,
                 'is_valid'       => $isValid,

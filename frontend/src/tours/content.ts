@@ -15,6 +15,21 @@ import type { PageTour } from './types'
 // キー（'listings' など）が pageId です。下の ROUTE_TO_PAGE_ID と対応します。
 
 export const TOURS: Record<string, PageTour> = {
+  // 新規登録（/auth/register）。規約同意後に手動で開始する（content側のkeyのみ）。
+  register: {
+    pageId: 'register',
+    version: 3,
+    steps: [
+      {
+        target: '[data-tour="register-characters"]',
+        title: 'デフォルトサーバー',
+        body: '「デフォルト」をONにすると、出品・買取の登録時に取引可能サーバーが初めから選択されます（複数可）。後からマイページでも変更できます。',
+        placement: 'top',
+        width: 360,
+      },
+    ],
+  },
+
   // 出品一覧（/listings・/skills・/assets）
   listings: {
     pageId: 'listings',

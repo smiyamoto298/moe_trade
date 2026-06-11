@@ -44,8 +44,8 @@ export const chatApi = {
     return client.post<TradeChat>(`/chats/${chatId}/messages`, { message })
   },
 
-  // 取引成立：このチャットをdealにし、同じ出品の他のopenチャットをdeclinedに
-  deal: (chatId: number): Promise<{ data: TradeChat[] }> => {
+  // 取引成立：このチャットをdealにする。交渉可のときは成立価格(finalPrice)を渡せる。
+  deal: (chatId: number, finalPrice?: number): Promise<{ data: TradeChat[] }> => {
     if (USE_MOCK) {
       const chat = mockChats.find((c) => c.id === chatId)!
       chat.status = 'deal'
@@ -55,7 +55,7 @@ export const chatApi = {
         .forEach((c) => { c.status = 'declined' })
       return Promise.resolve({ data: mockChats.filter((c) => c.listing_id === chat.listing_id) })
     }
-    return client.post<TradeChat[]>(`/chats/${chatId}/deal`)
+    return client.post<TradeChat[]>(`/chats/${chatId}/deal`, finalPrice != null ? { final_price: finalPrice } : {})
   },
 
   // 見送り

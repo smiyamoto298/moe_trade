@@ -4,7 +4,8 @@ import { useDialog } from '../contexts/DialogContext'
 import ComboInput from './ComboInput'
 import Spinner from './Spinner'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, BONUS_VALUE_LABEL_OPTIONS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../utils/constants'
+import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
 
 interface BonusValueForm {
   value: string
@@ -39,6 +40,7 @@ interface Props {
 
 export default function NewItemForm({ onRegistered, onCancel, initialName = '' }: Props) {
   const { alert } = useDialog()
+  const bonusValueLabelOptions = useBonusValueLabels()
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -51,6 +53,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     special_conditions: [] as string[],
     set_piece_category_ids: [] as number[],
     skill_requirements: {} as Record<string, string>,
+    dyeable: null as boolean | null,
     mithril: false,
     exclusive_skill: false,
     placement: '' as '' | AssetPlacement,
@@ -146,6 +149,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         ) : {},
         // 特殊条件は装備品・アセットで使用（テクニックは無し）
         special_conditions: isSkill ? [] : form.special_conditions,
+        dyeable: isPlain ? form.dyeable : null,
         mithril: isPlain ? form.mithril : false,
         exclusive_skill: isPlain ? form.exclusive_skill : false,
         skill_requirements: isSkill
@@ -420,6 +424,32 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
 
       {isPlain && (
       <>
+      {/* 染色 */}
+      <div>
+        <p className="text-sm text-gray-300 mb-1.5">染色</p>
+        <div className="flex gap-2">
+          {([true, false] as const).map((val) => (
+            <label
+              key={String(val)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded border cursor-pointer text-xs transition-colors ${
+                form.dyeable === val
+                  ? 'border-primary-500 bg-primary-900/20 text-gray-200'
+                  : 'border-surface-border text-gray-400 hover:border-gray-500'
+              }`}
+            >
+              <input
+                type="radio"
+                name="new-dyeable"
+                checked={form.dyeable === val}
+                onChange={() => setField('dyeable', val)}
+                className="accent-primary-500"
+              />
+              {val ? '染色可' : '染色不可'}
+            </label>
+          ))}
+        </div>
+      </div>
+
       {/* ミスリル・専用技 */}
       <div className="flex items-center gap-6">
         <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -490,7 +520,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
                       id={`new-bonus-${idx}-${vi}`}
                       value={v.label}
                       onChange={(val) => setBonusVal(idx, vi, 'label', val)}
-                      options={BONUS_VALUE_LABEL_OPTIONS}
+                      options={bonusValueLabelOptions}
                       placeholder="項目名"
                       className="bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
                     />
@@ -522,6 +552,15 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
                 >
                   + 数値を追加
                 </button>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-0.5">備考</label>
+                <input
+                  type="text" placeholder="例: 物理ダメージ+15%、命中-5%"
+                  value={e.description}
+                  onChange={(ev) => setBonus(idx, 'description', ev.target.value)}
+                  className="w-full bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                />
               </div>
             </div>
           ))}

@@ -26,6 +26,16 @@ function markSeen(pageId: string, version: number) {
   }
 }
 
+/**
+ * 指定ページのツアーを（現在の version で）既に見たかどうか。
+ * 自動表示の対象外ページ（手動起動）でも、version 連動の既読判定を使えるよう公開する。
+ */
+export function hasSeenTour(pageId: string): boolean {
+  const tour = TOURS[pageId]
+  if (!tour) return true
+  return hasSeen(tour.pageId, tour.version)
+}
+
 type TourContextValue = {
   // 表示中の状態（オーバーレイが参照）
   activePageId: string | null

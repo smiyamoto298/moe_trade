@@ -21,6 +21,7 @@ import AdminItemsPage from './pages/admin/AdminItemsPage'
 import AdminItemEditPage from './pages/admin/AdminItemEditPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AnnouncementsAdminPage from './pages/admin/AnnouncementsAdminPage'
+import BonusValueLabelsAdminPage from './pages/admin/BonusValueLabelsAdminPage'
 import { useAuth } from './contexts/AuthContext'
 import type { UserRole } from './types'
 
@@ -99,6 +100,10 @@ export default function App() {
           <Route
             path="/admin/announcements"
             element={<RoleRoute roles={['admin']}><AnnouncementsAdminPage /></RoleRoute>}
+          />
+          <Route
+            path="/admin/bonus-value-labels"
+            element={<RoleRoute roles={['editor', 'admin']}><BonusValueLabelsAdminPage /></RoleRoute>}
           />
         </Routes>
       </main>

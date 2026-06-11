@@ -15,6 +15,8 @@ export interface UserCharacter {
   id: number
   server: Server
   character_name: string
+  // 出品・買取登録時に取引可能サーバーを既定チェックするデフォルトキャラ。
+  is_default?: boolean
 }
 
 // ---- サーバー ----

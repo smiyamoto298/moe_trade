@@ -6,7 +6,7 @@ export const authApi = {
     email: string
     password: string
     password_confirmation: string
-    characters?: { server: string; character_name: string }[]
+    characters?: { server: string; character_name: string; is_default?: boolean }[]
   }) => client.post<{ user: User; token: string }>('/auth/register', data),
 
   login: (data: { email: string; password: string }) =>

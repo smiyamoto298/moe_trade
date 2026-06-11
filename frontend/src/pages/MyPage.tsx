@@ -10,6 +10,7 @@ import { useNotification } from '../contexts/NotificationContext'
 import { useDialog } from '../contexts/DialogContext'
 import { useTour } from '../tours/TourContext'
 import ChatThread from '../components/ChatThread'
+import EditTradeModal from '../components/EditTradeModal'
 import type { Listing, BuyRequest, TradeChat, Server } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS } from '../utils/constants'
@@ -46,6 +47,8 @@ export default function MyPage() {
 
   const [activeChat, setActiveChat] = useState<TradeChat | null>(null)
   const [activeSource, setActiveSource] = useState<SourceRecord | null>(null)
+  // 出品・買取の編集モーダル対象
+  const [editTarget, setEditTarget] = useState<{ kind: 'listing' | 'buy_request'; record: Listing | BuyRequest } | null>(null)
 
   const startEditChars = () => {
     const draft: Record<string, string> = {}
@@ -73,6 +76,18 @@ export default function MyPage() {
       setEditingChars(false)
     } catch {
       await alert('キャラクター情報の保存に失敗しました。時間をおいて再度お試しください。', { title: 'エラー' })
+    } finally {
+      setCharSaving(false)
+    }
+  }
+
+  const handleToggleDefault = async (id: number, value: boolean) => {
+    setCharSaving(true)
+    try {
+      await charactersApi.setDefault(id, value)
+      await refresh()
+    } catch {
+      await alert('デフォルトキャラの保存に失敗しました。時間をおいて再度お試しください。', { title: 'エラー' })
     } finally {
       setCharSaving(false)
     }
@@ -282,7 +297,22 @@ export default function MyPage() {
               return (
                 <div key={server} className={`flex items-center gap-3 px-3 py-2 rounded ${char ? SERVER_COLORS[server] : 'border border-dashed border-surface-border'}`}>
                   <span className={`text-xs font-medium w-16 shrink-0 ${!char ? 'text-gray-600' : ''}`}>{server}</span>
-                  <span className={`text-sm ${char ? 'text-white' : 'text-gray-600'}`}>{char ? char.character_name : '未登録'}</span>
+                  <span className={`text-sm flex-1 ${char ? 'text-white' : 'text-gray-600'}`}>{char ? char.character_name : '未登録'}</span>
+                  {char && (
+                    <div className="flex items-center gap-1.5 shrink-0" title="出品・買取登録時に既定で選択するサーバー（複数可）">
+                      <span className="text-xs text-gray-300">デフォルト</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!!char.is_default}
+                        disabled={charSaving}
+                        onClick={() => handleToggleDefault(char.id, !char.is_default)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${char.is_default ? 'bg-primary-500' : 'bg-surface-border'}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${char.is_default ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -347,21 +377,20 @@ export default function MyPage() {
                   </div>
                 ) : (
                   <>
-                    {active.some((l) => {
-                      const chats = sellingChats[l.id] ?? []
-                      return l.status === 'completed' && chats.some((c) => c.seller_completed)
-                    }) && (
+                    {active.some((l) => l.status === 'deal_failed' || (l.status === 'completed' && (sellingChats[l.id] ?? []).some((c) => c.seller_completed))) && (
                       <label className="flex items-center gap-1.5 cursor-pointer self-end">
                         <input type="checkbox" checked={showMyCompleted} onChange={(e) => setShowMyCompleted(e.target.checked)} className="accent-primary-500 w-3 h-3" />
-                        <span className="text-xs text-gray-500">受け渡し完了を表示</span>
+                        <span className="text-xs text-gray-500">完了・不成立も表示</span>
                       </label>
                     )}
                     {active.map((l) => {
                       const daysLeft = Math.ceil((new Date(l.expires_at).getTime() - Date.now()) / 86400000)
                       const chats = sellingChats[l.id] ?? []
                       const hasUnread = unreadListingIds.has(l.id)
-                      const sellerDone = l.status === 'completed' && chats.some((c) => c.seller_completed)
-                      if (sellerDone && !showMyCompleted) return null
+                      // 完了は「受け渡し完了(seller_completed)」で判定。取引成立しただけ（受け渡し未）は畳まない。不成立は畳む。
+                      const concluded = l.status === 'deal_failed' || (l.status === 'completed' && chats.some((c) => c.seller_completed))
+                      // 未読メッセージがある場合は畳まず表示する
+                      if (concluded && !showMyCompleted && !unreadListingIds.has(l.id)) return null
                       return (
                         <div key={l.id} className={`bg-surface-card border rounded-lg p-4 ${hasUnread ? 'border-red-500/60' : 'border-surface-border'}`}>
                           <div className="flex items-start gap-3">
@@ -379,6 +408,7 @@ export default function MyPage() {
                               {l.status === 'active' && <p className={`text-xs ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>残り{daysLeft}日</p>}
                               <div className="flex gap-1.5">
                                 {l.status === 'active' && <>
+                                  <button onClick={() => setEditTarget({ kind: 'listing', record: l })} className="text-xs bg-surface-border hover:bg-surface-border/80 text-gray-300 px-2 py-1 rounded transition-colors">編集</button>
                                   <button onClick={() => handleRenew(l.id)} disabled={actioningId === l.id} className="text-xs bg-surface-border hover:bg-surface-border/80 disabled:opacity-50 text-gray-300 px-2 py-1 rounded transition-colors">{actioningId === l.id ? '処理中...' : '期限更新'}</button>
                                   <button onClick={() => handleCancel(l.id)} disabled={actioningId === l.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-2 py-1 rounded transition-colors">{actioningId === l.id ? '処理中...' : '取り下げ'}</button>
                                 </>}
@@ -445,13 +475,13 @@ export default function MyPage() {
                 </div>
               ) : (
                 <>
-                  {buyingChats.some((c) => c.buyer_completed) && (
+                  {buyingChats.some((c) => c.buyer_completed || c.status === 'deal_failed' || c.status === 'declined') && (
                     <label className="flex items-center gap-1.5 cursor-pointer self-end">
                       <input type="checkbox" checked={showMyCompleted} onChange={(e) => setShowMyCompleted(e.target.checked)} className="accent-primary-500 w-3 h-3" />
-                      <span className="text-xs text-gray-500">受け渡し完了を表示</span>
+                      <span className="text-xs text-gray-500">完了・不成立も表示</span>
                     </label>
                   )}
-                  {sortChats(buyingChats.filter((c) => showMyCompleted || !c.buyer_completed)).map((c) => {
+                  {sortChats(buyingChats.filter((c) => showMyCompleted || unreadChatIds.has(c.id) || !(c.buyer_completed || c.status === 'deal_failed' || c.status === 'declined'))).map((c) => {
                     const chatListing = (c as any).listing
                     const sellerChar = chatListing?.servers?.find((s: any) => s.server === c.server)?.character?.character_name
                     const isUnread = unreadChatIds.has(c.id)
@@ -495,21 +525,20 @@ export default function MyPage() {
                   </div>
                 ) : (
                   <>
-                    {activeBuy.some((b) => {
-                      const chats = buyRequestChats[b.id] ?? []
-                      return b.status === 'completed' && chats.some((c) => c.seller_completed)
-                    }) && (
+                    {activeBuy.some((b) => b.status === 'deal_failed' || (b.status === 'completed' && (buyRequestChats[b.id] ?? []).some((c) => c.seller_completed))) && (
                       <label className="flex items-center gap-1.5 cursor-pointer self-end">
                         <input type="checkbox" checked={showMyCompleted} onChange={(e) => setShowMyCompleted(e.target.checked)} className="accent-primary-500 w-3 h-3" />
-                        <span className="text-xs text-gray-500">受け渡し完了を表示</span>
+                        <span className="text-xs text-gray-500">完了・不成立も表示</span>
                       </label>
                     )}
                     {activeBuy.map((b) => {
                       const daysLeft = Math.ceil((new Date(b.expires_at).getTime() - Date.now()) / 86400000)
                       const chats = buyRequestChats[b.id] ?? []
                       const hasUnread = unreadBuyRequestIds.has(b.id)
-                      const ownerDone = b.status === 'completed' && chats.some((c) => c.seller_completed)
-                      if (ownerDone && !showMyCompleted) return null
+                      // 完了は「受け渡し完了(seller_completed)」で判定。取引成立しただけ（受け渡し未）は畳まない。不成立は畳む。
+                      const concluded = b.status === 'deal_failed' || (b.status === 'completed' && chats.some((c) => c.seller_completed))
+                      // 未読メッセージがある場合は畳まず表示する
+                      if (concluded && !showMyCompleted && !unreadBuyRequestIds.has(b.id)) return null
                       return (
                         <div key={b.id} className={`bg-surface-card border rounded-lg p-4 ${hasUnread ? 'border-red-500/60' : 'border-surface-border'}`}>
                           <div className="flex items-start gap-3">
@@ -527,6 +556,7 @@ export default function MyPage() {
                               {b.status === 'active' && <p className={`text-xs ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>残り{daysLeft}日</p>}
                               <div className="flex gap-1.5">
                                 {b.status === 'active' && <>
+                                  <button onClick={() => setEditTarget({ kind: 'buy_request', record: b })} className="text-xs bg-surface-border hover:bg-surface-border/80 text-gray-300 px-2 py-1 rounded transition-colors">編集</button>
                                   <button onClick={() => handleRenewBuy(b.id)} disabled={actioningId === b.id} className="text-xs bg-surface-border hover:bg-surface-border/80 disabled:opacity-50 text-gray-300 px-2 py-1 rounded transition-colors">{actioningId === b.id ? '処理中...' : '期限更新'}</button>
                                   <button onClick={() => handleCancelBuy(b.id)} disabled={actioningId === b.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-2 py-1 rounded transition-colors">{actioningId === b.id ? '処理中...' : '取り下げ'}</button>
                                 </>}
@@ -593,13 +623,13 @@ export default function MyPage() {
                 </div>
               ) : (
                 <>
-                  {sellingOffers.some((c) => c.buyer_completed) && (
+                  {sellingOffers.some((c) => c.buyer_completed || c.status === 'deal_failed' || c.status === 'declined') && (
                     <label className="flex items-center gap-1.5 cursor-pointer self-end">
                       <input type="checkbox" checked={showMyCompleted} onChange={(e) => setShowMyCompleted(e.target.checked)} className="accent-primary-500 w-3 h-3" />
-                      <span className="text-xs text-gray-500">受け渡し完了を表示</span>
+                      <span className="text-xs text-gray-500">完了・不成立も表示</span>
                     </label>
                   )}
-                  {sortChats(sellingOffers.filter((c) => showMyCompleted || !c.buyer_completed)).map((c) => {
+                  {sortChats(sellingOffers.filter((c) => showMyCompleted || unreadChatIds.has(c.id) || !(c.buyer_completed || c.status === 'deal_failed' || c.status === 'declined'))).map((c) => {
                     const br = (c as any).buy_request
                     const buyerChar = br?.servers?.find((s: any) => s.server === c.server)?.character?.character_name
                     const isUnread = unreadChatIds.has(c.id)
@@ -649,6 +679,7 @@ export default function MyPage() {
                 currentUserId={myUserId}
                 isOwner={isOwnerTab}
                 kind={chatKind}
+                source={activeSource}
                 onDeal={(updatedChats) => {
                   const updated = updatedChats.find((c) => c.id === activeChat.id)
                   if (updated) setActiveChat({ ...activeChat, ...updated })
@@ -664,6 +695,32 @@ export default function MyPage() {
           </div>
         )}
       </div>
+
+      {editTarget && (
+        <EditTradeModal
+          kind={editTarget.kind}
+          record={editTarget.record}
+          onClose={() => setEditTarget(null)}
+          onSaved={(updated) => {
+            // 更新レスポンスは item.category 等を含まないため、編集した項目だけをパッチする
+            if (editTarget.kind === 'listing') {
+              const u = updated as Listing
+              setListings((prev) =>
+                prev.map((l) =>
+                  l.id === u.id ? { ...l, trade_type: u.trade_type, comment: u.comment, is_worn: u.is_worn, servers: u.servers } : l
+                )
+              )
+            } else {
+              const u = updated as BuyRequest
+              setBuyRequests((prev) =>
+                prev.map((b) =>
+                  b.id === u.id ? { ...b, trade_type: u.trade_type, comment: u.comment, servers: u.servers } : b
+                )
+              )
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

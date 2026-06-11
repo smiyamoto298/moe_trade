@@ -16,6 +16,8 @@ interface Props {
   currentUserId: number | null
   isOwner: boolean
   kind?: 'listing' | 'buy_request'
+  // 取引対象（出品/買取）。取引方法（即決/交渉可）と価格の参照に使う。
+  source?: { trade_type: string; price: number } | null
   // 取引成立時に呼ばれる（同じ出品の他チャットも更新するため）
   onDeal?: (updatedChats: TradeChat[]) => void
   onStatusChange?: (chat: TradeChat) => void
@@ -23,11 +25,14 @@ interface Props {
   onListingsChanged?: () => void
 }
 
-export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', onDeal, onStatusChange, onListingsChanged }: Props) {
+export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', source, onDeal, onStatusChange, onListingsChanged }: Props) {
   const { confirm } = useDialog()
   const [chat, setChat] = useState(initialChat)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  // 交渉可の取引成立で成立価格を入力するモーダル
+  const [dealPriceOpen, setDealPriceOpen] = useState(false)
+  const [dealPriceInput, setDealPriceInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setChat(initialChat) }, [initialChat])
@@ -105,9 +110,12 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
     onStatusChange?.(merged)
   }
 
-  const handleDeal = async () => {
-    if (!(await confirm('取引成立にしますか？', { title: '取引成立の確認', confirmLabel: '取引成立にする' }))) return
-    const res = await chatApi.deal(chat.id)
+  // 取引対象の取引方法・価格（propsのsource優先、なければchatに埋め込まれたlisting/buy_requestを参照）
+  const sourceObj = source ?? ((chat as any).listing ?? (chat as any).buy_request) ?? null
+  const isNegotiable = sourceObj?.trade_type === 'negotiable'
+
+  const finalizeDeal = async (finalPrice?: number) => {
+    const res = await chatApi.deal(chat.id, finalPrice)
     const updated = Array.isArray(res.data)
       ? res.data.find((c: any) => c.id === chat.id)!
       : res.data
@@ -115,6 +123,24 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
     setChat(merged)
     onDeal?.(Array.isArray(res.data) ? res.data.map((c: any) => (c.id === chat.id ? merged : c)) : [merged])
     onStatusChange?.(merged)
+  }
+
+  const handleDeal = async () => {
+    // 交渉可は成立価格を入力するモーダルを開く（初期値は登録価格）
+    if (isNegotiable) {
+      setDealPriceInput(sourceObj?.price != null ? String(sourceObj.price) : '')
+      setDealPriceOpen(true)
+      return
+    }
+    if (!(await confirm('取引成立にしますか？', { title: '取引成立の確認', confirmLabel: '取引成立にする' }))) return
+    await finalizeDeal()
+  }
+
+  const confirmDealPrice = async () => {
+    const price = Number(dealPriceInput)
+    if (!Number.isInteger(price) || price < 1) return
+    setDealPriceOpen(false)
+    await finalizeDeal(price)
   }
 
   const handleDecline = async () => {
@@ -221,6 +247,37 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
             <button onClick={() => handleDealFailed(true)} className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded transition-colors">不成立にして再出品</button>
             <button onClick={() => handleDealFailed(false)} className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-3 py-1.5 rounded transition-colors">不成立のみ</button>
             <button onClick={() => setShowDealFailedConfirm(false)} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 transition-colors">キャンセル</button>
+          </div>
+        </div>
+      )}
+
+      {/* 取引成立（交渉可）: 成立価格入力ダイアログ */}
+      {dealPriceOpen && (
+        <div className="mx-4 my-2 p-3 bg-primary-900/20 border border-primary-700/40 rounded-lg text-xs space-y-2">
+          <p className="text-primary-300 font-medium">成立価格を入力してください</p>
+          <p className="text-gray-400">交渉で決まった実際の取引価格を入力します。この価格が取引履歴（相場）に記録されます。</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={dealPriceInput}
+              onChange={(e) => setDealPriceInput(e.target.value.replace(/[^\d]/g, ''))}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmDealPrice() }}
+              placeholder="成立価格"
+              className="w-32 bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white text-right placeholder-gray-600 focus:outline-none focus:border-primary-500"
+            />
+            <span className="text-gray-400">AC</span>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={confirmDealPrice}
+              disabled={!(Number(dealPriceInput) >= 1)}
+              className="text-xs bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-3 py-1.5 rounded transition-colors"
+            >
+              取引成立にする
+            </button>
+            <button onClick={() => setDealPriceOpen(false)} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 transition-colors">キャンセル</button>
           </div>
         </div>
       )}

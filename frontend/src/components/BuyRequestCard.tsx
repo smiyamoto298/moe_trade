@@ -34,6 +34,9 @@ export default function BuyRequestCard({ buyRequest }: Props) {
             {buyRequest.servers.map((s) => (
               <span key={s.server} className={`text-xs px-2 py-0.5 rounded ${SERVER_COLORS[s.server]}`}>
                 {s.server}
+                {s.character?.character_name && (
+                  <span className="ml-1 opacity-80">{s.character.character_name}</span>
+                )}
               </span>
             ))}
           </div>

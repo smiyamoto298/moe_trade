@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
 import { listingsApi } from '../api/listings'
@@ -39,6 +39,7 @@ interface Row {
   item: Item | null
   price: string
   listQty: string
+  isWorn: boolean
 }
 
 const SAMPLE = `レンタル\tNo▼\tアイテム名\tカテゴリ\t転送\t個数
@@ -99,6 +100,7 @@ function parsePaste(text: string): { rows: Row[]; excluded: number; skipped: num
       item: null,
       price: '',
       listQty: '0',
+      isWorn: false,
     })
   })
 
@@ -115,12 +117,26 @@ export default function BulkListingPage() {
 
   const [raw, setRaw] = useState('')
   const [rows, setRows] = useState<Row[]>([])
+  // 非表示にした行のキー集合。出品対象・テーブル表示から除外する。
+  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set())
+  const [hiddenModalOpen, setHiddenModalOpen] = useState(false)
+  // 非表示一覧モーダルで「再表示する」対象に選択した行キー
+  const [reshowSel, setReshowSel] = useState<Set<string>>(new Set())
   const [excluded, setExcluded] = useState(0)
   const [parsed, setParsed] = useState(false)
 
   // 共通設定
   const [tradeType, setTradeType] = useState('fixed')
   const [servers, setServers] = useState<string[]>([])
+
+  // デフォルトキャラのサーバーを取引可能サーバーに初期チェックする（複数可・初回のみ）
+  const defaultServerApplied = useRef(false)
+  useEffect(() => {
+    if (defaultServerApplied.current || !user) return
+    const defServers = (user.characters ?? []).filter((c) => c.is_default).map((c) => c.server)
+    if (defServers.length > 0) setServers((p) => (p.length === 0 ? defServers : p))
+    defaultServerApplied.current = true
+  }, [user])
 
   // 新規登録モーダル
   const [modalRowKey, setModalRowKey] = useState<string | null>(null)
@@ -147,6 +163,7 @@ export default function BulkListingPage() {
     const { rows: parsedRows, excluded: ex } = parsePaste(raw)
     setExcluded(ex)
     setParsed(true)
+    setHiddenKeys(new Set())
     if (parsedRows.length === 0) {
       setRows([])
       return
@@ -246,7 +263,20 @@ export default function BulkListingPage() {
     setMergeOpen(false)
   }
 
-  const matchedRows = rows.filter((r) => r.item)
+  // 表示中／非表示の行
+  const visibleRows = useMemo(() => rows.filter((r) => !hiddenKeys.has(r.key)), [rows, hiddenKeys])
+  const hiddenRows = useMemo(() => rows.filter((r) => hiddenKeys.has(r.key)), [rows, hiddenKeys])
+
+  const hideRow = (key: string) => setHiddenKeys((p) => new Set(p).add(key))
+  const reshowRows = (keys: string[]) =>
+    setHiddenKeys((p) => {
+      const next = new Set(p)
+      keys.forEach((k) => next.delete(k))
+      return next
+    })
+
+  // 非表示行は出品対象から除外する
+  const matchedRows = visibleRows.filter((r) => r.item)
   const totalListings = useMemo(
     () =>
       matchedRows.reduce((sum, r) => {
@@ -263,7 +293,7 @@ export default function BulkListingPage() {
     if (!user.email_verified_at) errs.push('出品するにはメール認証が必要です。')
     if (servers.length === 0) errs.push('取引可能サーバーを1つ以上選択してください。')
 
-    const targets = rows.filter((r) => r.item && (Number(r.listQty) || 0) > 0)
+    const targets = rows.filter((r) => r.item && (Number(r.listQty) || 0) > 0 && !hiddenKeys.has(r.key))
     if (targets.length === 0) errs.push('出品数を1以上に設定した行がありません。')
 
     for (const r of targets) {
@@ -303,6 +333,7 @@ export default function BulkListingPage() {
               quantity: 1,
               trade_type: tradeType,
               comment: '',
+              is_worn: r.isWorn,
               servers: serverPayload,
             })
             created++
@@ -457,10 +488,12 @@ export default function BulkListingPage() {
                     <th className="px-3 py-2 text-right font-medium">個数</th>
                     <th className="px-3 py-2 text-right font-medium">出品数</th>
                     <th className="px-3 py-2 text-right font-medium">価格(AC)</th>
+                    <th className="px-2 py-2 text-center font-medium">削れ</th>
+                    <th className="px-2 py-2 text-center font-medium w-10"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
-                  {rows.map((r) => {
+                  {visibleRows.map((r) => {
                     const linked = !!r.item
                     const alreadyListed = r.item ? (itemCounts?.listings[r.item.id] ?? 0) : 0
                     // 出品数 + 出品済 が所持個数を超える行は背景を強調する
@@ -538,9 +571,39 @@ export default function BulkListingPage() {
                             className="w-24 bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white text-right placeholder-gray-600 focus:outline-none focus:border-primary-500 disabled:opacity-40"
                           />
                         </td>
+                        <td className="px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            disabled={!linked}
+                            checked={r.isWorn}
+                            onChange={(e) => setRow(r.key, { isWorn: e.target.checked })}
+                            title="削れあり（耐久度に削れがある中古品）"
+                            className="accent-primary-500 disabled:opacity-40"
+                          />
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => hideRow(r.key)}
+                            title="この行を非表示にする"
+                            aria-label="非表示にする"
+                            className="text-gray-500 hover:text-gray-200 transition-colors"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            </svg>
+                          </button>
+                        </td>
                       </tr>
                     )
                   })}
+                  {visibleRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-6 text-center text-sm text-gray-500">
+                        表示できる行がありません{hiddenRows.length > 0 ? '（すべて非表示中）' : ''}。
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -560,10 +623,24 @@ export default function BulkListingPage() {
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 sticky bottom-0 bg-surface-card/95 backdrop-blur border border-surface-border rounded-lg p-4">
-            <p className="text-sm text-gray-300">
-              出品予定: <span className="text-white font-semibold">{totalListings}</span> 件
-              <span className="text-xs text-gray-500 ml-2">（出品数の合計。個数1の出品を件数分作成します）</span>
-            </p>
+            <div>
+              <p className="text-sm text-gray-300">
+                出品予定: <span className="text-white font-semibold">{totalListings}</span> 件
+                <span className="text-xs text-gray-500 ml-2">（出品数の合計。個数1の出品を件数分作成します）</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                非表示: <span className="text-gray-200 font-medium">{hiddenRows.length}</span> 件
+                {hiddenRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setReshowSel(new Set()); setHiddenModalOpen(true) }}
+                    className="ml-2 text-primary-400 hover:text-primary-300 underline underline-offset-2"
+                  >
+                    非表示一覧
+                  </button>
+                )}
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleSubmit}
@@ -673,6 +750,90 @@ export default function BulkListingPage() {
           itemName={analyticsItem.name}
           onClose={() => setAnalyticsItem(null)}
         />
+      )}
+
+      {/* 非表示一覧モーダル（再表示するアイテムを選択） */}
+      {hiddenModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+          <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-white">非表示一覧</h3>
+              <p className="text-xs text-gray-400 mt-1">再表示するアイテムを選択して「再表示」を押してください。</p>
+            </div>
+
+            {hiddenRows.length === 0 ? (
+              <p className="text-sm text-gray-500 py-6 text-center">非表示の行はありません。</p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setReshowSel(new Set(hiddenRows.map((r) => r.key)))}
+                    className="text-primary-400 hover:text-primary-300 transition-colors"
+                  >
+                    すべて選択
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReshowSel(new Set())}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    すべて解除
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {hiddenRows.map((r) => (
+                    <label
+                      key={r.key}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded border cursor-pointer transition-colors ${
+                        reshowSel.has(r.key) ? 'border-primary-500 bg-primary-500/10' : 'border-surface-border hover:border-gray-500'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={reshowSel.has(r.key)}
+                        onChange={() =>
+                          setReshowSel((p) => {
+                            const next = new Set(p)
+                            if (next.has(r.key)) next.delete(r.key)
+                            else next.add(r.key)
+                            return next
+                          })
+                        }
+                        className="accent-primary-500"
+                      />
+                      <span className="flex-1 text-sm text-white truncate">{r.name}</span>
+                      <span className="text-xs text-gray-400 shrink-0">{r.item ? r.item.name : '未登録'}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setHiddenModalOpen(false)}
+                className="text-sm text-gray-400 hover:text-white px-4 py-2 rounded transition-colors"
+              >
+                閉じる
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  reshowRows(Array.from(reshowSel))
+                  setReshowSel(new Set())
+                  setHiddenModalOpen(false)
+                }}
+                disabled={reshowSel.size === 0}
+                className="text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-5 py-2 rounded-md transition-colors"
+              >
+                再表示（{reshowSel.size}）
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

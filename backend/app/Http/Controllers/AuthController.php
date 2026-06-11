@@ -25,6 +25,7 @@ class AuthController extends Controller
             'characters'        => 'nullable|array',
             'characters.*.server'         => 'required|in:Emerald,Diamond,Pearl',
             'characters.*.character_name' => 'required|string|max:100',
+            'characters.*.is_default'     => 'nullable|boolean',
         ]);
 
         // メールはハッシュ（ブラインドインデックス）で保存・照合する。
@@ -60,7 +61,7 @@ class AuthController extends Controller
             foreach ($data['characters'] as $char) {
                 UserCharacter::updateOrCreate(
                     ['user_id' => $user->id, 'server' => $char['server']],
-                    ['character_name' => $char['character_name']]
+                    ['character_name' => $char['character_name'], 'is_default' => $char['is_default'] ?? false]
                 );
             }
         }

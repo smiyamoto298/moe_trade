@@ -34,4 +34,15 @@ export const charactersApi = {
     }
     return client.delete(`/characters/${id}`)
   },
+
+  // デフォルトキャラのON/OFFを個別にトグル（複数同時にONにできる）。
+  setDefault: (id: number, isDefault: boolean): Promise<{ data: UserCharacter[] }> => {
+    if (USE_MOCK) {
+      const chars = getMyChars()
+      const c = chars.find((x) => x.id === id)
+      if (c) c.is_default = isDefault
+      return Promise.resolve({ data: chars.map((c) => ({ ...c })) })
+    }
+    return client.post<UserCharacter[]>('/characters/default', { character_id: id, is_default: isDefault })
+  },
 }

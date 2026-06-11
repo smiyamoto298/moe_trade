@@ -11,6 +11,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             ItemCategorySeeder::class,
             BonusEffectTypeSeeder::class,
+            BonusValueLabelSeeder::class,
         ]);
     }
 }

@@ -528,8 +528,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               </div>
             </div>
 
-            {/* 削れあり（アセットは対象外） */}
-            {!isAssetMode && (
+            {/* 削れあり（テクニック・アセットは対象外） */}
+            {isEquipmentMode && (
             <div>
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
@@ -700,7 +700,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </div>
                           <p className="text-white font-medium flex items-center gap-1.5">
                             <span>{l.item.name}</span>
-                            {l.is_worn && (
+                            {!isSkillMode && l.is_worn && (
                               <span
                                 title="削れあり（耐久度に削れがある中古品）"
                                 className="text-xs text-amber-300 bg-amber-900/30 border border-amber-600/40 rounded px-1.5 py-0.5 shrink-0"

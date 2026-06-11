@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BoardController;
+use App\Http\Controllers\BonusValueLabelController;
 use App\Http\Controllers\BuyRequestController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CharacterController;
@@ -47,17 +48,9 @@ Route::get('bonus-effect-names', fn() => response()->json(
         ->pluck('effect_name')
 ));
 
-// 付加効果の数値項目ラベル一覧（values[*].label の distinct）
-Route::get('bonus-value-labels', function () {
-    $labels = \Illuminate\Support\Facades\DB::select("
-        SELECT DISTINCT jt.label
-        FROM item_bonus_effects,
-        JSON_TABLE(`values`, '\$[*]' COLUMNS (label VARCHAR(200) PATH '\$.label')) AS jt
-        WHERE jt.label IS NOT NULL AND jt.label != ''
-        ORDER BY jt.label
-    ");
-    return response()->json(array_column($labels, 'label'));
-});
+// 付加効果の「項目名」候補一覧。アイテム登録フォームの datalist と
+// 一覧の絞り込み候補に使用。管理者・編集者が管理画面で編集する。
+Route::get('bonus-value-labels', [\App\Http\Controllers\BonusValueLabelController::class, 'index']);
 Route::get('items',              [ItemController::class, 'index']);
 Route::get('items/{id}', [ItemController::class, 'show']);
 Route::get('items/{id}/price-analytics', [ItemController::class, 'priceAnalytics']);
@@ -86,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // キャラクター
     Route::get('characters',        [CharacterController::class, 'index']);
     Route::post('characters',       [CharacterController::class, 'upsert']);
+    Route::post('characters/default', [CharacterController::class, 'setDefault']);
     Route::delete('characters/{id}', [CharacterController::class, 'destroy']);
 
     // アイテム
@@ -252,6 +246,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('board/threads/{id}/visibility', [BoardController::class, 'updateVisibility']);
         Route::delete('board/threads/{id}',           [BoardController::class, 'destroyThread']);
         Route::delete('board/posts/{id}',             [BoardController::class, 'destroyPost']);
+    });
+
+    // 付加効果の項目名候補の管理（editor / admin）
+    Route::middleware('role:editor')->group(function () {
+        Route::get('admin/bonus-value-labels',            [BonusValueLabelController::class, 'adminIndex']);
+        Route::post('admin/bonus-value-labels',           [BonusValueLabelController::class, 'store']);
+        Route::post('admin/bonus-value-labels/reorder',   [BonusValueLabelController::class, 'reorder']);
+        Route::put('admin/bonus-value-labels/{id}',       [BonusValueLabelController::class, 'update']);
+        Route::delete('admin/bonus-value-labels/{id}',    [BonusValueLabelController::class, 'destroy']);
     });
 
     // ユーザー管理（admin限定）

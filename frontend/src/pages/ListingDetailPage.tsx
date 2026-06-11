@@ -9,6 +9,7 @@ import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsComp from '../components/PriceAnalytics'
 import type { Listing, ItemPriceAnalytics, ItemCategory } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, SPECIAL_CONDITIONS, BASE_STAT_LABELS } from '../utils/constants'
+import { itemTypeOf } from '../utils/itemType'
 
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -76,6 +77,8 @@ export default function ListingDetailPage() {
     (new Date(listing.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   )
   const isOwner = user?.id === listing.user_id
+  // テクニックは耐久度の概念がないため「削れあり」は表示しない
+  const isTechnique = categories.length > 0 && itemTypeOf(item.category, categories) === 'technique'
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
@@ -207,7 +210,7 @@ export default function ListingDetailPage() {
           <span className="ml-2 bg-surface text-gray-300 text-sm px-2 py-0.5 rounded">
             {TRADE_TYPE_LABEL[listing.trade_type]}
           </span>
-          {listing.is_worn && (
+          {!isTechnique && listing.is_worn && (
             <span
               title="削れあり（耐久度に削れがある中古品）"
               className="bg-amber-900/30 border border-amber-600/40 text-amber-300 text-sm px-2 py-0.5 rounded"

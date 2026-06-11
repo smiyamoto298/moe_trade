@@ -1,22 +1,35 @@
-import { useState, useId } from 'react'
+import { useState, useId, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authApi } from '../api/auth'
 import { saveToken } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { useTour, hasSeenTour } from '../tours/TourContext'
 import { SERVERS } from '../types'
 import { SERVER_COLORS } from '../utils/constants'
 import TermsModal from '../components/TermsModal'
 
 export default function RegisterPage() {
   const { refresh } = useAuth()
+  const { startTour } = useTour()
   const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '', password_confirmation: '' })
   const [characters, setCharacters] = useState<Record<string, string>>({})
+  // 出品・買取登録時に既定で選択するサーバー（複数可）
+  const [defaultServers, setDefaultServers] = useState<Record<string, boolean>>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [agreed, setAgreed] = useState(false)
   const pwId = useId()
+
+  // 規約同意後に操作案内ツアーを開始する（規約モーダルに被らないようにするため）。
+  // 既読判定は version 連動（hasSeenTour）。content.ts の version を上げれば再表示される。
+  useEffect(() => {
+    if (!agreed) return
+    if (hasSeenTour('register')) return
+    const t = setTimeout(() => startTour('register'), 400)
+    return () => clearTimeout(t)
+  }, [agreed, startTour])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +46,11 @@ export default function RegisterPage() {
     try {
       const charList = Object.entries(characters)
         .filter(([, name]) => name.trim())
-        .map(([server, character_name]) => ({ server, character_name: character_name.trim() }))
+        .map(([server, character_name]) => ({
+          server,
+          character_name: character_name.trim(),
+          is_default: !!defaultServers[server],
+        }))
       const payload = showPassword
         ? { ...form, password_confirmation: form.password }
         : form
@@ -71,7 +88,7 @@ export default function RegisterPage() {
           )}
 
           {/* アカウント情報 */}
-          <div className="space-y-4">
+          <div data-tour="register-account" className="space-y-4">
             <div>
               <label className="block text-xs text-gray-400 mb-1">メールアドレス</label>
               <input
@@ -119,30 +136,51 @@ export default function RegisterPage() {
           </div>
 
           {/* キャラクター名 */}
-          <div>
+          <div data-tour="register-characters">
             <p className="text-xs font-semibold text-gray-300 mb-2">
               キャラクター名
               <span className="text-gray-500 font-normal ml-1">（任意・後から設定可）</span>
             </p>
             <div className="space-y-2">
-              {SERVERS.map((server) => (
-                <div key={server} className={`flex items-center gap-3 px-3 py-2 rounded border border-surface-border`}>
-                  <span className={`text-xs font-medium w-16 shrink-0 ${SERVER_COLORS[server].split(' ')[1]}`}>
-                    {server}
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="キャラクター名"
-                    value={characters[server] ?? ''}
-                    onChange={(e) => setCharacters((p) => ({ ...p, [server]: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none"
-                  />
-                </div>
-              ))}
+              {SERVERS.map((server) => {
+                const hasName = !!(characters[server] ?? '').trim()
+                const on = !!defaultServers[server]
+                return (
+                  <div key={server} className="flex items-center gap-3 px-3 py-2 rounded border border-surface-border">
+                    <span className={`text-xs font-medium w-16 shrink-0 ${SERVER_COLORS[server].split(' ')[1]}`}>
+                      {server}
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="キャラクター名"
+                      value={characters[server] ?? ''}
+                      onChange={(e) => setCharacters((p) => ({ ...p, [server]: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none"
+                    />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`text-xs ${hasName ? 'text-gray-300' : 'text-gray-600'}`}>デフォルト</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on && hasName}
+                        disabled={!hasName}
+                        onClick={() => setDefaultServers((p) => ({ ...p, [server]: !p[server] }))}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-40 ${on && hasName ? 'bg-primary-500' : 'bg-surface-border'}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${on && hasName ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              「デフォルト」をONにすると、出品・買取登録時にそのサーバーが初めから選択されます（複数可）。
+            </p>
           </div>
 
           <button
+            data-tour="register-submit"
             type="submit" disabled={loading || !agreed}
             className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md text-sm font-medium transition-colors"
           >

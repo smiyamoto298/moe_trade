@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
 import { listingsApi } from '../api/listings'
@@ -7,9 +7,10 @@ import client from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import NewItemForm from '../components/NewItemForm'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
-import type { Item, MyItemCounts } from '../types'
+import type { Item, MyItemCounts, ItemCategory } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL } from '../utils/constants'
+import { itemTypeOf } from '../utils/itemType'
 
 export default function NewListingPage() {
   const { user } = useAuth()
@@ -24,11 +25,19 @@ export default function NewListingPage() {
   const [priceError, setPriceError] = useState('')
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [itemCounts, setItemCounts] = useState<MyItemCounts | null>(null)
+  const [categories, setCategories] = useState<ItemCategory[]>([])
 
   useEffect(() => {
     if (!user) return
     client.get<MyItemCounts>('/mypage/item-counts').then((r) => setItemCounts(r.data)).catch(() => {})
   }, [user])
+
+  useEffect(() => {
+    itemsApi.categories().then((r) => setCategories(r.data)).catch(() => {})
+  }, [])
+
+  // テクニックは耐久度の概念がないため「削れあり」は不要
+  const isTechnique = !!selectedItem && categories.length > 0 && itemTypeOf(selectedItem.category, categories) === 'technique'
 
   const [form, setForm] = useState({
     price: '',
@@ -38,6 +47,17 @@ export default function NewListingPage() {
     is_worn: false,
     servers: [] as string[],
   })
+
+  // デフォルトキャラのサーバーを取引可能サーバーに初期チェックする（複数可・初回のみ）
+  const defaultServerApplied = useRef(false)
+  useEffect(() => {
+    if (defaultServerApplied.current || !user) return
+    const defServers = (user.characters ?? []).filter((c) => c.is_default).map((c) => c.server)
+    if (defServers.length > 0) {
+      setForm((p) => (p.servers.length === 0 ? { ...p, servers: defServers } : p))
+    }
+    defaultServerApplied.current = true
+  }, [user])
 
   const handleItemSearch = () => runSearch(async () => {
     if (!itemSearch.trim()) return
@@ -68,7 +88,7 @@ export default function NewListingPage() {
         quantity: 1,
         trade_type: form.trade_type,
         comment: form.comment,
-        is_worn: form.is_worn,
+        is_worn: isTechnique ? false : form.is_worn,
         servers: serverPayload,
       })
       navigate('/mypage')
@@ -262,16 +282,18 @@ export default function NewListingPage() {
             />
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.is_worn}
-              onChange={(e) => setForm((p) => ({ ...p, is_worn: e.target.checked }))}
-              className="accent-amber-500"
-            />
-            <span className="text-sm text-gray-300">削れあり</span>
-            <span className="text-xs text-gray-500">（耐久度に削れがある中古品）</span>
-          </label>
+          {!isTechnique && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.is_worn}
+                onChange={(e) => setForm((p) => ({ ...p, is_worn: e.target.checked }))}
+                className="accent-amber-500"
+              />
+              <span className="text-sm text-gray-300">削れあり</span>
+              <span className="text-xs text-gray-500">（耐久度に削れがある中古品）</span>
+            </label>
+          )}
         </div>
 
         {/* サーバー選択 */}

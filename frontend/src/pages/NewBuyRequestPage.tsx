@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
 import { buyRequestsApi } from '../api/buyRequests'
@@ -37,6 +37,17 @@ export default function NewBuyRequestPage() {
     comment: '',
     servers: [] as string[],
   })
+
+  // デフォルトキャラのサーバーを取引可能サーバーに初期チェックする（複数可・初回のみ）
+  const defaultServerApplied = useRef(false)
+  useEffect(() => {
+    if (defaultServerApplied.current || !user) return
+    const defServers = (user.characters ?? []).filter((c) => c.is_default).map((c) => c.server)
+    if (defServers.length > 0) {
+      setForm((p) => (p.servers.length === 0 ? { ...p, servers: defServers } : p))
+    }
+    defaultServerApplied.current = true
+  }, [user])
 
   const handleItemSearch = () => runSearch(async () => {
     if (!itemSearch.trim()) return

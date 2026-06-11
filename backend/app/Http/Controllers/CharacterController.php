@@ -32,4 +32,23 @@ class CharacterController extends Controller
         $char->delete();
         return response()->json(null, 204);
     }
+
+    /**
+     * 指定キャラクターのデフォルト設定をトグルする（複数キャラを同時に既定にできる）。
+     * is_default = true/false を個別に設定し、他のキャラには影響しない。
+     */
+    public function setDefault(Request $request)
+    {
+        $data = $request->validate([
+            'character_id' => 'required|integer',
+            'is_default'   => 'required|boolean',
+        ]);
+
+        $user = $request->user();
+        // 本人のキャラであることを確認して設定
+        $char = $user->characters()->findOrFail($data['character_id']);
+        $char->update(['is_default' => $data['is_default']]);
+
+        return response()->json($user->characters()->get());
+    }
 }

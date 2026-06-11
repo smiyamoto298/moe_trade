@@ -6,7 +6,8 @@ import { useDialog } from '../../contexts/DialogContext'
 import ComboInput from '../../components/ComboInput'
 import Spinner from '../../components/Spinner'
 import type { ItemCategory, AssetPlacement, AssetFunction } from '../../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, BONUS_VALUE_LABEL_OPTIONS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS } from '../../utils/constants'
+import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 const ALL_STATS = Object.keys(BASE_STAT_LABELS)
@@ -43,6 +44,7 @@ export default function AdminItemEditPage() {
   const incomingFilter = (location.state as { filter?: string } | null)?.filter
   const { alert } = useDialog()
   const { user } = useAuth()
+  const bonusValueLabelOptions = useBonusValueLabels()
   // editor / admin は全アイテムを編集でき、「確認済みにする」も可能
   const isEditor = user?.role === 'editor' || user?.role === 'admin'
   const isNew = !id
@@ -530,7 +532,7 @@ export default function AdminItemEditPage() {
                       id={`bonus-${idx}-val-${vi}`}
                       value={v.label}
                       onChange={(val) => setBonusValue(idx, vi, 'label', val)}
-                      options={BONUS_VALUE_LABEL_OPTIONS}
+                      options={bonusValueLabelOptions}
                       placeholder="項目名（例: 物理ダメージ）"
                       className="bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
                     />
