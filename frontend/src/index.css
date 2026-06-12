@@ -2,9 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 出品一覧テーブル: ビューポート幅ではなく、テーブルを囲むコンテナの実幅（絞り込み
+   サイドバーの開閉で変わる）で列数を切り替える。コンテナ幅850px以下は列数を減らす。 */
+.listing-table-container {
+  container-type: inline-size;
+}
+.listing-col-wide {
+  display: none; /* コンテナが狭い間は詳細列を隠す */
+}
+.listing-wide-only {
+  display: none; /* 「相場情報」ボタンなど、広いときだけ出す要素 */
+}
+@container (min-width: 851px) {
+  .listing-col-wide {
+    display: table-cell;
+  }
+  .listing-wide-only {
+    display: inline-flex;
+  }
+  .listing-narrow-only {
+    display: none; /* 「詳細 →」リンクなど、狭いときだけ出す要素 */
+  }
+}
+
 @layer base {
+  /* 背景画像は body::before（fixed）で敷くため、フォールバック色は html 側に置く。
+     body 自体を不透明にすると ::before が背面に隠れて見えなくなる。 */
+  html {
+    @apply bg-surface;
+  }
+
   body {
-    @apply bg-surface text-gray-200;
+    @apply text-gray-200;
     font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+  }
+
+  /* 城の背景イラスト。ダークテーマの可読性を保つため暗いオーバーレイを重ねる。
+     background-attachment: fixed は iOS で効かないため、fixed の擬似要素を使う。 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    background:
+      linear-gradient(rgba(26, 29, 46, 0.72), rgba(26, 29, 46, 0.72)),
+      url('/img/castle.jpg') center / cover no-repeat;
   }
 }

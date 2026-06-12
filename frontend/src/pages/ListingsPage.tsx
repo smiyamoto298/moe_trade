@@ -332,7 +332,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
     skills.map((s) => ({ value: s, label: s, group }))
   )
 
-  const [filterOpen, setFilterOpen] = useState(false)
+  // 絞り込みパネルの開閉。狭い画面では畳んだ状態、サイドバー表示になる幅（lg以上）では開いた状態で始める
+  const [filterOpen, setFilterOpen] = useState(() => window.innerWidth >= 1024)
 
   // 操作列の末尾リンク：スマホでは「詳細 →」（出品詳細はスマホ専用画面）、
   // PCでは「相場情報」ボタンを表示し、押すと相場ポップアップを開く。
@@ -340,7 +341,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
     <>
       <Link
         to={`/listings/${l.id}`}
-        className="sm:hidden text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
+        className="listing-narrow-only text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
       >
         詳細 →
       </Link>
@@ -348,7 +349,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
         type="button"
         {...(withTour ? { 'data-tour': 'listings-detail' } : {})}
         onClick={() => setAnalyticsItem({ id: l.item.id, name: l.item.name })}
-        className="hidden sm:inline-flex items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors"
+        className="listing-wide-only items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors"
       >
         相場情報
       </button>
@@ -411,17 +412,20 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
       {mastersLoading ? (
         <Spinner center />
       ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+      // lg以上で畳んでいる間はサイドバー列を細いバー（44px）にして、一覧を広げる
+      <div className={`grid gap-6 ${filterOpen ? 'grid-cols-1 lg:grid-cols-[280px_1fr]' : 'grid-cols-1 lg:grid-cols-[44px_1fr]'}`}>
         {/* フィルターサイドバー */}
         <aside data-tour="listings-filter" className="space-y-3">
           <div className="bg-surface-card border border-surface-border rounded-lg overflow-hidden">
-            {/* ヘッダー（スマホ時はボタン） */}
+            {/* ヘッダー（クリックで開閉）。lg未満は上下に、lg以上は横方向に畳む */}
             <button
               type="button"
-              className="w-full flex items-center justify-between px-4 py-3 lg:cursor-default"
+              className={`w-full items-center justify-between px-4 py-3 ${filterOpen ? 'flex' : 'flex lg:hidden'}`}
               onClick={() => setFilterOpen((o) => !o)}
+              aria-expanded={filterOpen}
             >
               <h2 className="text-sm font-semibold text-gray-300">絞り込み</h2>
+              {/* lg未満: 上下シェブロン */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className={`w-4 h-4 text-gray-400 transition-transform lg:hidden ${filterOpen ? 'rotate-180' : ''}`}
@@ -429,8 +433,35 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
+              {/* lg以上: 左シェブロン（横に畳む） */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-4 h-4 text-gray-400 hidden lg:block"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
-            <div className={`px-4 pb-4 space-y-4 lg:block ${filterOpen ? 'block' : 'hidden'}`}>
+            {/* lg以上で畳んだ状態: 縦書きの細いバー */}
+            {!filterOpen && (
+              <button
+                type="button"
+                className="hidden lg:flex w-full flex-col items-center gap-2 px-2 py-3 text-gray-300 hover:text-white transition-colors"
+                onClick={() => setFilterOpen(true)}
+                aria-expanded={false}
+                title="絞り込みを開く"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-4 h-4 text-gray-400"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="text-sm font-semibold [writing-mode:vertical-rl]">絞り込み</span>
+              </button>
+            )}
+            <div className={`px-4 pb-4 space-y-4 ${filterOpen ? 'block' : 'hidden'}`}>
 
             {/* アイテム名 */}
             <div>
@@ -786,30 +817,30 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
             </select>
           </div>
 
-          <div className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
-            <table className="w-full sm:min-w-[760px] text-sm">
+          <div className="listing-table-container bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-border">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-48">アイテム</th>
                   {isSkillMode ? (
                     <>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell" colSpan={2}>必要スキル</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">必要マスタリ</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide" colSpan={2}>必要スキル</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">必要マスタリ</th>
                     </>
                   ) : isAssetMode ? (
                     <>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">設置・サイズ</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">ストレージ・特殊機能</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">特殊条件</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">設置・サイズ</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">ストレージ・特殊機能</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">特殊条件</th>
                     </>
                   ) : (
                     <>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">追加効果</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">付加効果</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">特殊条件</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">追加効果</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">付加効果</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">特殊条件</th>
                     </>
                   )}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">取引</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">取引</th>
                   <th className="text-right px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">価格</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -875,7 +906,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         {isSkillMode ? (
                           <>
                           {/* 必要スキル値 */}
-                          <td className="hidden sm:table-cell px-4 py-3 align-top" colSpan={2}>
+                          <td className="listing-col-wide px-4 py-3 align-top" colSpan={2}>
                             <div className="flex flex-wrap gap-1">
                               {!l.item.skill_requirements || Object.keys(l.item.skill_requirements).length === 0 ? (
                                 <span className="text-xs text-gray-600">—</span>
@@ -888,14 +919,14 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </td>
 
                           {/* 必要マスタリ（条件スキルも表示） */}
-                          <td className="hidden sm:table-cell px-4 py-3 align-top">
+                          <td className="listing-col-wide px-4 py-3 align-top">
                             <MasteryBadges codes={l.item.mastery_requirements} />
                           </td>
                           </>
                         ) : isAssetMode ? (
                           <>
                           {/* 設置・サイズ */}
-                          <td className="hidden sm:table-cell px-4 py-3">
+                          <td className="listing-col-wide px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {l.item.placement && (
                                 <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">{l.item.placement}</span>
@@ -912,7 +943,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </td>
 
                           {/* ストレージ・特殊機能 */}
-                          <td className="hidden sm:table-cell px-4 py-3">
+                          <td className="listing-col-wide px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {(l.item.storage_count ?? 0) > 0 && (
                                 <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
@@ -931,7 +962,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </td>
 
                           {/* 特殊条件 */}
-                          <td className="hidden sm:table-cell px-4 py-3">
+                          <td className="listing-col-wide px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {l.item.special_conditions.length === 0 ? (
                                 <span className="text-xs text-gray-600">—</span>
@@ -947,7 +978,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         ) : (
                           <>
                           {/* 追加効果 */}
-                          <td className="hidden sm:table-cell px-4 py-3">
+                          <td className="listing-col-wide px-4 py-3">
                             {l.item.is_equipment_set ? (
                               <SetBaseStatsCell members={l.item.set_members ?? []} />
                             ) : (
@@ -962,7 +993,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </td>
 
                           {/* 付加効果 */}
-                          <td className="hidden sm:table-cell px-4 py-3">
+                          <td className="listing-col-wide px-4 py-3">
                             {l.item.is_equipment_set ? (
                               <SetBonusCell members={l.item.set_members ?? []} />
                             ) : (
@@ -977,7 +1008,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </td>
 
                           {/* 特殊条件 */}
-                          <td className="hidden sm:table-cell px-4 py-3">
+                          <td className="listing-col-wide px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {l.item.special_conditions.length === 0 ? (
                                 <span className="text-xs text-gray-600">—</span>
@@ -993,7 +1024,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         )}
 
                         {/* 取引方法・サーバー */}
-                        <td className="hidden sm:table-cell px-4 py-3 min-w-[8.5rem]">
+                        <td className="listing-col-wide px-4 py-3 min-w-[8.5rem]">
                           <div data-tour="listings-tradetype" className="flex flex-wrap gap-1 mb-1">
                             <span className="text-xs bg-surface text-gray-300 px-2 py-0.5 rounded">
                               {TRADE_TYPE_LABEL[l.trade_type]}

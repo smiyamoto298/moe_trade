@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Header from './components/Header'
 import Footer from './components/Footer'
+import SideBanners from './components/SideBanners'
 import TourOverlay from './components/TourOverlay'
 import HelpButton from './components/HelpButton'
 import ListingsPage from './pages/ListingsPage'
@@ -41,7 +42,8 @@ function RoleRoute({ children, roles }: { children: React.ReactNode; roles: User
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col">
+    // pb-* はfixedフッターの高さ分の逃げ（著作権表記の折り返し行数が画面幅で変わる）
+    <div className="min-h-screen flex flex-col pb-24 sm:pb-20 min-[1150px]:pb-16">
       <Header />
       <main className="flex-1">
         <Routes>
@@ -108,6 +110,7 @@ export default function App() {
         </Routes>
       </main>
       <Footer />
+      <SideBanners />
       <HelpButton />
       <TourOverlay />
     </div>
