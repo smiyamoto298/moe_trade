@@ -826,7 +826,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-border">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-48">アイテム</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-52">アイテム</th>
                   {isSkillMode ? (
                     <>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide" colSpan={2}>必要スキル</th>
@@ -888,9 +888,6 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                             ) : (
                               <span className="text-xs text-gray-400">{l.item.category.name}</span>
                             )}
-                          </div>
-                          <p className="text-white font-medium flex items-center gap-1.5">
-                            <span>{l.item.name}</span>
                             {!isSkillMode && l.is_worn && (
                               <span
                                 title="削れあり（耐久度に削れがある中古品）"
@@ -899,7 +896,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                                 ⚠ 削れあり
                               </span>
                             )}
-                          </p>
+                          </div>
+                          <p className="text-white font-medium">{l.item.name}</p>
                           {/* セットの部位名をアイテム名の下に表示 */}
                           {l.item.is_equipment_set && (l.item.set_members?.length ?? 0) > 0 && (
                             <div className="mt-1">
@@ -1089,6 +1087,18 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           )}
                         </td>
                       </tr>
+
+                      {/* 出品コメント行（コメントがある場合のみ、アイテム行の直下に表示） */}
+                      {l.comment && (
+                        <tr className={`!border-t-0 ${isOpen ? 'bg-primary-500/5' : ''}`}>
+                          <td colSpan={7} className="px-4 pb-3 pt-0">
+                            <p className="text-xs text-gray-300 bg-surface rounded px-3 py-2 whitespace-pre-wrap break-words">
+                              <span className="text-gray-500 mr-1.5 select-none">💬</span>
+                              {l.comment}
+                            </p>
+                          </td>
+                        </tr>
+                      )}
 
                       {/* 取引希望パネル（行を展開） */}
                       {isOpen && (

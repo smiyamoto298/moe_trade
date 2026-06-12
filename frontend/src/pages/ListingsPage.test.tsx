@@ -15,6 +15,8 @@ import type { Item, ItemCategory, Listing, Paginated, User } from '../types'
 //   アセットタブは設置個所・特殊機能・ストレージで絞り込む
 // - 価格帯・取引方法・サーバー（複数選択）・ソート・削れあり非表示（exclude_worn）
 // - 未ログイン時は「+ 出品する」「取引」を非表示にしログイン導線を表示する
+// - 出品コメントがある場合はアイテム行の直下にコメント行を表示する
+// - 削れあり出品は種別（カテゴリ名／⚔ 装備セット）バッジの横に「⚠ 削れあり」を表示する
 
 vi.mock('../api/listings', () => ({ listingsApi: { list: vi.fn() } }))
 vi.mock('../api/items', () => ({ itemsApi: { categories: vi.fn() } }))
@@ -363,6 +365,73 @@ describe('ListingsPage 絞り込み（アセットタブ）', () => {
     const storageArea = screen.getByText('ストレージ数').closest('div')!
     await userEvent.type(within(storageArea).getByPlaceholderText('最小'), '5')
     await waitFor(() => expect(lastParams()).toMatchObject({ storage_min: 5 }))
+  })
+})
+
+describe('ListingsPage 削れありバッジ', () => {
+  it('削れあり出品は種別バッジの横に「⚠ 削れあり」を表示し、アイテム名の横には表示しない', async () => {
+    mockedList.mockResolvedValue(page([makeListing({ is_worn: true })]))
+    renderAt('/listings')
+    await waitForLoaded()
+
+    const worn = await screen.findByText('⚠ 削れあり')
+    // 種別（カテゴリ名）バッジと同じ行コンテナに並ぶ
+    expect(worn.parentElement).toHaveTextContent('刀剣')
+    // アイテム名の要素には含まれない
+    expect(screen.getByText('炎の大剣')).not.toContainElement(worn)
+  })
+
+  it('削れなしの出品にはバッジを表示しない', async () => {
+    mockedList.mockResolvedValue(page([makeListing({ is_worn: false })]))
+    renderAt('/listings')
+    await waitForLoaded()
+
+    await screen.findByText('炎の大剣')
+    expect(screen.queryByText('⚠ 削れあり')).not.toBeInTheDocument()
+  })
+
+  it('テクニックタブでは削れありを表示しない', async () => {
+    mockedList.mockResolvedValue(page([makeListing({ is_worn: true })]))
+    renderAt('/skills')
+    await waitForLoaded()
+
+    await screen.findByText('炎の大剣')
+    expect(screen.queryByText('⚠ 削れあり')).not.toBeInTheDocument()
+  })
+})
+
+describe('ListingsPage 出品コメント行', () => {
+  it('コメントがある出品はアイテム行の直下にコメント行を表示する', async () => {
+    mockedList.mockResolvedValue(page([makeListing({ comment: '値下げ交渉OKです' })]))
+    renderAt('/listings')
+    await waitForLoaded()
+
+    const comment = await screen.findByText('値下げ交渉OKです')
+    const itemRow = screen.getByText('炎の大剣').closest('tr')!
+    expect(itemRow.nextElementSibling).toContainElement(comment)
+  })
+
+  it('コメントが無い出品にはコメント行を表示しない', async () => {
+    mockedList.mockResolvedValue(page([makeListing({ comment: '' })]))
+    renderAt('/listings')
+    await waitForLoaded()
+
+    await screen.findByText('炎の大剣')
+    const itemRow = screen.getByText('炎の大剣').closest('tr')!
+    expect(itemRow.nextElementSibling).toBeNull()
+  })
+
+  it('コメントの有無が混在する一覧でも、コメントは該当する出品の行にだけ表示される', async () => {
+    mockedList.mockResolvedValue(page([
+      makeListing({ id: 1, comment: '即決歓迎' }),
+      makeListing({ id: 2, comment: '', item: makeItem({ id: 2, name: '氷の槍' }) }),
+    ]))
+    renderAt('/listings')
+    await waitForLoaded()
+
+    const comment = await screen.findByText('即決歓迎')
+    expect(screen.getByText('炎の大剣').closest('tr')!.nextElementSibling).toContainElement(comment)
+    expect(screen.getByText('氷の槍').closest('tr')!.nextElementSibling).toBeNull()
   })
 })
 
