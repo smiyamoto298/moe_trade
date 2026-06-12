@@ -109,7 +109,8 @@ export default function BuyRequestDetailPage() {
           </div>
         )}
 
-        {Object.keys(item.base_stats).length > 0 && (
+        {/* 装備セットはセット本体の性能（古いデータ）は無視し、セット内訳の部位ごとの性能のみ表示する */}
+        {!item.is_equipment_set && Object.keys(item.base_stats).length > 0 && (
           <div className="mb-4">
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">追加効果</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -123,7 +124,7 @@ export default function BuyRequestDetailPage() {
           </div>
         )}
 
-        {item.bonus_effects.length > 0 && (
+        {!item.is_equipment_set && item.bonus_effects.length > 0 && (
           <div className="mb-4">
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">付加効果</h2>
             <div className="space-y-1">
@@ -150,7 +151,7 @@ export default function BuyRequestDetailPage() {
           </div>
         )}
 
-        {item.special_conditions.length > 0 && (
+        {!item.is_equipment_set && item.special_conditions.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {item.special_conditions.map((c) => (
               <span

@@ -7,6 +7,8 @@ import type { Item } from '../types'
 export interface PieceGroup {
   /** このグループに属する部位名（＝部位カテゴリ名。旧アイコンホバーで表示していたもの） */
   partNames: string[]
+  /** このグループに属する部位アイテム（出現順。詳細のセット内訳で名前つき表示に使う） */
+  members: Item[]
   /** 効果を読み出すための代表メンバー（グループ内は効果が同一） */
   member: Item
 }
@@ -39,6 +41,16 @@ function bonusEffectsKey(it: Item): string {
   )
 }
 
+// 特殊条件が同一かを表すキー（順序非依存）
+function specialConditionsKey(it: Item): string {
+  return JSON.stringify([...(it.special_conditions ?? [])].sort())
+}
+
+// 性能全体（追加効果・付加効果・特殊条件）が同一かを表すキー
+function performanceKey(it: Item): string {
+  return JSON.stringify([baseStatsKey(it), bonusEffectsKey(it), specialConditionsKey(it)])
+}
+
 // 出現順を保ったままキーでグルーピングする
 function groupBy(members: Item[], keyFn: (it: Item) => string): PieceGroup[] {
   const groups: PieceGroup[] = []
@@ -48,9 +60,10 @@ function groupBy(members: Item[], keyFn: (it: Item) => string): PieceGroup[] {
     const at = index.get(key)
     if (at === undefined) {
       index.set(key, groups.length)
-      groups.push({ partNames: [partName(m)], member: m })
+      groups.push({ partNames: [partName(m)], members: [m], member: m })
     } else {
       groups[at].partNames.push(partName(m))
+      groups[at].members.push(m)
     }
   }
   return groups
@@ -61,6 +74,10 @@ export const groupPiecesByBaseStats = (members: Item[]): PieceGroup[] =>
 
 export const groupPiecesByBonusEffects = (members: Item[]): PieceGroup[] =>
   groupBy(members, bonusEffectsKey)
+
+// 詳細のセット内訳用。性能（追加効果・付加効果・特殊条件）がすべて同一の部位を1グループにまとめる
+export const groupPiecesByPerformance = (members: Item[]): PieceGroup[] =>
+  groupBy(members, performanceKey)
 
 // 追加効果が何かしら設定されているか（base_stats / ミスリル）
 export const hasBaseStats = (it: Item): boolean =>
