@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /mypage
+Disallow: /auth/
+Disallow: /board
+
+Sitemap: https://moe-trade.sakuraweb.com/sitemap.xml

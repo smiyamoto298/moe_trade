@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { usePageMeta } from '../hooks/usePageMeta'
 import client from '../api/client'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
@@ -180,6 +181,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
   const isSkillMode = mode === 'skill'
   const isAssetMode = mode === 'asset'
   const isEquipmentMode = !isSkillMode && !isAssetMode
+  usePageMeta(
+    isSkillMode ? 'スキル・テクニックの出品一覧' : isAssetMode ? 'アセットの出品一覧' : '装備品の出品一覧',
+    'Master of Epic のアイテム取引所。出品中のアイテムを検索して取引チャットで購入できます。'
+  )
   const { user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()

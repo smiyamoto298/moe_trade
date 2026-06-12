@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { buyRequestsApi } from '../api/buyRequests'
 import { useAuth } from '../contexts/AuthContext'
+import { usePageMeta } from '../hooks/usePageMeta'
 import BuyRequestCard from '../components/BuyRequestCard'
 import type { BuyRequest, Paginated } from '../types'
 
@@ -35,6 +36,10 @@ function parseNames(text: string): string[] {
 }
 
 export default function BuyRequestsPage() {
+  usePageMeta(
+    '買取一覧',
+    'Master of Epic のアイテム買取（買いたい）一覧。買取中のアイテムを検索して取引チャットで売却できます。'
+  )
   const { user } = useAuth()
 
   const [itemName, setItemName] = useState('')

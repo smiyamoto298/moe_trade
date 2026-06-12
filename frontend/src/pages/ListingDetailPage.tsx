@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { usePageMeta } from '../hooks/usePageMeta'
 import client from '../api/client'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
@@ -23,6 +24,14 @@ export default function ListingDetailPage() {
   // 取引希望パネル
   const [showTradePanel, setShowTradePanel] = useState(false)
   const [requested, setRequested] = useState(false)
+
+  // アイテム名入りのタイトルで検索エンジンにインデックスさせる
+  usePageMeta(
+    listing ? `${listing.item.name} の出品` : null,
+    listing
+      ? `Master of Epic「${listing.item.name}」の出品情報。価格・取引条件を確認して取引チャットで購入できます。`
+      : null
+  )
 
   useEffect(() => {
     if (!id) return
