@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTour } from '../tours/TourContext'
+import type { TourStep } from '../tours/types'
 
 type Rect = { top: number; left: number; width: number; height: number }
 
@@ -7,6 +8,25 @@ const PAD = 8 // ハイライト枠の余白
 const GAP = 10 // 対象と吹き出しの隙間
 const MARGIN = 12 // 画面端の余白
 const TOOLTIP_W = 320
+
+/**
+ * 要素が実際に描画されているか。
+ * DOM に存在しても、スマホ幅の CSS（display:none やコンテナクエリの列隠し）で
+ * 非表示になっている要素はハイライトできないため false を返す。
+ */
+function isElementVisible(el: HTMLElement): boolean {
+  if (el.getClientRects().length === 0) return false // display:none・非描画
+  if (window.getComputedStyle(el).visibility === 'hidden') return false
+  const r = el.getBoundingClientRect()
+  return r.width > 0 || r.height > 0
+}
+
+/** そのステップが現在の画面で表示できるか（target 無し＝中央カードは常に表示可能） */
+function isStepDisplayable(s: TourStep): boolean {
+  if (!s.target) return true
+  const el = document.querySelector(s.target) as HTMLElement | null
+  return !!el && isElementVisible(el)
+}
 
 export default function TourOverlay() {
   const { activePageId, steps, index, next, prev, stop } = useTour()
@@ -17,7 +37,22 @@ export default function TourOverlay() {
 
   const active = !!activePageId && steps.length > 0
   const step = active ? steps[index] : undefined
-  const isLast = active && index === steps.length - 1
+
+  // カウンター表示は「現在の画面で表示できるステップ」だけで数える
+  // （スマホ幅で隠れる要素のステップは番号・総数に含めない）
+  const { displayPos, displayTotal } = useMemo(() => {
+    if (!active) return { displayPos: 0, displayTotal: 0 }
+    let pos = 0
+    let total = 0
+    steps.forEach((s, i) => {
+      if (!isStepDisplayable(s)) return
+      total++
+      if (i <= index) pos++
+    })
+    return { displayPos: Math.max(1, pos), displayTotal: Math.max(1, total) }
+  }, [active, steps, index])
+
+  const isLast = active && displayPos >= displayTotal
 
   // 対象要素の位置を毎フレーム追従（スクロール・リサイズに自動対応）
   useLayoutEffect(() => {
@@ -29,7 +64,7 @@ export default function TourOverlay() {
       if (cancelled) return
       if (step.target) {
         const el = document.querySelector(step.target) as HTMLElement | null
-        if (el) {
+        if (el && isElementVisible(el)) {
           const r = el.getBoundingClientRect()
           setRect({ top: r.top, left: r.left, width: r.width, height: r.height })
         } else {
@@ -44,7 +79,7 @@ export default function TourOverlay() {
     // 対象が画面外なら中央へスクロール
     if (step.target) {
       const el = document.querySelector(step.target) as HTMLElement | null
-      el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      if (el && isElementVisible(el)) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }
     measure()
 
@@ -61,15 +96,32 @@ export default function TourOverlay() {
     if (h && h !== tooltipH) setTooltipH(h)
   })
 
-  // 対象セレクタが指定されているのに要素が見つからないステップは自動スキップ
+  // 対象セレクタが指定されているのに要素が見つからない／表示されていないステップは自動スキップ。
+  // 「戻る」で来た場合は前方向へ飛ばす（先頭まで来たら前進に切り替え）。
+  const prevIndexRef = useRef(0)
   useEffect(() => {
-    if (!active || !step?.target) return
+    if (!active) return
+    const goingBack = index < prevIndexRef.current
+    prevIndexRef.current = index
+    if (!step?.target) return
+
+    const skip = () => {
+      if (goingBack && index > 0) prev()
+      else next()
+    }
+    const el = document.querySelector(step.target) as HTMLElement | null
+    if (el && !isElementVisible(el)) {
+      // DOM にあるが CSS で非表示（スマホ幅で隠れる列など）→ 即スキップ
+      skip()
+      return
+    }
+    // 存在しない場合は描画途中の可能性があるため少し待ってから判定
     const t = setTimeout(() => {
-      const el = document.querySelector(step.target!)
-      if (!el) next()
+      const cur = document.querySelector(step.target!) as HTMLElement | null
+      if (!cur || !isElementVisible(cur)) skip()
     }, 900)
     return () => clearTimeout(t)
-  }, [active, step, index, next])
+  }, [active, step, index, next, prev])
 
   // ESC で終了
   useEffect(() => {
@@ -184,7 +236,7 @@ export default function TourOverlay() {
 
         <div className="flex items-center justify-between mt-4">
           <span className="text-xs text-gray-500">
-            {index + 1} / {steps.length}
+            {displayPos} / {displayTotal}
           </span>
           <div className="flex items-center gap-2">
             {index > 0 && (
