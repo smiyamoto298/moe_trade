@@ -78,6 +78,10 @@ class ListingController extends Controller
         // 装備セットは本体に効果を持たないため、構成部位（setMembers）のいずれかが条件を満たせば一致とする。
         if ($request->base_stat_keys) {
             foreach ((array) $request->base_stat_keys as $key) {
+                // キーは JSON パスへ文字列補間するため、既知キーのみ許可（インジェクション防止）
+                if (!is_string($key) || !\App\Support\Stats::isValidKey($key)) {
+                    continue;
+                }
                 $cond = function ($q) use ($key) {
                     $q->whereRaw("JSON_EXTRACT(base_stats, '$.$key') IS NOT NULL")
                       ->whereRaw("CAST(JSON_EXTRACT(base_stats, '$.$key') AS DECIMAL(15,4)) != 0");
@@ -90,6 +94,10 @@ class ListingController extends Controller
         // 数値範囲指定がある場合はさらに絞り込む（セットは構成部位のいずれかが範囲内なら一致）
         if ($request->base_stat_ranges) {
             foreach ($request->base_stat_ranges as $key => $range) {
+                // キーは JSON パスへ文字列補間するため、既知キーのみ許可（インジェクション防止）
+                if (!is_string($key) || !\App\Support\Stats::isValidKey($key)) {
+                    continue;
+                }
                 $min = $range['min'] ?? '';
                 $max = $range['max'] ?? '';
                 if (($min === '' || $min === null) && ($max === '' || $max === null)) {
@@ -318,8 +326,9 @@ class ListingController extends Controller
 
         // ソート
         $sort = $request->sort ?? 'newest';
-        if (str_starts_with($sort, 'stat_asc:') || str_starts_with($sort, 'stat_desc:')) {
-            // 追加効果の数値でソート（例: stat_asc:atk）
+        if ((str_starts_with($sort, 'stat_asc:') || str_starts_with($sort, 'stat_desc:'))
+            && \App\Support\Stats::isValidKey(substr($sort, strpos($sort, ':') + 1))) {
+            // 追加効果の数値でソート（例: stat_asc:atk）。キーは既知のもののみ（インジェクション防止）。
             $dir = str_starts_with($sort, 'stat_asc:') ? 'ASC' : 'DESC';
             $key = substr($sort, strpos($sort, ':') + 1);
             $query->join('items as sort_item', 'listings.item_id', '=', 'sort_item.id')

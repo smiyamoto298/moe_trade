@@ -16,11 +16,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // 認証不要
+// ブルートフォース・大量アカウント作成対策として、IP単位のレート制限をかける
+// （throttle:<試行回数>,<分>）。アプリ全体には throttle を掛けていないため、
+// 認証系の各エンドポイントで個別に制限する。
 Route::prefix('auth')->group(function () {
-    Route::post('register', [AuthController::class, 'register']);
-    Route::post('login',    [AuthController::class, 'login']);
-    Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('reset-password',  [AuthController::class, 'resetPassword']);
+    Route::post('register', [AuthController::class, 'register'])->middleware('throttle:10,1');
+    Route::post('login',    [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 });
 
 // メール認証（署名付きURLで直接アクセス → フロントエンドにリダイレクト）

@@ -47,11 +47,15 @@ class ItemController extends Controller
         // base_stats フィルター (例: ?stats[atk][min]=10&stats[atk][max]=50)
         if ($request->stats) {
             foreach ($request->stats as $key => $range) {
+                // キーは JSON パスへ文字列補間するため、既知キーのみ許可（インジェクション防止）
+                if (!is_string($key) || !\App\Support\Stats::isValidKey($key)) {
+                    continue;
+                }
                 if (isset($range['min'])) {
-                    $query->whereRaw("JSON_EXTRACT(base_stats, '$.$key') >= ?", [$range['min']]);
+                    $query->whereRaw("JSON_EXTRACT(base_stats, '$.$key') >= ?", [(float) $range['min']]);
                 }
                 if (isset($range['max'])) {
-                    $query->whereRaw("JSON_EXTRACT(base_stats, '$.$key') <= ?", [$range['max']]);
+                    $query->whereRaw("JSON_EXTRACT(base_stats, '$.$key') <= ?", [(float) $range['max']]);
                 }
             }
         }

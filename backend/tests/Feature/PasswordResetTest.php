@@ -81,4 +81,22 @@ class PasswordResetTest extends TestCase
 
         $res->assertStatus(422);
     }
+
+    public function test_有効期限を過ぎたトークンでは再設定できない(): void
+    {
+        $user  = User::factory()->forPlainEmail('taro@example.com')->create();
+        $token = Password::broker()->getRepository()->create($user);
+
+        // 有効期限（config/auth.php passwords.users.expire = 60分）を過ぎてから再設定を試みる
+        $this->travel(61)->minutes();
+
+        $res = $this->postJson('/api/auth/reset-password', [
+            'token'                 => $token,
+            'email'                 => 'taro@example.com',
+            'password'              => 'new-password-123',
+            'password_confirmation' => 'new-password-123',
+        ]);
+
+        $res->assertStatus(422);
+    }
 }
