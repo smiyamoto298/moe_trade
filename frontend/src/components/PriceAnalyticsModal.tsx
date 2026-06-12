@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { itemsApi } from '../api/items'
-import PriceAnalytics from './PriceAnalytics'
+import PriceAnalytics from './PriceAnalyticsAsync'
 import Spinner from './Spinner'
 import type { ItemPriceAnalytics } from '../types'
 

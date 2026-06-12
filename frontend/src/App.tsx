@@ -1,5 +1,7 @@
+import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Header from './components/Header'
+import Spinner from './components/Spinner'
 import Footer from './components/Footer'
 import SideBanners from './components/SideBanners'
 import TourOverlay from './components/TourOverlay'
@@ -18,13 +20,15 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import MyPage from './pages/MyPage'
 import BoardPage from './pages/BoardPage'
 import BoardThreadPage from './pages/BoardThreadPage'
-import AdminItemsPage from './pages/admin/AdminItemsPage'
-import AdminItemEditPage from './pages/admin/AdminItemEditPage'
-import AdminUsersPage from './pages/admin/AdminUsersPage'
-import AnnouncementsAdminPage from './pages/admin/AnnouncementsAdminPage'
-import BonusValueLabelsAdminPage from './pages/admin/BonusValueLabelsAdminPage'
 import { useAuth } from './contexts/AuthContext'
 import type { UserRole } from './types'
+
+// 管理画面は利用者が限られるため遅延読み込みにして、初回バンドルから外す
+const AdminItemsPage = lazy(() => import('./pages/admin/AdminItemsPage'))
+const AdminItemEditPage = lazy(() => import('./pages/admin/AdminItemEditPage'))
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
+const AnnouncementsAdminPage = lazy(() => import('./pages/admin/AnnouncementsAdminPage'))
+const BonusValueLabelsAdminPage = lazy(() => import('./pages/admin/BonusValueLabelsAdminPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -46,6 +50,8 @@ export default function App() {
     <div className="min-h-screen flex flex-col pb-24 sm:pb-20 min-[1150px]:pb-16">
       <Header />
       <main className="flex-1">
+        {/* 遅延読み込みルートのチャンク取得中はスピナーを表示 */}
+        <Suspense fallback={<Spinner center />}>
         <Routes>
           <Route path="/" element={<Navigate to="/listings" replace />} />
           <Route path="/listings" element={<ListingsPage key="equipment" mode="equipment" />} />
@@ -108,6 +114,7 @@ export default function App() {
             element={<RoleRoute roles={['editor', 'admin']}><BonusValueLabelsAdminPage /></RoleRoute>}
           />
         </Routes>
+        </Suspense>
       </main>
       <Footer />
       <SideBanners />
