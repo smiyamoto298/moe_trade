@@ -1,7 +1,7 @@
 import ComboInput from './ComboInput'
 import type { Item, ItemCategory } from '../types'
 import type { EquipmentSetPieceInput } from '../api/items'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS } from '../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS } from '../utils/constants'
 
 // ───────────────────────────────────────────────────────────
 // 装備セットの構成部位エディタ。
@@ -46,7 +46,6 @@ export interface EquipmentSetForm {
 }
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
-const ALL_STATS = Object.keys(BASE_STAT_LABELS)
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
 const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false })
@@ -347,13 +346,17 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {ALL_STATS.map((key) => (
-                <div key={key}>
-                  <label className="block text-xs text-gray-400 mb-0.5">{BASE_STAT_LABELS[key]}</label>
-                  <input type="number" placeholder="—"
-                    value={g.base_stats[key] ?? ''}
-                    onChange={(e) => setBaseStat(gi, key, e.target.value)}
-                    className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
+              {STAT_INPUT_COLUMNS.map((column, ci) => (
+                <div key={ci} className="space-y-2">
+                  {column.map((key) => (
+                    <div key={key}>
+                      <label className="block text-xs text-gray-400 mb-0.5">{BASE_STAT_LABELS[key]}</label>
+                      <input type="number" placeholder="—"
+                        value={g.base_stats[key] ?? ''}
+                        onChange={(e) => setBaseStat(gi, key, e.target.value)}
+                        className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>

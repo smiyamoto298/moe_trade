@@ -1,5 +1,5 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
 import { groupPiecesByPerformance } from '../utils/equipmentSet'
 
 const unitSuffix = (unit: string) =>
@@ -40,7 +40,7 @@ export default function EquipmentSetBreakdown({ members }: { members?: Item[] })
                 <div className="flex flex-wrap gap-1 mb-1">
                   {Object.entries(m.base_stats).map(([k, v]) => (
                     <span key={k} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
-                      {BASE_STAT_LABELS[k] ?? k}: <span className="text-white font-medium">{v}</span>
+                      {BASE_STAT_LABELS[k] ?? k}: <span className="text-white font-medium">{formatSignedValue(v)}</span>
                     </span>
                   ))}
                   {m.mithril && (
@@ -61,7 +61,7 @@ export default function EquipmentSetBreakdown({ members }: { members?: Item[] })
                       {e.values.map((v, i) => (
                         <span key={i} className="text-gray-300 ml-1">
                           {v.label && <span className="text-gray-400">{v.label} </span>}
-                          {v.value}{unitSuffix(v.value_unit)}
+                          {formatSignedValue(v.value, v.value_unit)}{unitSuffix(v.value_unit)}
                         </span>
                       ))}
                       {e.description && <span className="text-gray-500 ml-1">— {e.description}</span>}

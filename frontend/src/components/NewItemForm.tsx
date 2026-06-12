@@ -6,7 +6,7 @@ import ComboInput from './ComboInput'
 import Spinner from './Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces } from './EquipmentSetPiecesEditor'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
 
 interface BonusValueForm {
@@ -24,7 +24,6 @@ const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '
 const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '' })
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
-const ALL_STATS = Object.keys(BASE_STAT_LABELS)
 
 // 「装備セット」親カテゴリの判定（name で判断）
 const isEquipmentSetCategory = (cat: ItemCategory) =>
@@ -502,15 +501,19 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
           <span className="group-open:rotate-90 transition-transform inline-block">▶</span> 追加効果
         </summary>
         <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {ALL_STATS.map((key) => (
-            <div key={key}>
-              <label className="block text-xs text-gray-400 mb-0.5">{BASE_STAT_LABELS[key]}</label>
-              <input
-                type="number" placeholder="—"
-                value={form.base_stats[key] ?? ''}
-                onChange={(e) => e.target.value ? setStat(key, e.target.value) : removeStat(key)}
-                className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
-              />
+          {STAT_INPUT_COLUMNS.map((column, ci) => (
+            <div key={ci} className="space-y-2">
+              {column.map((key) => (
+                <div key={key}>
+                  <label className="block text-xs text-gray-400 mb-0.5">{BASE_STAT_LABELS[key]}</label>
+                  <input
+                    type="number" placeholder="—"
+                    value={form.base_stats[key] ?? ''}
+                    onChange={(e) => e.target.value ? setStat(key, e.target.value) : removeStat(key)}
+                    className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+              ))}
             </div>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Listing } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
 import UnverifiedBadge from './UnverifiedBadge'
 
 interface Props {
@@ -38,7 +38,7 @@ export default function ListingCard({ listing }: Props) {
             <div className="flex flex-wrap gap-1">
               {Object.entries(item.base_stats).map(([key, val]) => (
                 <span key={key} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
-                  {BASE_STAT_LABELS[key] ?? key}: <span className="text-white font-medium">{val}</span>
+                  {BASE_STAT_LABELS[key] ?? key}: <span className="text-white font-medium">{formatSignedValue(val)}</span>
                 </span>
               ))}
               {item.mithril && (
@@ -63,7 +63,7 @@ export default function ListingCard({ listing }: Props) {
                   {e.values?.length > 0 && (
                     <span className="text-gray-400 ml-1">
                       {e.values.map((v, i) => (
-                        <span key={i}>{i > 0 && '/'}{v.value}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : ''}</span>
+                        <span key={i}>{i > 0 && '/'}{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : ''}</span>
                       ))}
                     </span>
                   )}

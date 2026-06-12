@@ -57,25 +57,43 @@ export const BONUS_VALUE_LABEL_OPTIONS: string[] = [
   '消費MP', '消費ST',
 ]
 
+// 追加効果・付加効果の数値表示用フォーマッタ。
+// 負数（- 付き）以外は + を付けて表示する（例: 5 → "+5", -3 → "-3"）。
+// 倍率（value_unit === 'x'）は増減ではないため + を付けない（例: 1.5倍）。
+export function formatSignedValue(value: number | string, unit?: string): string {
+  const s = String(value)
+  if (unit === 'x') return s
+  return s.startsWith('-') ? s : `+${s}`
+}
+
+// キーの定義順がセレクトボックス等の選択肢の表示順になる（STAT_INPUT_COLUMNS の1列目→2列目→3列目と同順）
 export const BASE_STAT_LABELS: Record<string, string> = {
-  atk:        '攻撃力',
-  mag:        '魔力',
-  def:        '防御力',
-  atk_delay:  '攻撃ディレイ',
-  mag_delay:  '魔法ディレイ',
   max_hp:     '最大HP',
   max_st:     '最大ST',
   max_mp:     '最大MP',
+  move_speed: '移動速度',
+  max_weight: '最大重量',
+  atk_delay:  '攻撃ディレイ',
+  mag_delay:  '魔法ディレイ',
+  atk:        '攻撃力',
+  def:        '防御力',
   hit:        '命中',
   eva:        '回避',
+  mag:        '魔力',
   res_fire:   '耐火属性',
-  res_earth:  '耐地属性',
   res_water:  '耐水属性',
+  res_earth:  '耐地属性',
   res_wind:   '耐風属性',
   res_none:   '耐無属性',
-  max_weight: '最大重量',
-  move_speed: '移動速度',
 }
+
+// 追加効果入力欄の並び順（ゲーム内のステータス表示に合わせた3列構成）。
+// 各配列が1列分で、列内は上から順に表示する。キーは BASE_STAT_LABELS と完全一致させること。
+export const STAT_INPUT_COLUMNS: string[][] = [
+  ['max_hp', 'max_st', 'max_mp', 'move_speed', 'max_weight', 'atk_delay', 'mag_delay'],
+  ['atk', 'def', 'hit', 'eva', 'mag'],
+  ['res_fire', 'res_water', 'res_earth', 'res_wind', 'res_none'],
+]
 
 export const SKILL_GROUPS: { group: string; skills: string[] }[] = [
   { group: '戦闘', skills: ['筋力', '着こなし', '攻撃回避', '生命力', '知能', '持久力', '精神力', '集中力', '呪文抵抗力'] },

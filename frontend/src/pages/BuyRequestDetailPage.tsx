@@ -9,7 +9,7 @@ import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsComp from '../components/PriceAnalyticsAsync'
 import EquipmentSetBreakdown from '../components/EquipmentSetBreakdown'
 import type { BuyRequest, ItemPriceAnalytics } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS, SPECIAL_CONDITIONS, BASE_STAT_LABELS } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, SPECIAL_CONDITIONS, BASE_STAT_LABELS, formatSignedValue } from '../utils/constants'
 
 export default function BuyRequestDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -117,7 +117,7 @@ export default function BuyRequestDetailPage() {
               {Object.entries(item.base_stats).map(([key, val]) => (
                 <div key={key} className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
                   <span className="text-gray-400">{BASE_STAT_LABELS[key] ?? key}</span>
-                  <span className="text-white font-medium">{val}</span>
+                  <span className="text-white font-medium">{formatSignedValue(val)}</span>
                 </div>
               ))}
             </div>
@@ -137,7 +137,7 @@ export default function BuyRequestDetailPage() {
                         <span key={i}>
                           {i > 0 && <span className="text-gray-600 mx-1">/</span>}
                           {v.label && <span className="text-gray-400">{v.label} </span>}
-                          <span>{v.value}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
+                          <span>{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
                         </span>
                       ))}
                     </span>

@@ -11,7 +11,7 @@ import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
 import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
-import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, formatSignedValue } from '../utils/constants'
 import { groupPiecesByBaseStats, groupPiecesByBonusEffects, hasBaseStats, hasBonusEffects } from '../utils/equipmentSet'
 import type { Item } from '../types'
 
@@ -81,7 +81,7 @@ function BaseStatBadges({ item, showExclusive = true }: { item: Item; showExclus
     <>
       {Object.entries(item.base_stats).map(([key, val]) => (
         <span key={key} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
-          {BASE_STAT_LABELS[key] ?? key}: <span className="text-white font-medium">{val}</span>
+          {BASE_STAT_LABELS[key] ?? key}: <span className="text-white font-medium">{formatSignedValue(val)}</span>
         </span>
       ))}
       {item.mithril && (
@@ -109,7 +109,7 @@ function BonusEffectList({ item }: { item: Item }) {
           {e.values?.map((v, i) => (
             <p key={i} className="text-gray-400 whitespace-nowrap">
               {v.label && <span>{v.label}：</span>}
-              <span className="text-gray-200">{v.value}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
+              <span className="text-gray-200">{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
             </p>
           ))}
         </div>
