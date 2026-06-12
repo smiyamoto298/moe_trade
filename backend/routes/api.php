@@ -11,6 +11,7 @@ use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ListingController;
+use App\Http\Controllers\PromoTweetController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -273,6 +274,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('admin/users/{id}/suspend',  [AdminController::class, 'suspend']);
         Route::post('admin/users/{id}/unsuspend',[AdminController::class, 'unsuspend']);
         Route::post('admin/users/{id}/verify',   [AdminController::class, 'verifyEmail']);
+
+        // X宣伝ツイート文面の生成
+        Route::get('admin/promo-tweets', [PromoTweetController::class, 'index']);
 
         // お知らせ管理
         Route::get('admin/announcements',          [AnnouncementController::class, 'adminIndex']);

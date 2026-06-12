@@ -168,6 +168,13 @@ export default function Header() {
                     >
                       お知らせ管理
                     </Link>
+                    <Link
+                      to="/admin/promo-tweets"
+                      onClick={() => setAdminOpen(false)}
+                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                    >
+                      宣伝ポスト
+                    </Link>
                   </>
                 )}
               </div>
@@ -285,9 +292,16 @@ export default function Header() {
                   <Link
                     to="/admin/announcements"
                     onClick={closeMobile}
-                    className="block py-3 text-gray-300 hover:text-white transition-colors"
+                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
                   >
                     お知らせ管理
+                  </Link>
+                  <Link
+                    to="/admin/promo-tweets"
+                    onClick={closeMobile}
+                    className="block py-3 text-gray-300 hover:text-white transition-colors"
+                  >
+                    宣伝ポスト
                   </Link>
                 </>
               )}

@@ -29,6 +29,7 @@ const AdminItemEditPage = lazy(() => import('./pages/admin/AdminItemEditPage'))
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
 const AnnouncementsAdminPage = lazy(() => import('./pages/admin/AnnouncementsAdminPage'))
 const BonusValueLabelsAdminPage = lazy(() => import('./pages/admin/BonusValueLabelsAdminPage'))
+const PromoTweetsPage = lazy(() => import('./pages/admin/PromoTweetsPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -112,6 +113,10 @@ export default function App() {
           <Route
             path="/admin/bonus-value-labels"
             element={<RoleRoute roles={['editor', 'admin']}><BonusValueLabelsAdminPage /></RoleRoute>}
+          />
+          <Route
+            path="/admin/promo-tweets"
+            element={<RoleRoute roles={['admin']}><PromoTweetsPage /></RoleRoute>}
           />
         </Routes>
         </Suspense>
