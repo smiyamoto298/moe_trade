@@ -36,7 +36,7 @@ jobs:
         run: vendor/bin/phpunit
 
   frontend-build:
-    name: フロントエンド（型チェック＋ビルド）
+    name: フロントエンド（型チェック＋ビルド＋単体テスト）
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,3 +57,6 @@ jobs:
 
       - name: 型チェック＋ビルド（tsc && vite build）
         run: npm run build
+
+      - name: 単体テスト（Vitest）
+        run: npm test

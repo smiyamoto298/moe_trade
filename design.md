@@ -974,7 +974,7 @@ docker compose exec -e COMPOSER_PROCESS_TIMEOUT=0 php composer install   # unzip
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |
 
-> 既知の未カバー領域（今後追加推奨）: `GET /api/listings/:id` の公開制限(404)、アイテム削除の確認モーダル(409)/`force`連鎖削除、`items/:id/merge`、アセット種別の絞り込み、パスワード再設定の期限切れ・スロットル(429)、フロントエンド単体テスト。
+> 既知の未カバー領域（今後追加推奨）: `GET /api/listings/:id` の公開制限(404)、アイテム削除の確認モーダル(409)/`force`連鎖削除、`items/:id/merge`、アセット種別の絞り込み、パスワード再設定の期限切れ・スロットル(429)。
 
 実行方法:
 ```bash
@@ -983,6 +983,31 @@ docker compose exec php php artisan test
 
 # または
 docker compose exec php vendor/bin/phpunit
+```
+
+### フロントエンド（Vitest + Testing Library）
+- テストランナーは **Vitest**（`frontend/vitest.config.ts`・jsdom 環境・CSS 読み込みなし）。
+  コンポーネントは @testing-library/react / user-event / jest-dom で検証する
+- 共通セットアップは `frontend/src/test/setup.ts`（jest-dom マッチャ有効化＋各テスト後の DOM / localStorage クリーンアップ）
+- テストファイルは対象の隣に `src/**/*.test.ts(x)` で配置（`tsc`（`npm run build`）の型チェック対象にも含まれる）
+- 一括出品の貼り付け解析 `parsePaste` はテストのため `BulkListingPage.tsx` から export している
+
+| テストファイル | 対象 |
+|---|---|
+| `src/utils/itemType.test.ts` | 種別判定（最上位カテゴリ名→ equipment / technique / asset）・親フォールバック |
+| `src/utils/equipmentSet.test.ts` | 装備セット部位のグルーピング（追加効果・付加効果・性能全体、順序非依存・ミスリル差分） |
+| `src/utils/constants.test.ts` | マスタ定数の design.md 整合（マスタリ構成スキルが SKILL_GROUPS と完全一致・特殊条件15種・追加効果キー17種・アセット選択肢） |
+| `src/pages/bulkListingParse.test.ts` | 一括出品の貼り付け解析（転送セル基準の相対位置・レンタル列有無・転送×／「空き」除外・カンマ個数・省略表記） |
+| `src/pages/RegisterPage.test.tsx` | 利用規約同意フロー（モーダル自動表示・同意までボタン無効・同意しない→トップ遷移・パスワード不一致・登録成功/失敗） |
+| `src/pages/ListingsPage.test.tsx` | 出品一覧のタブ・絞り込み（装備品/テクニック/アセットの `item_type` と列見出し切替、アイテム名・種別＋装備セットを含める・追加効果＋数値範囲・サーバー・取引方法・価格帯・削れあり・取引完了・ソート、必要スキル＋`skill_match`/マスタリ込み、アセットの設置個所/特殊機能/ストレージ、未ログイン時の「+ 出品する」「取引」非表示） |
+| `src/components/TermsModal.test.tsx` | 規約モーダル（第1〜6条表示・同意/非同意コールバック） |
+| `src/components/PriceAnalytics.test.tsx` | 価格解析（0埋め時の「—」表示・「相場対象外」「他サイト」バッジ・売り/買い相場タブ切替） |
+| `src/api/client.test.ts` | 認証トークンの保存・取得・削除（localStorage） |
+
+実行方法:
+```bash
+cd frontend && npm test        # 一括実行（vitest run）
+cd frontend && npm run test:watch  # ウォッチ実行
 ```
 
 ### テスト整備時に修正した実装
@@ -997,7 +1022,7 @@ docker compose exec php vendor/bin/phpunit
 ### CI（GitHub Actions）
 `.github/workflows/ci.yml` — main への push / PR で自動実行。
 - **backend-tests**: PHP 8.3 + composer install → PHPUnit（SQLiteインメモリ）
-- **frontend-build**: Node 22 + npm ci → `tsc && vite build`（型チェック＋ビルド確認）
+- **frontend-build**: Node 22 + npm ci → `tsc && vite build`（型チェック＋ビルド確認）→ `npm test`（Vitest 単体テスト）
 
 ---
 
@@ -1037,7 +1062,7 @@ docker compose exec php vendor/bin/phpunit
 - [x] バックエンドAPIテスト（PHPUnit・Feature/Unit・SQLiteインメモリ）
 - [x] GitHub Actions CI（バックエンドテスト＋フロント型チェック・ビルド）
 - [x] セキュリティ修正（SQLi対策・認証レート制限・相場登録のadmin限定）
-- [ ] フロントエンド単体テスト（Vitest 等・必要になったら導入）
+- [x] フロントエンド単体テスト（Vitest + Testing Library・jsdom。種別判定／装備セット集約／マスタ定数整合／一括出品解析／利用規約同意フロー／価格解析表示／出品一覧のタブ・絞り込み）
 
 ### Phase 5: レスポンシブ対応
 - [ ] レスポンシブデザイン対応（スマートフォン・タブレット向けレイアウト）
