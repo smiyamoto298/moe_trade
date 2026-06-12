@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { itemsApi } from '../../api/items'
 import { useAuth } from '../../contexts/AuthContext'
@@ -7,9 +7,32 @@ import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory } from '../../types'
 import { SERVERS } from '../../types'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, MASTERY_BY_CODE, formatSignedValue } from '../../utils/constants'
+import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
 
 type Filter = 'all' | 'unverified' | 'verified'
 type Mode = 'equipment' | 'skill' | 'asset'
+
+// 行操作のアイコンボタン（相場登録・編集・コピー・削除）。title と aria-label にラベルを設定する。
+function ActionIconButton({ label, onClick, disabled, className, children }: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  className: string
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={`p-1.5 rounded border transition-colors disabled:opacity-50 ${className}`}
+    >
+      {children}
+    </button>
+  )
+}
 
 // 必要マスタリのバッジ群。マスタリ名【コード】と、条件になっている構成スキルを並べて表示する。
 function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
@@ -83,6 +106,10 @@ export default function AdminItemsPage() {
   const [mergeSearching, setMergeSearching] = useState(false)
   const [mergeTarget, setMergeTarget] = useState<Item | null>(null)
   const [merging, setMerging] = useState(false)
+
+  // コピーして編集モーダル（アイテム名の置換・末尾追加を入力してから編集画面へ遷移する）
+  const [copyTarget, setCopyTarget] = useState<Item | null>(null)
+  const [copyRename, setCopyRename] = useState<CopyRename>(emptyCopyRename())
 
   // 相場登録モーダル
   const [marketTarget, setMarketTarget] = useState<Item | null>(null)
@@ -208,6 +235,31 @@ export default function AdminItemsPage() {
     } finally {
       setDeleting(false)
     }
+  }
+
+  const openCopy = (item: Item) => {
+    setCopyTarget(item)
+    setCopyRename(emptyCopyRename())
+  }
+
+  const closeCopy = () => setCopyTarget(null)
+
+  const setCopyReplacement = (idx: number, key: 'search' | 'replace', val: string) =>
+    setCopyRename((p) => ({
+      ...p,
+      replacements: p.replacements.map((r, i) => i === idx ? { ...r, [key]: val } : r),
+    }))
+
+  const addCopyReplacement = () =>
+    setCopyRename((p) => ({ ...p, replacements: [...p.replacements, { search: '', replace: '' }] }))
+
+  const removeCopyReplacement = (idx: number) =>
+    setCopyRename((p) => ({ ...p, replacements: p.replacements.filter((_, i) => i !== idx) }))
+
+  // 名前変更の入力内容を state で渡し、コピー編集画面側でフォームへ適用する
+  const confirmCopy = () => {
+    if (!copyTarget) return
+    navigate(`/admin/items/new?copy=${copyTarget.id}`, { state: { filter, copyRename } })
   }
 
   const openMarketPrice = (item: Item) => {
@@ -578,31 +630,53 @@ export default function AdminItemsPage() {
                       )}
                       {/* 相場登録：admin のみ（確認済みのとき） */}
                       {isAdmin && item.verified_status === 'verified' && (
-                        <button
+                        <ActionIconButton
+                          label="相場登録"
                           onClick={() => openMarketPrice(item)}
-                          className="text-xs bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2 py-1 rounded transition-colors"
+                          className="bg-sky-900/40 hover:bg-sky-900/70 border-sky-700/50 text-sky-300"
                         >
-                          相場登録
-                        </button>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 7.5l3 4.5m0 0l3-4.5M12 12v5.25M15 12H9m6 3H9m12-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </ActionIconButton>
                       )}
                       {/* 編集：staff は全件、user は自分の未確認(未ロック)のみ */}
                       {canEditItem(item) && (
-                        <button
+                        <ActionIconButton
+                          label="編集"
                           onClick={() => navigate(`/admin/items/${item.id}/edit`, { state: { filter } })}
-                          className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-2 py-1 rounded transition-colors"
+                          className="bg-surface hover:bg-surface-border border-surface-border text-gray-300"
                         >
-                          編集
-                        </button>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.862 4.487z" />
+                          </svg>
+                        </ActionIconButton>
+                      )}
+                      {/* コピーして編集：editor 以上。名前変更ダイアログを挟んで複製した新規作成フォームを開く */}
+                      {isEditor && (
+                        <ActionIconButton
+                          label="コピー"
+                          onClick={() => openCopy(item)}
+                          className="bg-amber-900/30 hover:bg-amber-900/60 border-amber-700/40 text-amber-300"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4" aria-hidden="true">
+                            <rect x="9" y="9" width="11" height="11" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                          </svg>
+                        </ActionIconButton>
                       )}
                       {/* 削除：admin のみ */}
                       {isAdmin && (
-                        <button
+                        <ActionIconButton
+                          label="削除"
                           onClick={() => openDelete(item)}
                           disabled={actioningId === item.id}
-                          className="text-xs bg-red-900/30 hover:bg-red-900/60 disabled:opacity-50 border border-red-700/30 text-red-400 px-2 py-1 rounded transition-colors"
+                          className="bg-red-900/30 hover:bg-red-900/60 border-red-700/30 text-red-400"
                         >
-                          削除
-                        </button>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
+                        </ActionIconButton>
                       )}
                       {/* 操作が無いユーザー向けのプレースホルダ */}
                       {!isEditor && !canEditItem(item) && (
@@ -749,6 +823,107 @@ export default function AdminItemsPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* コピーして編集モーダル：アイテム名の置換・末尾追加を入力してプレビューを確認してから編集画面へ */}
+      {copyTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={closeCopy}
+        >
+          <div
+            className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h2 className="text-base font-bold text-white">コピーして編集</h2>
+              <p className="text-sm text-gray-400 mt-0.5">
+                「<span className="text-gray-200">{copyTarget.name}</span>」を複製します。
+                アイテム名の置換・末尾追加ができます（空欄のままなら名前はそのままコピーされます）。
+              </p>
+            </div>
+
+            {/* 文字置換（行を追加して複数指定できる。上から順に適用） */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-gray-400">文字置換（置換対象 → 置換後）</label>
+                <button
+                  type="button"
+                  onClick={addCopyReplacement}
+                  className="text-xs text-primary-500 hover:text-primary-500/80"
+                >
+                  + 置換を追加
+                </button>
+              </div>
+              {copyRename.replacements.map((r, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                  <input
+                    type="text"
+                    aria-label={`置換対象 ${i + 1}`}
+                    value={r.search}
+                    onChange={(e) => setCopyReplacement(i, 'search', e.target.value)}
+                    placeholder="置換対象（例: 騎士）"
+                    className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                  />
+                  <input
+                    type="text"
+                    aria-label={`置換後 ${i + 1}`}
+                    value={r.replace}
+                    onChange={(e) => setCopyReplacement(i, 'replace', e.target.value)}
+                    placeholder="置換後（例: 女王）"
+                    className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                  />
+                  {copyRename.replacements.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`置換を削除 ${i + 1}`}
+                      onClick={() => removeCopyReplacement(i)}
+                      className="text-red-400 hover:text-red-300 text-sm px-1"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">末尾に追加</label>
+              <input
+                type="text"
+                aria-label="末尾に追加"
+                value={copyRename.suffix}
+                onChange={(e) => setCopyRename((p) => ({ ...p, suffix: e.target.value }))}
+                placeholder="例: (染色可)"
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+
+            {/* コピー後の名前プレビュー（装備セットは各部位アイテム名にも適用される） */}
+            <div className="bg-surface border border-surface-border rounded px-3 py-2 space-y-1">
+              <p className="text-xs text-gray-500">コピー後の名前</p>
+              <p className="text-sm text-white">{applyCopyRename(copyTarget.name, copyRename)}</p>
+              {copyTarget.is_equipment_set && (copyTarget.set_members ?? []).map((m) => (
+                <p key={m.id} className="text-xs text-gray-300">・{applyCopyRename(m.name, copyRename)}</p>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeCopy}
+                className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={confirmCopy}
+                className="text-sm bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded font-medium transition-colors"
+              >
+                コピーして編集
+              </button>
+            </div>
           </div>
         </div>
       )}

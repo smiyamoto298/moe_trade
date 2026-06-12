@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { itemsApi } from '../../api/items'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import ComboInput from '../../components/ComboInput'
 import Spinner from '../../components/Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces, membersToForm } from '../../components/EquipmentSetPiecesEditor'
-import type { ItemCategory, AssetPlacement, AssetFunction } from '../../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../../utils/constants'
+import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../../types'
+import { applyCopyRename, type CopyRename } from '../../utils/copyRename'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
-const ALL_STATS = Object.keys(BASE_STAT_LABELS)
 
 interface BonusValueForm {
   value: string
@@ -42,13 +42,19 @@ export default function AdminItemEditPage() {
   const navigate = useNavigate()
   const location = useLocation()
   // 一覧から渡された絞り込みフィルタ（未確認 / 確認済み / すべて）。戻るときに復元する。
-  const incomingFilter = (location.state as { filter?: string } | null)?.filter
+  // copyRename はコピーダイアログで入力した名前変更（置換・末尾追加）。
+  const incomingState = location.state as { filter?: string; copyRename?: CopyRename } | null
+  const incomingFilter = incomingState?.filter
+  const copyRename = incomingState?.copyRename
   const { alert } = useDialog()
   const { user } = useAuth()
   const bonusValueLabelOptions = useBonusValueLabels()
   // editor / admin は全アイテムを編集でき、「確認済みにする」も可能
   const isEditor = user?.role === 'editor' || user?.role === 'admin'
   const isNew = !id
+  // コピーして編集：新規作成時に ?copy=<id> が付いていたら、コピー元アイテムを複製してフォームに展開する（editor 以上）
+  const [searchParams] = useSearchParams()
+  const copyFromId = isNew ? Number(searchParams.get('copy')) || null : null
 
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
@@ -79,6 +85,49 @@ export default function AdminItemEditPage() {
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
 
   useEffect(() => {
+    // アイテム情報をフォーム状態へ展開する。asCopy のときは新規作成として複製するため、
+    // 既存レコードに紐づくID（装備セット部位・付加効果）と確認状態を引き継がない。
+    const fillFormFromItem = (item: Item, asCopy: boolean) => {
+      setForm({
+        category_id: String(item.category.id),
+        // コピー時はダイアログで入力した名前変更（置換・末尾追加）を適用する
+        name: asCopy ? applyCopyRename(item.name, copyRename) : item.name,
+        description: item.description ?? '',
+        base_stats: Object.fromEntries(Object.entries(item.base_stats).map(([k, v]) => [k, String(v)])),
+        special_conditions: [...item.special_conditions],
+        dyeable: item.dyeable,
+        mithril: item.mithril ?? false,
+        exclusive_skill: item.exclusive_skill ?? false,
+        is_equipment_set: item.is_equipment_set ?? false,
+        skill_requirements: Object.fromEntries(
+          Object.entries(item.skill_requirements ?? {}).map(([k, v]) => [k, String(v)])
+        ),
+        mastery_requirements: [...(item.mastery_requirements ?? [])],
+        placement: (item.placement ?? '') as '' | AssetPlacement,
+        asset_width: item.asset_width != null ? String(item.asset_width) : '',
+        asset_height: item.asset_height != null ? String(item.asset_height) : '',
+        storage_count: item.storage_count != null ? String(item.storage_count) : '',
+        special_function: (item.special_function ?? '') as '' | AssetFunction,
+      })
+      if (!asCopy) setVerifiedStatus(item.verified_status)
+      // 装備セットの構成部位をフォーム状態へ復元（部位リスト＋追加効果/付加効果グループ）
+      if (item.is_equipment_set) {
+        const equipForm = membersToForm(item.set_members ?? [])
+        // コピー時は各部位アイテム名にも名前変更を適用する
+        setEquipSetForm(asCopy
+          ? { ...equipForm, parts: equipForm.parts.map((p) => ({ ...p, id: undefined, name: applyCopyRename(p.name, copyRename) })) }
+          : equipForm)
+      }
+      setBonusEffects(item.bonus_effects.map((e) => ({
+        ...(asCopy ? {} : { id: e.id }),
+        effect_name: e.effect_name,
+        values: e.values.length > 0
+          ? e.values.map((v) => ({ value: String(v.value), value_unit: v.value_unit, label: v.label ?? '' }))
+          : [emptyValue()],
+        description: e.description ?? '',
+      })))
+    }
+
     setMastersLoading(true)
     const tasks: Promise<unknown>[] = [
       itemsApi.categories().then((r) => setCategories(r.data)),
@@ -99,43 +148,22 @@ export default function AdminItemEditPage() {
           navigate('/admin/items')
           return
         }
-        setForm({
-          category_id: String(item.category.id),
-          name: item.name,
-          description: item.description ?? '',
-          base_stats: Object.fromEntries(Object.entries(item.base_stats).map(([k, v]) => [k, String(v)])),
-          special_conditions: [...item.special_conditions],
-          dyeable: item.dyeable,
-          mithril: item.mithril ?? false,
-          exclusive_skill: item.exclusive_skill ?? false,
-          is_equipment_set: item.is_equipment_set ?? false,
-          skill_requirements: Object.fromEntries(
-            Object.entries(item.skill_requirements ?? {}).map(([k, v]) => [k, String(v)])
-          ),
-          mastery_requirements: [...(item.mastery_requirements ?? [])],
-          placement: (item.placement ?? '') as '' | AssetPlacement,
-          asset_width: item.asset_width != null ? String(item.asset_width) : '',
-          asset_height: item.asset_height != null ? String(item.asset_height) : '',
-          storage_count: item.storage_count != null ? String(item.storage_count) : '',
-          special_function: (item.special_function ?? '') as '' | AssetFunction,
-        })
-        setVerifiedStatus(item.verified_status)
-        // 装備セットの構成部位をフォーム状態へ復元（部位リスト＋追加効果/付加効果グループ）
-        if (item.is_equipment_set) {
-          setEquipSetForm(membersToForm(item.set_members ?? []))
-        }
-        setBonusEffects(item.bonus_effects.map((e) => ({
-          id: e.id,
-          effect_name: e.effect_name,
-          values: e.values.length > 0
-            ? e.values.map((v) => ({ value: String(v.value), value_unit: v.value_unit, label: v.label ?? '' }))
-            : [emptyValue()],
-          description: e.description ?? '',
-        })))
+        fillFormFromItem(item, false)
       }))
+    } else if (copyFromId) {
+      // コピーして編集（editor 以上）：コピー元を取得し、新規作成フォームへ複製する
+      tasks.push((async () => {
+        if (!isEditor) {
+          await alert('アイテムのコピーは編集者・管理者のみ利用できます。', { title: 'コピーできません' })
+          navigate('/admin/items')
+          return
+        }
+        const r = await itemsApi.get(copyFromId)
+        fillFormFromItem(r.data, true)
+      })())
     }
     Promise.all(tasks).finally(() => setMastersLoading(false))
-  }, [id, isNew])
+  }, [id, isNew, copyFromId])
 
   // 選択中カテゴリ判定（子カテゴリも含めて検索）
   const allCategories = categories.flatMap((c) => [c, ...(c.children ?? [])])
@@ -300,7 +328,7 @@ export default function AdminItemEditPage() {
       <div className="flex items-center gap-3 mb-6">
         <button onClick={backToList} className="text-gray-400 hover:text-white text-sm">← 一覧に戻る</button>
         <h1 className="text-xl font-bold text-white">
-          {isNew ? 'アイテムを追加' : 'アイテムを編集'}
+          {!isNew ? 'アイテムを編集' : copyFromId ? 'アイテムをコピーして追加' : 'アイテムを追加'}
         </h1>
         {!isNew && verifiedStatus === 'verified' && (
           <span className="ml-auto text-xs text-emerald-400 flex items-center gap-1">✓ 確認済み</span>
@@ -452,15 +480,19 @@ export default function AdminItemEditPage() {
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-300">追加効果</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {ALL_STATS.map((key) => (
-              <div key={key}>
-                <label className="block text-xs text-gray-400 mb-1">{BASE_STAT_LABELS[key]}</label>
-                <input
-                  type="number" placeholder="—"
-                  value={form.base_stats[key] ?? ''}
-                  onChange={(e) => e.target.value ? setStat(key, e.target.value) : removeStat(key)}
-                  className="w-full bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
-                />
+            {STAT_INPUT_COLUMNS.map((column, ci) => (
+              <div key={ci} className="space-y-3">
+                {column.map((key) => (
+                  <div key={key}>
+                    <label className="block text-xs text-gray-400 mb-1">{BASE_STAT_LABELS[key]}</label>
+                    <input
+                      type="number" placeholder="—"
+                      value={form.base_stats[key] ?? ''}
+                      onChange={(e) => e.target.value ? setStat(key, e.target.value) : removeStat(key)}
+                      className="w-full bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                    />
+                  </div>
+                ))}
               </div>
             ))}
           </div>
