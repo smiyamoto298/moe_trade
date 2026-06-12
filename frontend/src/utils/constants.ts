@@ -33,7 +33,7 @@ export const SPECIAL_CONDITIONS: Record<string, string> = {
 export const BONUS_VALUE_LABEL_OPTIONS: string[] = [
   // 追加効果と共通
   '攻撃力', '魔力', '攻撃ディレイ', '魔法ディレイ',
-  '最大HP', '最大ST', '最大MP', '命中力', '回避',
+  '最大HP', '最大ST', '最大MP', '命中', '回避',
   '耐火属性', '耐地属性', '耐水属性', '耐風属性', '耐無属性',
   '最大重量', '移動速度',
   // 付加効果種別（旧"種別"セレクトの選択肢をマージ）
@@ -66,7 +66,7 @@ export const BASE_STAT_LABELS: Record<string, string> = {
   max_hp:     '最大HP',
   max_st:     '最大ST',
   max_mp:     '最大MP',
-  hit:        '命中力',
+  hit:        '命中',
   eva:        '回避',
   res_fire:   '耐火属性',
   res_earth:  '耐地属性',
