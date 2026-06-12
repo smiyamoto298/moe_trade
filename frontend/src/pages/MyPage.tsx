@@ -429,7 +429,9 @@ export default function MyPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6 items-start">
+      {/* 1fr は minmax(auto,1fr) 扱いになり、truncate（nowrap）な長文の固有最小幅で
+          左カラムが広がって右の420pxパネルがページ外へはみ出すため minmax(0,1fr) にする */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-6 items-start">
         <div className="space-y-4">
           {tab === 'listings' && (
             <>

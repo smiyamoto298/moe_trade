@@ -310,7 +310,7 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
           return (
             <div key={msg.id} className={`flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
               <p className="text-xs text-gray-500">{msg.character_name}</p>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
+              <div className={`max-w-[75%] break-words rounded-2xl px-4 py-2 text-sm ${
                 mine
                   ? 'bg-primary-500 text-white rounded-tr-sm'
                   : 'bg-surface-border text-gray-100 rounded-tl-sm'
