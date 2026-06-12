@@ -182,6 +182,10 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 ### レイアウト・ブランド表示（ヘッダー / フッター / 背景 / バナー）
 - **ヘッダーロゴ**: 画像ロゴ `public/img/logo_header.png`（高さ40px・クリックでトップへ）。元画像 `public/img/logo.png`（透過PNG）からの縮小版で、差し替え時は縮小版を再生成する
 - **ファビコン**: `public/img/favicon.jpg`（`index.html` から参照）
+- **OGP / Twitter Card**: `frontend/index.html` の `<head>` に静的メタタグを定義（SPAだがクローラーはJSを実行しないため、ビルド成果物の HTML に直接含める）。
+  - `og:title` / `og:description` / `og:url` / `og:site_name` / `og:type=website` / `og:locale=ja_JP` と `twitter:card=summary_large_image` ＋ `meta name="description"`
+  - サムネイル画像は `public/img/site_ogp.jpg`（**1227×637 JPEG・ほぼ2:1**、サイト画面のスクリーンショット）。`og:image` / `twitter:image` は **絶対URL**（`https://moe-trade.sakuraweb.com/img/site_ogp.jpg`）で指定する（相対URLだとX等のクローラーが解決できない）。画像を差し替えたら `og:image:width` / `og:image:height` も実寸に合わせて更新する
+  - 回帰防止テスト: `backend/tests/Unit/FrontendOgpMetaTest.php`（`frontend/index.html` に必須タグ・絶対URLが含まれることを検証）
 - **背景画像**: 全ページ共通で `public/img/castle.jpg` を表示。`body::before`（`position: fixed`）に「ダークオーバーレイ（surface色 72%）＋ cover配置」で敷く（`background-attachment: fixed` がiOSで効かないための擬似要素方式）。フォールバック背景色は `html` 側に置く
 - **フッター**: `position: fixed` で画面下部に常時表示（著作権表記＋公式サイトリンク）。コンテンツ側はフッター高さぶんの下余白（`pb-24 / sm:pb-20 / min-[1150px]:pb-16`）で逃がし、右下のヘルプボタンも同じ刻みで上にずらす
 - **フッターバナー**: 768px（md）以上で `public/img/banner/` の5種からランダムに1つをフッター右端に表示し、公式サイト（moepic.com）へ新規タブでリンク。著作権表記はバナーを除いた残り幅の中で中央寄せ
