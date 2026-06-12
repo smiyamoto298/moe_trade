@@ -60,7 +60,10 @@ class ItemController extends Controller
             }
         }
 
-        return response()->json($query->orderBy('name')->paginate(50));
+        // per_page は 1〜200 の範囲で指定可（既定 50）。フロントは last_page まで辿って全件を取得する
+        $perPage = min(max((int) $request->input('per_page', 50), 1), 200);
+
+        return response()->json($query->orderBy('name')->paginate($perPage));
     }
 
     public function show(int $id)

@@ -20,6 +20,28 @@ class ItemApiTest extends TestCase
             ->assertJsonPath('name', 'テストの剣');
     }
 
+    public function test_アイテム一覧はper_pageで件数指定でき全ページで全件取得できる(): void
+    {
+        $cats = $this->makeCategoryTree();
+        foreach (range(1, 3) as $i) {
+            $this->makeItem(['category_id' => $cats['sword']->id, 'name' => "テストの剣{$i}"]);
+        }
+
+        // per_page が反映され、last_page で総ページ数がわかる
+        $page1 = $this->getJson('/api/items?per_page=2')->assertOk()->json();
+        $this->assertSame(2, $page1['per_page']);
+        $this->assertSame(2, $page1['last_page']);
+        $this->assertCount(2, $page1['data']);
+
+        // 最終ページに残り全件が入る（1ページ目しか見ないと51件目以降が漏れるバグの回帰防止）
+        $page2 = $this->getJson('/api/items?per_page=2&page=2')->assertOk()->json();
+        $this->assertCount(1, $page2['data']);
+
+        // 上限 200 / 下限 1 にクランプされる
+        $this->assertSame(200, $this->getJson('/api/items?per_page=9999')->assertOk()->json('per_page'));
+        $this->assertSame(1, $this->getJson('/api/items?per_page=0')->assertOk()->json('per_page'));
+    }
+
     public function test_ログインユーザーはアイテムを登録できる_unverifiedで作成される(): void
     {
         $user = $this->makeUser();

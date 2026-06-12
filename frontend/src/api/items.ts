@@ -21,14 +21,27 @@ export interface EquipmentSetPieceInput {
 }
 
 export const itemsApi = {
-  list: (params?: { name?: string; category_id?: number }): Promise<{ data: Item[] }> => {
+  list: async (params?: { name?: string; category_id?: number }): Promise<{ data: Item[] }> => {
     if (USE_MOCK) {
       let result = [...mockItems]
       if (params?.name) result = result.filter((i) => i.name.includes(params.name!))
       if (params?.category_id) result = result.filter((i) => i.category.id === params.category_id)
-      return Promise.resolve({ data: result })
+      return { data: result }
     }
-    return client.get<{ data: Item[] }>('/items', { params }).then((r) => ({ data: r.data.data }))
+    // API はページネーション（最大200件/ページ）で返すため、last_page まで辿って全件を結合する。
+    // 1ページ目だけ使うと51件目以降のアイテムが画面から消える（アイテム管理の未確認バッジ不一致の原因）。
+    const all: Item[] = []
+    let page = 1
+    let lastPage = 1
+    do {
+      const r = await client.get<{ data: Item[]; last_page: number }>('/items', {
+        params: { ...params, per_page: 200, page },
+      })
+      all.push(...r.data.data)
+      lastPage = r.data.last_page
+      page += 1
+    } while (page <= lastPage)
+    return { data: all }
   },
 
   // アイテム名（複数）をまとめて登録済みアイテムと照合する。
