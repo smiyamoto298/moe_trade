@@ -44,6 +44,24 @@ class ListingApiTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
+    public function test_不正なbase_statキーはSQLとして実行されず無視される(): void
+    {
+        $this->makeListing();
+
+        // base_stats のキーは JSON パスへ文字列補間されるため、許可リスト外のキーは
+        // 無視される（500 にならず、フィルタとして作用しない）。インジェクション防止の回帰テスト。
+        $injection = "atk') = 1 OR JSON_EXTRACT(base_stats, '$.atk";
+
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'base_stat_keys'   => [$injection],
+            'base_stat_ranges' => [$injection => ['min' => 1]],
+            'sort'             => "stat_asc:{$injection}",
+        ]));
+
+        // クエリが壊れず正常応答し、出品は除外されない（不正キーは条件にならない）
+        $res->assertOk()->assertJsonCount(1, 'data');
+    }
+
     public function test_出品できる_期限は7日後(): void
     {
         $user = $this->makeUser();
@@ -297,5 +315,61 @@ class ListingApiTest extends TestCase
 
         $this->assertSame('expired', $expired->fresh()->status);
         $this->assertSame('active', $active->fresh()->status);
+    }
+
+    public function test_アセットは設置個所_特殊機能_ストレージ数で絞り込める(): void
+    {
+        $assetTop = ItemCategory::create(['name' => 'アセット', 'sort_order' => 8]);
+
+        // 床・銀行・ストレージ20 のアセットと、壁・販売員・ストレージ5 のアセットを出品
+        $bank = $this->makeItem([
+            'name' => '銀行アセット', 'category_id' => $assetTop->id,
+            'placement' => '床', 'special_function' => '銀行', 'storage_count' => 20,
+        ]);
+        $shop = $this->makeItem([
+            'name' => '販売員アセット', 'category_id' => $assetTop->id,
+            'placement' => '壁', 'special_function' => '販売員', 'storage_count' => 5,
+        ]);
+        $this->makeListing(null, $bank);
+        $this->makeListing(null, $shop);
+
+        $names = fn($res) => collect($res->json('data'))->pluck('item.name')->all();
+
+        // 設置個所=床 で銀行アセットのみ
+        $res = $this->getJson('/api/listings?' . http_build_query(['item_type' => 'asset', 'placements' => ['床']]));
+        $res->assertOk();
+        $this->assertSame(['銀行アセット'], $names($res));
+
+        // 特殊機能=販売員 で販売員アセットのみ
+        $res2 = $this->getJson('/api/listings?' . http_build_query(['item_type' => 'asset', 'special_functions' => ['販売員']]));
+        $res2->assertOk();
+        $this->assertSame(['販売員アセット'], $names($res2));
+
+        // ストレージ数 >=10 で銀行アセットのみ
+        $res3 = $this->getJson('/api/listings?' . http_build_query(['item_type' => 'asset', 'storage_min' => 10]));
+        $res3->assertOk();
+        $this->assertSame(['銀行アセット'], $names($res3));
+    }
+
+    public function test_出品詳細は出品中と取引成立のみ公開され他は404(): void
+    {
+        // active は閲覧可
+        $active = $this->makeListing(null, null, ['status' => 'active']);
+        $this->getJson("/api/listings/{$active->id}")
+            ->assertOk()
+            ->assertJsonPath('id', $active->id);
+
+        // completed も公開対象
+        $completed = $this->makeListing(null, null, ['status' => 'completed']);
+        $this->getJson("/api/listings/{$completed->id}")
+            ->assertOk()
+            ->assertJsonPath('id', $completed->id);
+
+        // 取り下げ・期限切れは直接URLでも閲覧できない（404）
+        foreach (['cancelled', 'expired', 'deal_failed'] as $status) {
+            $hidden = $this->makeListing(null, null, ['status' => $status]);
+            $this->getJson("/api/listings/{$hidden->id}")
+                ->assertStatus(404);
+        }
     }
 }

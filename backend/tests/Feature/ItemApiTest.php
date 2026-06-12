@@ -136,6 +136,93 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseMissing('items', ['id' => $item->id]);
     }
 
+    public function test_関連データのある削除は確認を要求しforceで連鎖削除する(): void
+    {
+        $admin   = $this->makeUserWithRole('admin');
+        $listing = $this->makeListing();
+        $itemId  = $listing->item_id;
+
+        // 出品に紐づくチャット・メッセージ・取引履歴を用意
+        $chat = \App\Models\TradeChat::create([
+            'listing_id' => $listing->id,
+            'buyer_id'   => $this->makeUser()->id,
+            'server'     => 'Emerald',
+            'status'     => 'open',
+        ]);
+        $chat->messages()->create(['user_id' => $chat->buyer_id, 'message' => 'よろしく']);
+        \App\Models\TradeHistory::create([
+            'listing_id' => $listing->id, 'item_id' => $itemId,
+            'seller_id'  => $listing->user_id, 'price' => 1000, 'currency' => 'AC',
+            'server' => 'Emerald', 'is_valid' => true, 'traded_at' => now(),
+        ]);
+
+        // force 未指定なら 409 で確認を要求し、件数を返す（削除はしない）
+        $res = $this->actingAs($admin, 'sanctum')->deleteJson("/api/items/{$itemId}");
+        $res->assertStatus(409)
+            ->assertJsonPath('requires_confirmation', true)
+            ->assertJsonPath('listing_count', 1)
+            ->assertJsonPath('history_count', 1);
+        $this->assertDatabaseHas('items', ['id' => $itemId]);
+
+        // force=1 で関連（出品・チャット・メッセージ・取引履歴）ごと削除
+        $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/items/{$itemId}?force=1")
+            ->assertStatus(204);
+
+        $this->assertDatabaseMissing('items', ['id' => $itemId]);
+        $this->assertDatabaseMissing('listings', ['id' => $listing->id]);
+        $this->assertDatabaseMissing('trade_chats', ['id' => $chat->id]);
+        $this->assertDatabaseMissing('trade_history', ['item_id' => $itemId]);
+    }
+
+    public function test_アイテム統合で関連データを付け替えて元を削除する(): void
+    {
+        $admin   = $this->makeUserWithRole('admin');
+        $listing = $this->makeListing();
+        $source  = $listing->item;
+        $target  = $this->makeItem(['name' => '統合先の剣']);
+
+        \App\Models\TradeHistory::create([
+            'listing_id' => $listing->id, 'item_id' => $source->id,
+            'seller_id'  => $listing->user_id, 'price' => 1000, 'currency' => 'AC',
+            'server' => 'Emerald', 'is_valid' => true, 'traded_at' => now(),
+        ]);
+
+        $res = $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/items/{$source->id}/merge", ['target_id' => $target->id]);
+
+        $res->assertOk()
+            ->assertJsonPath('merged_into.id', $target->id)
+            ->assertJsonPath('listing_count', 1)
+            ->assertJsonPath('history_count', 1);
+
+        // 元アイテムは削除され、出品・履歴は統合先に付け替わる
+        $this->assertDatabaseMissing('items', ['id' => $source->id]);
+        $this->assertDatabaseHas('listings', ['id' => $listing->id, 'item_id' => $target->id]);
+        $this->assertDatabaseHas('trade_history', ['listing_id' => $listing->id, 'item_id' => $target->id]);
+    }
+
+    public function test_同じアイテムへの統合は422(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $item  = $this->makeItem();
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/items/{$item->id}/merge", ['target_id' => $item->id])
+            ->assertStatus(422);
+    }
+
+    public function test_統合はadminのみ(): void
+    {
+        $editor = $this->makeUserWithRole('editor');
+        $a = $this->makeItem(['name' => 'A']);
+        $b = $this->makeItem(['name' => 'B']);
+
+        $this->actingAs($editor, 'sanctum')
+            ->postJson("/api/items/{$a->id}/merge", ['target_id' => $b->id])
+            ->assertStatus(403);
+    }
+
     public function test_価格解析は無効取引も一覧に含む_統計は有効のみ(): void
     {
         $listing = $this->makeListing();
