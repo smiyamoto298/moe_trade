@@ -101,8 +101,12 @@ export default function Header() {
   return (
     <header className="bg-surface-card border-b border-surface-border sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-        <Link to="/" className="text-lg font-bold text-primary-500 tracking-wide shrink-0">
-          MoE Trade
+        <Link to="/" className="shrink-0">
+          <img
+            src="/img/logo_header.png"
+            alt="MoE Trade"
+            className="h-10 w-auto"
+          />
         </Link>
 
         {/* デスクトップナビ（lg以上） */}
