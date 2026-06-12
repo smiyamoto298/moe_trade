@@ -149,7 +149,7 @@ class PromoTweetComposerTest extends TestCase
 
         $text = $tweets[0];
         $this->assertStringContainsString('📢MoE Trade（6/8〜6/12）', $text);
-        $this->assertStringContainsString('【期間中の取引件数】7件', $text);
+        $this->assertStringContainsString('【期間中の取引成立数】7件', $text);
         $this->assertStringContainsString('【新規の取引】', $text);
         $this->assertStringContainsString('売)剛力の剣 12,000AC', $text);
         $this->assertStringContainsString('買)守りの盾 500AC', $text);

@@ -25,7 +25,7 @@ class PromoTweetComposer
     public const SECTION_ITEMS  = '【新規の取引】';
 
     // 期間（累計）モード用の見出し
-    public const SECTION_TRADES_RANGE = '【期間中の取引件数】';
+    public const SECTION_TRADES_RANGE = '【期間中の取引成立数】';
 
     public const HASHTAGS = '#MasterofEpic #MoETrade';
 
