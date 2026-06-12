@@ -6,7 +6,7 @@ import { useNotification } from '../../contexts/NotificationContext'
 import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory } from '../../types'
 import { SERVERS } from '../../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, MASTERY_BY_CODE } from '../../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, MASTERY_BY_CODE, formatSignedValue } from '../../utils/constants'
 
 type Filter = 'all' | 'unverified' | 'verified'
 type Mode = 'equipment' | 'skill' | 'asset'
@@ -53,6 +53,9 @@ export default function AdminItemsPage() {
   const [mode, setMode] = useState<Mode>(initialMode)
   const [filter, setFilter] = useState<Filter>(initialFilter)
   const [search, setSearch] = useState('')
+  // 装備セットを展開表示（装備品タブのみ）。
+  // チェックなし: セット本体のみ表示し構成部位は隠す / チェックあり: 構成部位を表示しセット本体は隠す
+  const [expandSets, setExpandSets] = useState(false)
   const [loading, setLoading] = useState(true)
   const [mastersLoading, setMastersLoading] = useState(true)
 
@@ -250,11 +253,20 @@ export default function AdminItemsPage() {
     }
   }
 
+  // 装備セットの構成部位（piece）として登録されているアイテムのID集合
+  const setMemberIds = new Set<number>()
+  for (const it of items) {
+    if (it.is_equipment_set) (it.set_members ?? []).forEach((m) => setMemberIds.add(m.id))
+  }
+
   // スキル/アセット/装備品モードで絞り込み
   const modeItems = items.filter((i) => {
     if (isSkillMode) return skillCategoryIds.has(i.category.id)
     if (isAssetMode) return assetCategoryIds.has(i.category.id)
-    return !skillCategoryIds.has(i.category.id) && !assetCategoryIds.has(i.category.id)
+    if (skillCategoryIds.has(i.category.id) || assetCategoryIds.has(i.category.id)) return false
+    // 装備セットの展開表示: チェックありは構成部位を表示してセット本体を隠し、
+    // チェックなしはセット本体のみ表示して構成部位を隠す（セットに属さない通常アイテムは常に表示）
+    return expandSets ? !i.is_equipment_set : !setMemberIds.has(i.id)
   })
 
   const filtered = modeItems.filter((i) => {
@@ -362,6 +374,18 @@ export default function AdminItemsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-full sm:w-56"
         />
+        {/* 装備セットを展開表示（装備品タブのみ） */}
+        {!isSkillMode && !isAssetMode && (
+          <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
+            <input
+              type="checkbox"
+              checked={expandSets}
+              onChange={(e) => setExpandSets(e.target.checked)}
+              className="accent-amber-500 w-4 h-4"
+            />
+            <span>装備セットを展開表示</span>
+          </label>
+        )}
       </div>
 
       {/* テーブル */}
@@ -469,10 +493,27 @@ export default function AdminItemsPage() {
                   ) : (
                   <>
                   <td className="px-4 py-3">
+                    {item.is_equipment_set ? (
+                      // 装備セット本体は構成部位のアイコン（部位カテゴリ名チップ）を表示する。
+                      // セット本体自身の base_stats は旧データのため表示しない（部位ごとの性能が正）
+                      <div className="flex flex-wrap gap-0.5">
+                        {(item.set_members ?? []).length === 0 ? (
+                          <span className="text-xs text-gray-600">—</span>
+                        ) : (item.set_members ?? []).map((m) => (
+                          <span
+                            key={m.id}
+                            title={m.name}
+                            className="text-[10px] leading-tight bg-amber-900/40 border border-amber-700/40 text-amber-100 rounded px-1 py-px"
+                          >
+                            {m.category.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
                     <div className="flex flex-wrap gap-1">
                       {Object.entries(item.base_stats).map(([k, v]) => (
                         <span key={k} className="text-xs bg-surface text-gray-300 px-1.5 py-0.5 rounded">
-                          {BASE_STAT_LABELS[k] ?? k}: {v}
+                          {BASE_STAT_LABELS[k] ?? k}: {formatSignedValue(v)}
                         </span>
                       ))}
                       {item.mithril && (
@@ -486,6 +527,7 @@ export default function AdminItemsPage() {
                         </span>
                       )}
                     </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1.5">
@@ -497,7 +539,7 @@ export default function AdminItemsPage() {
                           {e.values?.map((v, i) => (
                             <p key={i} className="text-gray-400 whitespace-nowrap">
                               {v.label && <span>{v.label}：</span>}
-                              <span className="text-gray-200">{v.value}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
+                              <span className="text-gray-200">{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
                             </p>
                           ))}
                         </div>
