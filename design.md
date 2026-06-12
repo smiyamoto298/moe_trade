@@ -203,6 +203,7 @@ X（旧Twitter）への日次宣伝用に、指定日（JST・デフォルト当
 
 ### レイアウト・ブランド表示（ヘッダー / フッター / 背景 / バナー）
 - **ヘッダーロゴ**: 画像ロゴ `public/img/logo_header.png`（高さ40px・クリックでトップへ）。元画像 `public/img/logo.png`（透過PNG）からの縮小版で、差し替え時は縮小版を再生成する
+- **ヘッダー「管理」ドロップダウン**（デスクトップナビ・lg以上）: 「管理」ボタンで開閉トグル。開いている間はメニュー外での `mousedown` で自動的に閉じる（メニュー内・ボタン上のクリックでは閉じない）
 - **ファビコン**: `public/img/favicon.jpg`（`index.html` から参照）
 - **OGP / Twitter Card**: `frontend/index.html` の `<head>` に静的メタタグを定義（SPAだがクローラーはJSを実行しないため、ビルド成果物の HTML に直接含める）。
   - `og:title` / `og:description` / `og:url` / `og:site_name` / `og:type=website` / `og:locale=ja_JP` と `twitter:card=summary_large_image` ＋ `meta name="description"`

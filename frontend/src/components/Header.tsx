@@ -46,6 +46,18 @@ export default function Header() {
     return () => { document.body.style.overflow = '' }
   }, [mobileOpen])
 
+  // 管理ドロップダウンの外側をクリックしたら閉じる
+  useEffect(() => {
+    if (!adminOpen) return
+    const handleOutside = (e: MouseEvent) => {
+      if (adminRef.current && !adminRef.current.contains(e.target as Node)) {
+        setAdminOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [adminOpen])
+
   const handleLogout = async () => {
     setMobileOpen(false)
     await logout()
