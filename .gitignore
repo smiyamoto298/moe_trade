@@ -1,14 +1,15 @@
+# Node（どの階層でも除外。ルートには vitest 実行時のキャッシュが生成されることがある）
+node_modules/
+
 # Laravel
 backend/.env
 backend/vendor/
-backend/node_modules/
 backend/storage/logs/*
 backend/storage/framework/cache/*
 backend/storage/framework/sessions/*
 backend/storage/framework/views/*
 
 # React
-frontend/node_modules/
 frontend/dist/
 frontend/.env.local
 
