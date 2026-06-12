@@ -16,8 +16,8 @@ interface Props {
   currentUserId: number | null
   isOwner: boolean
   kind?: 'listing' | 'buy_request'
-  // 取引対象（出品/買取）。取引方法（即決/交渉可）と価格の参照に使う。
-  source?: { trade_type: string; price: number } | null
+  // 取引対象（出品/買取）。取引方法（即決/交渉可）・価格・サーバー連絡先キャラの参照に使う。
+  source?: { trade_type: string; price: number; servers?: { server: string; character?: { character_name: string } | null }[] } | null
   // 取引成立時に呼ばれる（同じ出品の他チャットも更新するため）
   onDeal?: (updatedChats: TradeChat[]) => void
   onStatusChange?: (chat: TradeChat) => void
@@ -170,6 +170,34 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
   const status = STATUS_LABEL[chat.status] ?? STATUS_LABEL.open
   const isOpen = chat.status === 'open'
   const isDeal = chat.status === 'deal'
+  // 取引相手のキャラクター名。
+  //   - owner 視点: 取引希望者のキャラ名（buyer_character_name）
+  //   - 取引希望者視点: 取引対象のサーバー連絡先キャラ（servers[].character）。
+  //     無ければ相手側メッセージのキャラ名で代用
+  const partnerCharacterName = isOwner
+    ? chat.buyer_character_name
+    : (sourceObj?.servers?.find((s: { server: string }) => s.server === chat.server)?.character?.character_name
+       ?? (chat.messages ?? []).find((m) => !isMine(m.user_id))?.character_name)
+
+  // ゲーム内TELLコマンド（末尾の半角スペースまで含めてコピーする）
+  const tellCommand = partnerCharacterName ? `/tell ${partnerCharacterName} ` : null
+  const [tellCopied, setTellCopied] = useState(false)
+  const copyTellCommand = async () => {
+    if (!tellCommand) return
+    try {
+      await navigator.clipboard.writeText(tellCommand)
+    } catch {
+      // clipboard API が使えない環境（非HTTPS等）向けのフォールバック
+      const ta = document.createElement('textarea')
+      ta.value = tellCommand
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setTellCopied(true)
+    setTimeout(() => setTellCopied(false), 2000)
+  }
   const isDealFailed = chat.status === 'deal_failed'
   // 他ユーザーの取引が成立（取引対象がcompletedで自分のチャットはopen）
   const sourceStatus = ((chat as any).listing ?? (chat as any).buy_request)?.status
@@ -299,31 +327,55 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
       )}
 
       {/* メッセージ一覧 */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {(chat.messages?.length ?? 0) === 0 && (
-          <p className="text-center text-sm text-gray-500 py-8">
-            まだメッセージはありません。取引希望のメッセージを送ってください。
-          </p>
-        )}
-        {(chat.messages ?? []).map((msg) => {
-          const mine = isMine(msg.user_id)
-          return (
-            <div key={msg.id} className={`flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
-              <p className="text-xs text-gray-500">{msg.character_name}</p>
-              <div className={`max-w-[75%] break-words rounded-2xl px-4 py-2 text-sm ${
-                mine
-                  ? 'bg-primary-500 text-white rounded-tr-sm'
-                  : 'bg-surface-border text-gray-100 rounded-tl-sm'
-              }`}>
-                {msg.message}
+      <div className="relative flex-1 min-h-0">
+        <div className="h-full overflow-y-auto px-4 py-3 space-y-3">
+          {(chat.messages?.length ?? 0) === 0 && (
+            <p className="text-center text-sm text-gray-500 py-8">
+              まだメッセージはありません。取引希望のメッセージを送ってください。
+            </p>
+          )}
+          {(chat.messages ?? []).map((msg) => {
+            const mine = isMine(msg.user_id)
+            return (
+              <div key={msg.id} className={`flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
+                <p className="text-xs text-gray-500">{msg.character_name}</p>
+                <div className={`max-w-[75%] break-words rounded-2xl px-4 py-2 text-sm ${
+                  mine
+                    ? 'bg-primary-500 text-white rounded-tr-sm'
+                    : 'bg-surface-border text-gray-100 rounded-tl-sm'
+                }`}>
+                  {msg.message}
+                </div>
+                <p className="text-xs text-gray-600">
+                  {new Date(msg.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                </p>
               </div>
-              <p className="text-xs text-gray-600">
-                {new Date(msg.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
-          )
-        })}
-        <div ref={bottomRef} />
+            )
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* 取引成立後はゲーム内TELLコマンドをコピーできる（メッセージ表示領域の右下に固定表示） */}
+        {isDeal && tellCommand && (
+          <button
+            onClick={copyTellCommand}
+            title={`「${tellCommand}」をコピー`}
+            aria-label="TELLコマンドをコピー"
+            className="absolute bottom-2 right-3 text-xs bg-surface/90 hover:bg-surface-border border border-surface-border text-gray-300 rounded px-2.5 py-1 shadow-md transition-colors flex items-center gap-1"
+          >
+            {tellCopied ? (
+              <span className="text-emerald-400">✓ コピーしました</span>
+            ) : (
+              <>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5" aria-hidden="true">
+                  <rect x="5" y="5" width="8" height="9" rx="1.5" />
+                  <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H4.5A1.5 1.5 0 0 0 3 3.5v7A1.5 1.5 0 0 0 4.5 12H5" />
+                </svg>
+                TELL
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* 入力欄 */}

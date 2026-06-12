@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import type { ComponentProps } from 'react'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ChatThread from './ChatThread'
 import { DialogProvider } from '../contexts/DialogContext'
 import type { TradeChat } from '../types'
@@ -7,6 +8,8 @@ import type { TradeChat } from '../types'
 // design.md「取引チャット」: メッセージ本文は吹き出し幅（max-w-[75%]）内で
 // 折り返して表示する。スペースを含まない長い文字列（URL 等）でも
 // レイアウトが崩れないよう break-words で強制改行する。
+// また、取引成立（deal）チャットにはTELLコマンドのコピーアイコンを表示し、
+// 「/tell 取引相手のキャラクター名 」（末尾半角スペース付き）をコピーできる。
 
 vi.mock('../api/chat', () => ({
   chatApi: {
@@ -49,10 +52,10 @@ const chat: TradeChat = {
   updated_at: '2026-06-12T10:00:00Z',
 }
 
-const renderThread = () =>
+const renderThread = (props: Partial<ComponentProps<typeof ChatThread>> = {}) =>
   render(
     <DialogProvider>
-      <ChatThread chat={chat} currentUserId={2} isOwner={false} />
+      <ChatThread chat={chat} currentUserId={2} isOwner={false} {...props} />
     </DialogProvider>
   )
 
@@ -62,5 +65,63 @@ describe('ChatThread', () => {
     const bubble = screen.getByText(longMessage)
     expect(bubble.className).toContain('break-words')
     expect(bubble.className).toContain('max-w-[75%]')
+  })
+})
+
+describe('ChatThread TELLコマンドコピー', () => {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+
+  beforeAll(() => {
+    // jsdom には clipboard が無いためスタブする
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+  })
+
+  beforeEach(() => {
+    writeText.mockClear()
+  })
+
+  const dealChat: TradeChat = { ...chat, status: 'deal' as TradeChat['status'] }
+
+  it('取引成立チャットでは owner に「/tell 取引希望者キャラ名 」（末尾半角スペース付き）のコピーアイコンが表示される', async () => {
+    renderThread({ chat: dealChat, currentUserId: 1, isOwner: true })
+    const btn = screen.getByRole('button', { name: 'TELLコマンドをコピー' })
+    // メッセージ表示領域の右下に固定表示する
+    expect(btn.className).toContain('absolute')
+    expect(btn.className).toContain('bottom-2')
+    expect(btn.className).toContain('right-3')
+    fireEvent.click(btn)
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('/tell テスト買い手 ')
+    })
+    // コピー済みフィードバックが表示される
+    expect(await screen.findByText('✓ コピーしました')).toBeTruthy()
+  })
+
+  it('取引希望者側では取引対象のサーバー連絡先キャラ名で「/tell 」コマンドをコピーする', async () => {
+    renderThread({
+      chat: dealChat,
+      currentUserId: 2,
+      isOwner: false,
+      source: {
+        trade_type: 'fixed',
+        price: 1000,
+        servers: [
+          { server: 'P', character: { character_name: '出品者キャラ' } },
+          { server: 'E', character: { character_name: '別サーバーキャラ' } },
+        ],
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'TELLコマンドをコピー' }))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('/tell 出品者キャラ ')
+    })
+  })
+
+  it('交渉中（open）のチャットにはTELLコマンドアイコンを表示しない', () => {
+    renderThread()
+    expect(screen.queryByRole('button', { name: 'TELLコマンドをコピー' })).toBeNull()
   })
 })
