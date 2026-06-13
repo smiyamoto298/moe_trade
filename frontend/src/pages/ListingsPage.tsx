@@ -805,7 +805,6 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               onChange={(e) => setParam('sort', e.target.value)}
             >
               <option value="newest">新着順</option>
-              <option value="name_asc">あいうえお順</option>
               <option value="price_asc">価格が安い順</option>
               <option value="price_desc">価格が高い順</option>
               {(params.base_stat_keys ?? []).map((k) => (

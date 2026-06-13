@@ -249,7 +249,7 @@ export interface ListingSearchParams {
   // 通常検索で、指定スキルを構成に含むマスタリを必要とするテクニックも対象にするか。
   skill_include_mastery?: boolean
   special_conditions?: string[]
-  sort?: string  // 'newest' | 'name_asc' | 'name_desc' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
+  sort?: string  // 'newest' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
   page?: number
 }
 

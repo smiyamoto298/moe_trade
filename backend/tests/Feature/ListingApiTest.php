@@ -261,24 +261,6 @@ class ListingApiTest extends TestCase
         $this->assertSame([100, 5000, 90000], array_column($res->json('data'), 'price'));
     }
 
-    public function test_あいうえお順でソートできる(): void
-    {
-        $cats = $this->makeCategoryTree();
-        $this->makeListing(null, $this->makeItem(['name' => 'さくら', 'category_id' => $cats['sword']->id]));
-        $this->makeListing(null, $this->makeItem(['name' => 'あんず', 'category_id' => $cats['sword']->id]));
-        $this->makeListing(null, $this->makeItem(['name' => 'かえで', 'category_id' => $cats['sword']->id]));
-
-        // 昇順（あいうえお順）
-        $res = $this->getJson('/api/listings?sort=name_asc');
-        $names = collect($res->json('data'))->pluck('item.name')->all();
-        $this->assertSame(['あんず', 'かえで', 'さくら'], $names);
-
-        // 降順
-        $res = $this->getJson('/api/listings?sort=name_desc');
-        $names = collect($res->json('data'))->pluck('item.name')->all();
-        $this->assertSame(['さくら', 'かえで', 'あんず'], $names);
-    }
-
     public function test_本人は出品を編集できる_他人は編集できない(): void
     {
         $seller  = $this->makeUser();

@@ -71,20 +71,11 @@ class BuyRequestController extends Controller
         }
 
         // --- ソート ---
-        $sort = $request->sort ?? 'newest';
-        if ($sort === 'name_asc' || $sort === 'name_desc') {
-            // アイテム名（あいうえお順）。かなは符号位置順で概ね五十音順になる。
-            $dir = $sort === 'name_asc' ? 'ASC' : 'DESC';
-            $query->join('items as sort_item_name', 'buy_requests.item_id', '=', 'sort_item_name.id')
-                  ->orderBy('sort_item_name.name', $dir)
-                  ->select('buy_requests.*');
-        } else {
-            match ($sort) {
-                'price_asc'  => $query->orderBy('price'),
-                'price_desc' => $query->orderByDesc('price'),
-                default      => $query->latest(),
-            };
-        }
+        match ($request->sort ?? 'newest') {
+            'price_asc'  => $query->orderBy('price'),
+            'price_desc' => $query->orderByDesc('price'),
+            default      => $query->latest(),
+        };
 
         // 現在の売却申し出者数（順番待ち人数）。一覧の取引パネルで「N人待ち」を表示するのに使う。
         $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
