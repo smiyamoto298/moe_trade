@@ -8,7 +8,7 @@ class Listing extends Model
 {
     protected $fillable = [
         'user_id', 'item_id', 'price', 'currency', 'quantity',
-        'trade_type', 'comment', 'is_worn', 'status', 'expires_at',
+        'trade_type', 'comment', 'is_worn', 'is_dyed', 'status', 'expires_at',
     ];
 
     protected function casts(): array
@@ -18,6 +18,7 @@ class Listing extends Model
             'price' => 'integer',
             'quantity' => 'integer',
             'is_worn' => 'boolean',
+            'is_dyed' => 'boolean',
         ];
     }
 

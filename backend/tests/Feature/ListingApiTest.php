@@ -85,6 +85,54 @@ class ListingApiTest extends TestCase
         $this->assertTrue(now()->addDays(6)->lt($expiresAt) && now()->addDays(8)->gt($expiresAt));
     }
 
+    public function test_出品時に削れと染色を指定できる(): void
+    {
+        $user = $this->makeUser();
+        $item = $this->makeItem();
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/listings', [
+            'item_id'    => $item->id,
+            'price'      => 1000,
+            'quantity'   => 1,
+            'trade_type' => 'fixed',
+            'is_worn'    => true,
+            'is_dyed'    => true,
+            'servers'    => [['server' => 'Emerald']],
+        ])->assertStatus(201);
+
+        $res->assertJsonPath('is_worn', true)->assertJsonPath('is_dyed', true);
+        $this->assertDatabaseHas('listings', ['id' => $res->json('id'), 'is_worn' => true, 'is_dyed' => true]);
+
+        // 既定は false
+        $res2 = $this->actingAs($user, 'sanctum')->postJson('/api/listings', [
+            'item_id' => $item->id, 'price' => 1000, 'quantity' => 1, 'trade_type' => 'fixed',
+            'servers' => [['server' => 'Emerald']],
+        ])->assertStatus(201);
+        $res2->assertJsonPath('is_worn', false)->assertJsonPath('is_dyed', false);
+    }
+
+    public function test_item_countsは出品を削れ染色の組み合わせ単位でも集計する(): void
+    {
+        $user = $this->makeUser();
+        $item = $this->makeItem();
+
+        $mk = fn(bool $worn, bool $dyed) => \App\Models\Listing::create([
+            'user_id' => $user->id, 'item_id' => $item->id, 'price' => 1000, 'currency' => 'AC',
+            'quantity' => 1, 'trade_type' => 'fixed', 'is_worn' => $worn, 'is_dyed' => $dyed,
+            'status' => 'active', 'expires_at' => now()->addDays(7),
+        ]);
+        $mk(true, true);
+        $mk(true, true);
+        $mk(false, false);
+
+        $variants = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/mypage/item-counts')->assertOk()->json('listing_variants');
+
+        $this->assertSame(2, $variants["{$item->id}:1:1"]);
+        $this->assertSame(1, $variants["{$item->id}:0:0"]);
+        $this->assertArrayNotHasKey("{$item->id}:1:0", $variants);
+    }
+
     public function test_メール未認証ユーザーは出品できない(): void
     {
         $user = User::factory()->unverified()->create();
@@ -259,6 +307,24 @@ class ListingApiTest extends TestCase
         // 価格昇順ソート
         $res = $this->getJson('/api/listings?sort=price_asc');
         $this->assertSame([100, 5000, 90000], array_column($res->json('data'), 'price'));
+    }
+
+    public function test_あいうえお順でソートできる(): void
+    {
+        $cats = $this->makeCategoryTree();
+        $this->makeListing(null, $this->makeItem(['name' => 'さくら', 'category_id' => $cats['sword']->id]));
+        $this->makeListing(null, $this->makeItem(['name' => 'あんず', 'category_id' => $cats['sword']->id]));
+        $this->makeListing(null, $this->makeItem(['name' => 'かえで', 'category_id' => $cats['sword']->id]));
+
+        // 昇順（あいうえお順）
+        $res = $this->getJson('/api/listings?sort=name_asc');
+        $names = collect($res->json('data'))->pluck('item.name')->all();
+        $this->assertSame(['あんず', 'かえで', 'さくら'], $names);
+
+        // 降順
+        $res = $this->getJson('/api/listings?sort=name_desc');
+        $names = collect($res->json('data'))->pluck('item.name')->all();
+        $this->assertSame(['さくら', 'かえで', 'あんず'], $names);
     }
 
     public function test_本人は出品を編集できる_他人は編集できない(): void

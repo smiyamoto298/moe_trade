@@ -67,7 +67,6 @@ export interface Item {
   special_conditions: string[]
   dyeable: boolean | null
   mithril: boolean
-  exclusive_skill: boolean
   is_equipment_set: boolean
   set_piece_category_ids: number[] | null
   // 装備セットの構成部位（通常アイテムとして登録された部位）。セット本体のときのみ存在。
@@ -119,6 +118,8 @@ export interface Listing {
   comment: string
   /** 削れあり（耐久度に削れがある中古品）。古いレスポンスでは未定義 */
   is_worn?: boolean
+  /** 染色済み。古いレスポンスでは未定義 */
+  is_dyed?: boolean
   status: ListingStatus
   expires_at: string
   servers: ListingServer[]
@@ -249,7 +250,7 @@ export interface ListingSearchParams {
   // 通常検索で、指定スキルを構成に含むマスタリを必要とするテクニックも対象にするか。
   skill_include_mastery?: boolean
   special_conditions?: string[]
-  sort?: string  // 'newest' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
+  sort?: string  // 'newest' | 'name_asc' | 'name_desc' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
   page?: number
 }
 
@@ -331,6 +332,65 @@ export interface BoardThread {
 export interface MyItemCounts {
   listings: Record<string, number>
   buy_requests: Record<string, number>
+  // 出品中の件数を (item_id, 削れ, 染色) 単位で集計。キーは "<item_id>:<削れ 0/1>:<染色 0/1>"。
+  listing_variants?: Record<string, number>
+}
+
+// ---- 所有アイテム管理（マイページ） ----
+// クライアント側の表現。id はクライアント生成の文字列キー（DB保存時はサーバーがキー→IDへ対応づける）。
+export interface MoeAccount {
+  id: string
+  name: string
+}
+
+export interface OwnedItem {
+  id: string
+  // 所属 MoE アカウント（未割り当ては null）
+  accountId: string | null
+  // 貼り付け由来の生データ
+  no: string
+  name: string
+  category: string
+  count: number
+  // 登録アイテムへの紐づけ（未紐づけは null）
+  itemId: number | null
+  item: Item | null
+  // ステータス
+  worn: boolean    // 削れあり
+  dyed: boolean    // 染色済み
+  marked: boolean  // マーク
+}
+
+export interface InventoryData {
+  accounts: MoeAccount[]
+  items: OwnedItem[]
+  // ユーザー個別の除外アイテム名
+  exclusions: string[]
+}
+
+// 保存先（デフォルトはローカルストレージ）
+export type InventoryStorageMode = 'local' | 'db'
+
+// 管理者が管理する共通の除外アイテム
+export interface ExcludedItem {
+  id: number
+  name: string
+  created_by: number | null
+  created_at: string
+}
+
+// ユーザー個別除外（DB保存分）を名前で集計した、共通除外への昇格候補
+export interface UserExclusionSuggestion {
+  name: string
+  user_count: number
+}
+
+// 他ユーザーが買取中の価格（item_id ごと）。複数あるときは最高額と件数を返す。
+export interface BuyPriceInfo {
+  buy_request_id: number
+  price: number
+  currency: string
+  count: number
 }
 
 // ---- お知らせ ----

@@ -19,6 +19,7 @@ import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import MyPage from './pages/MyPage'
+import OwnedItemsPage from './pages/OwnedItemsPage'
 import BoardPage from './pages/BoardPage'
 import BoardThreadPage from './pages/BoardThreadPage'
 import { useAuth } from './contexts/AuthContext'
@@ -31,6 +32,7 @@ const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
 const AnnouncementsAdminPage = lazy(() => import('./pages/admin/AnnouncementsAdminPage'))
 const BonusValueLabelsAdminPage = lazy(() => import('./pages/admin/BonusValueLabelsAdminPage'))
 const PromoTweetsPage = lazy(() => import('./pages/admin/PromoTweetsPage'))
+const AdminExcludedItemsPage = lazy(() => import('./pages/admin/AdminExcludedItemsPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -84,6 +86,11 @@ export default function App() {
             path="/mypage"
             element={<PrivateRoute><MyPage /></PrivateRoute>}
           />
+          {/* 所有アイテム管理（ログイン必須） */}
+          <Route
+            path="/mypage/items"
+            element={<PrivateRoute><OwnedItemsPage /></PrivateRoute>}
+          />
           {/* 運営掲示板（ログイン必須） */}
           <Route
             path="/board"
@@ -120,6 +127,10 @@ export default function App() {
           <Route
             path="/admin/promo-tweets"
             element={<RoleRoute roles={['admin']}><PromoTweetsPage /></RoleRoute>}
+          />
+          <Route
+            path="/admin/excluded-items"
+            element={<RoleRoute roles={['admin']}><AdminExcludedItemsPage /></RoleRoute>}
           />
         </Routes>
         </Suspense>

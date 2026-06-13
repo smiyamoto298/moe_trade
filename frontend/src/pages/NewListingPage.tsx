@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
@@ -15,12 +15,16 @@ import { itemTypeOf } from '../utils/itemType'
 export default function NewListingPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  // 所有アイテム管理などから「このアイテムを出品」で遷移してきた場合の初期選択（削れ・染色も引き継ぐ）
+  const presetState = (location.state as { presetItem?: Item; presetWorn?: boolean; presetDyed?: boolean } | null)
+  const presetItem = presetState?.presetItem ?? null
 
   const { run: runSubmit, loading: submitting } = useAsync()
   const { run: runSearch, loading: searching } = useAsync()
   const [itemSearch, setItemSearch] = useState('')
   const [searchResults, setSearchResults] = useState<Item[]>([])
-  const [selectedItem, setSelectedItem] = useState<Item | null>(null)
+  const [selectedItem, setSelectedItem] = useState<Item | null>(presetItem)
   const [showNewItemForm, setShowNewItemForm] = useState(false)
   const [priceError, setPriceError] = useState('')
   const [showAnalytics, setShowAnalytics] = useState(false)
@@ -44,7 +48,8 @@ export default function NewListingPage() {
     currency: 'AC', // ゲーム内通貨（固定）
     trade_type: 'fixed',
     comment: '',
-    is_worn: false,
+    is_worn: presetState?.presetWorn ?? false,
+    is_dyed: presetState?.presetDyed ?? false,
     servers: [] as string[],
   })
 
@@ -89,6 +94,7 @@ export default function NewListingPage() {
         trade_type: form.trade_type,
         comment: form.comment,
         is_worn: isTechnique ? false : form.is_worn,
+        is_dyed: isTechnique ? false : form.is_dyed,
         servers: serverPayload,
       })
       navigate('/mypage')
@@ -283,16 +289,28 @@ export default function NewListingPage() {
           </div>
 
           {!isTechnique && (
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={form.is_worn}
-                onChange={(e) => setForm((p) => ({ ...p, is_worn: e.target.checked }))}
-                className="accent-amber-500"
-              />
-              <span className="text-sm text-gray-300">削れあり</span>
-              <span className="text-xs text-gray-500">（耐久度に削れがある中古品）</span>
-            </label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.is_worn}
+                  onChange={(e) => setForm((p) => ({ ...p, is_worn: e.target.checked }))}
+                  className="accent-amber-500"
+                />
+                <span className="text-sm text-gray-300">削れあり</span>
+                <span className="text-xs text-gray-500">（耐久度に削れがある中古品）</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.is_dyed}
+                  onChange={(e) => setForm((p) => ({ ...p, is_dyed: e.target.checked }))}
+                  className="accent-fuchsia-500"
+                />
+                <span className="text-sm text-gray-300">染色済み</span>
+                <span className="text-xs text-gray-500">（染色液で色を変更済み）</span>
+              </label>
+            </div>
           )}
         </div>
 

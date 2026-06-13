@@ -1,5 +1,5 @@
 import client from './client'
-import type { BuyRequest, BuyRequestSearchParams, Paginated, TradeChat } from '../types'
+import type { BuyRequest, BuyRequestSearchParams, BuyPriceInfo, Paginated, TradeChat } from '../types'
 
 export interface BuyRequestCreatePayload {
   item_id: number
@@ -21,6 +21,10 @@ export const buyRequestsApi = {
 
   get: (id: number): Promise<{ data: BuyRequest }> =>
     client.get<BuyRequest>(`/buy-requests/${id}`),
+
+  // 指定アイテム群の「他ユーザーが買取中の最高額」を item_id ごとに取得する。
+  prices: (itemIds: number[]): Promise<{ data: Record<string, BuyPriceInfo> }> =>
+    client.post<Record<string, BuyPriceInfo>>('/buy-requests/prices', { item_ids: itemIds }),
 
   create: (data: BuyRequestCreatePayload) => client.post<BuyRequest>('/buy-requests', data),
 

@@ -5,6 +5,12 @@ interface DialogOptions {
   confirmLabel?: string
   cancelLabel?: string
   danger?: boolean
+  /** 強調表示する警告文（メッセージの下に琥珀色のボックスで表示）。 */
+  highlight?: string
+  /** 任意のチェックボックス（「今後表示しない」等）。状態は onCheckbox で受け取る。 */
+  checkbox?: { label: string; defaultChecked?: boolean }
+  /** チェックボックスの最終状態（確認/キャンセルいずれの確定時にも呼ばれる）。 */
+  onCheckbox?: (checked: boolean) => void
 }
 
 interface DialogState {
@@ -12,6 +18,7 @@ interface DialogState {
   message: string
   kind: 'confirm' | 'alert'
   options: DialogOptions
+  checked: boolean
   resolve: ((v: boolean) => void) | null
 }
 
@@ -24,7 +31,7 @@ interface DialogContextValue {
 
 const DialogContext = createContext<DialogContextValue | null>(null)
 
-const INITIAL: DialogState = { open: false, message: '', kind: 'confirm', options: {}, resolve: null }
+const INITIAL: DialogState = { open: false, message: '', kind: 'confirm', options: {}, checked: false, resolve: null }
 
 /**
  * window.confirm / window.alert の代替。
@@ -37,7 +44,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const confirm = useCallback(
     (message: string, options: DialogOptions = {}) =>
       new Promise<boolean>((resolve) => {
-        setState({ open: true, message, kind: 'confirm', options, resolve })
+        setState({ open: true, message, kind: 'confirm', options, checked: options.checkbox?.defaultChecked ?? false, resolve })
       }),
     []
   )
@@ -45,17 +52,18 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const alert = useCallback(
     (message: string, options: DialogOptions = {}) =>
       new Promise<void>((resolve) => {
-        setState({ open: true, message, kind: 'alert', options, resolve: () => resolve() })
+        setState({ open: true, message, kind: 'alert', options, checked: options.checkbox?.defaultChecked ?? false, resolve: () => resolve() })
       }),
     []
   )
 
   const close = (result: boolean) => {
+    state.options.onCheckbox?.(state.checked)
     state.resolve?.(result)
     setState(INITIAL)
   }
 
-  const { open, message, kind, options } = state
+  const { open, message, kind, options, checked } = state
 
   return (
     <DialogContext.Provider value={{ confirm, alert }}>
@@ -71,6 +79,22 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           >
             {options.title && <h2 className="text-base font-bold text-white">{options.title}</h2>}
             <p className="text-sm text-gray-300 whitespace-pre-line">{message}</p>
+            {options.highlight && (
+              <p className="text-sm font-medium text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded px-3 py-2 whitespace-pre-line">
+                {options.highlight}
+              </p>
+            )}
+            {options.checkbox && (
+              <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => setState((s) => ({ ...s, checked: e.target.checked }))}
+                  className="accent-primary-500 w-4 h-4"
+                />
+                {options.checkbox.label}
+              </label>
+            )}
             <div className="flex justify-end gap-2">
               {kind === 'confirm' && (
                 <button

@@ -10,6 +10,7 @@ export interface ListingCreatePayload {
   trade_type: string
   comment: string
   is_worn?: boolean
+  is_dyed?: boolean
   servers: { server: string; character_id: number | null }[]
 }
 

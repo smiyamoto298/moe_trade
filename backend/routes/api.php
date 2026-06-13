@@ -9,6 +9,8 @@ use App\Http\Controllers\BuyRequestController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ExcludedItemController;
+use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ListingController;
 use App\Http\Controllers\PromoTweetController;
@@ -61,7 +63,11 @@ Route::get('items/{id}/price-analytics', [ItemController::class, 'priceAnalytics
 Route::get('listings',      [ListingController::class, 'index']);
 Route::get('listings/{id}', [ListingController::class, 'show']);
 Route::get('buy-requests',      [BuyRequestController::class, 'index']);
+Route::post('buy-requests/prices', [BuyRequestController::class, 'prices']);
 Route::get('buy-requests/{id}', [BuyRequestController::class, 'show']);
+
+// 共通の除外アイテム名（貼り付け除外に使用・公開）
+Route::get('excluded-items', [\App\Http\Controllers\ExcludedItemController::class, 'index']);
 
 // 認証必須
 Route::middleware('auth:sanctum')->group(function () {
@@ -90,6 +96,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('items/match',        [ItemController::class, 'matchNames']);
     Route::post('items',              [ItemController::class, 'store']);
     Route::put('items/{id}',          [ItemController::class, 'update']);
+    // 通常の部位アイテムを、それ自身を構成部位に含む新しい装備セットへ変換する（id・出品を部位側に保持）
+    Route::post('items/{id}/convert-to-set', [ItemController::class, 'convertToSet']);
     Route::post('items/{id}/verify',  [ItemController::class, 'verify'])->middleware('role:editor');
     // 相場登録は admin のみ（editor は不可）
     Route::post('items/{id}/market-prices', [ItemController::class, 'storeMarketPrice'])->middleware('role:admin');
@@ -142,11 +150,27 @@ Route::middleware('auth:sanctum')->group(function () {
             ->selectRaw('item_id, COUNT(*) as c')
             ->groupBy('item_id')
             ->pluck('c', 'item_id');
+        // 出品中の件数を (item_id, 削れ, 染色) の組み合わせ単位で集計する。
+        // 所有アイテム管理で、削れ・染色まで一致する出品があるかを判定するのに使う。
+        // キーは "<item_id>:<削れ 0/1>:<染色 0/1>"。
+        $listingVariants = \App\Models\Listing::where('user_id', $uid)
+            ->where('status', 'active')
+            ->selectRaw('item_id, is_worn, is_dyed, COUNT(*) as c')
+            ->groupBy('item_id', 'is_worn', 'is_dyed')
+            ->get()
+            ->mapWithKeys(fn($r) => [
+                $r->item_id . ':' . (int) $r->is_worn . ':' . (int) $r->is_dyed => $r->c,
+            ]);
         return response()->json([
-            'listings'      => (object) $listings,
-            'buy_requests'  => (object) $buyRequests,
+            'listings'         => (object) $listings,
+            'buy_requests'     => (object) $buyRequests,
+            'listing_variants' => (object) $listingVariants,
         ]);
     });
+
+    // 所持アイテム台帳（DB保存）のスナップショット入出力
+    Route::get('mypage/inventory', [InventoryController::class, 'show']);
+    Route::put('mypage/inventory', [InventoryController::class, 'replace']);
 
     // 自分の買取一覧
     Route::get('mypage/buy-requests', function (\Illuminate\Http\Request $request) {
@@ -279,6 +303,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('admin/promo-tweets', [PromoTweetController::class, 'index']);
         // 「Xでポスト」押下時に前回ツイート時刻を記録（単日モードの集計開始時刻になる）
         Route::post('admin/promo-tweets/posted', [PromoTweetController::class, 'posted']);
+
+        // 共通の除外アイテム管理
+        Route::get('admin/excluded-items',                  [ExcludedItemController::class, 'adminIndex']);
+        // ユーザー個別除外（DB保存分）の集計候補。{id} ルートより前に定義する。
+        Route::get('admin/excluded-items/user-suggestions', [ExcludedItemController::class, 'userSuggestions']);
+        Route::post('admin/excluded-items',                 [ExcludedItemController::class, 'store']);
+        Route::delete('admin/excluded-items',               [ExcludedItemController::class, 'destroyMany']);
+        Route::put('admin/excluded-items/{id}',    [ExcludedItemController::class, 'update']);
+        Route::delete('admin/excluded-items/{id}', [ExcludedItemController::class, 'destroy']);
 
         // お知らせ管理
         Route::get('admin/announcements',          [AnnouncementController::class, 'adminIndex']);

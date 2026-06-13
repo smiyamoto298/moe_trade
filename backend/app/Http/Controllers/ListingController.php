@@ -347,6 +347,12 @@ class ListingController extends Controller
                   ) $dir NULLS LAST", [$label])
                   ->select('listings.*')
                   ->distinct();
+        } elseif ($sort === 'name_asc' || $sort === 'name_desc') {
+            // アイテム名（あいうえお順）。かなは符号位置順で概ね五十音順になる。
+            $dir = $sort === 'name_asc' ? 'ASC' : 'DESC';
+            $query->join('items as sort_item_name', 'listings.item_id', '=', 'sort_item_name.id')
+                  ->orderBy('sort_item_name.name', $dir)
+                  ->select('listings.*');
         } else {
             match ($sort) {
                 'price_asc'  => $query->orderBy('price'),
@@ -396,6 +402,7 @@ class ListingController extends Controller
             'trade_type' => 'required|in:fixed,negotiable',
             'comment'    => 'nullable|string|max:1000',
             'is_worn'    => 'nullable|boolean',
+            'is_dyed'    => 'nullable|boolean',
             'servers'    => 'required|array|min:1',
             'servers.*.server'       => 'required|in:Emerald,Diamond,Pearl',
             'servers.*.character_id' => 'nullable|exists:user_characters,id',
@@ -410,6 +417,7 @@ class ListingController extends Controller
                 'trade_type' => $data['trade_type'],
                 'comment'    => $data['comment'] ?? null,
                 'is_worn'    => $data['is_worn'] ?? false,
+                'is_dyed'    => $data['is_dyed'] ?? false,
                 'currency'   => 'AC',
                 'expires_at' => now()->addDays(7),
             ]);
@@ -439,6 +447,7 @@ class ListingController extends Controller
             'trade_type' => 'sometimes|in:fixed,negotiable',
             'comment'    => 'nullable|string|max:1000',
             'is_worn'    => 'sometimes|boolean',
+            'is_dyed'    => 'sometimes|boolean',
             'servers'    => 'sometimes|array|min:1',
             'servers.*.server'       => 'required|in:Emerald,Diamond,Pearl',
             'servers.*.character_id' => 'nullable|exists:user_characters,id',

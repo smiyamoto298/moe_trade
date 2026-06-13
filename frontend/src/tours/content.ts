@@ -163,6 +163,45 @@ export const TOURS: Record<string, PageTour> = {
     ],
   },
 
+  // 所有アイテム管理（/mypage/items）
+  'owned-items': {
+    pageId: 'owned-items',
+    version: 1,
+    steps: [
+      {
+        title: '所有アイテム管理へようこそ',
+        body: '公式サイトのアイテムボックスを貼り付けて、自分の所持アイテムを記録・管理できます。',
+      },
+      {
+        target: '[data-tour="owned-storage"]',
+        title: '保存先を選べます',
+        body: 'この端末（ローカルストレージ）かサーバー（DB）を選べます。既定はこの端末です。サーバーに切り替えると、現在の内容を移行して別の端末でも同じデータを参照できます。なお、サーバーに保存したデータは運営（管理者）が参照できる場合があります。',
+        placement: 'bottom',
+        width: 380,
+      },
+      {
+        target: '[data-tour="owned-accounts"]',
+        title: 'MoE アカウントごとに管理',
+        body: 'アイテムボックスはアカウント単位のため、アカウント名を複数登録して整理できます（取引用のキャラクターとは別です）。',
+        placement: 'bottom',
+      },
+      {
+        target: '[data-tour="owned-paste"]',
+        title: 'アイテムボックスを貼り付け',
+        body: '取り込み先アカウントを選び、アイテムボックスを貼り付けて「読込」を押します。除外リスト（管理者の共通＋自分の個別）に一致するアイテムは自動で除外されます。',
+        placement: 'bottom',
+        width: 400,
+      },
+      {
+        target: '[data-tour="owned-filter"]',
+        title: '表示の絞り込み・除外',
+        body: 'アカウント別の表示や「★マークのみ」表示ができます。各行の★でマーク、削れ・染色のチェック、出品・相場・買取中価格（クリックで売却ページへ）も使えます。',
+        placement: 'bottom',
+        width: 400,
+      },
+    ],
+  },
+
   // マイページ（/mypage）
   mypage: {
     pageId: 'mypage',
@@ -210,6 +249,7 @@ export const ROUTE_TO_PAGE_ID: { test: (path: string) => boolean; pageId: string
   { test: (p) => p === '/listings/bulk', pageId: 'listing-bulk' },
   { test: (p) => /^\/listings\/\d+$/.test(p), pageId: 'listing-detail' },
   { test: (p) => p === '/listings' || p === '/skills' || p === '/assets', pageId: 'listings' },
+  { test: (p) => p === '/mypage/items', pageId: 'owned-items' },
   { test: (p) => p === '/mypage', pageId: 'mypage' },
 ]
 

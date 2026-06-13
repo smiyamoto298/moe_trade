@@ -19,6 +19,7 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
   const [tradeType, setTradeType] = useState<string>(record.trade_type)
   const [comment, setComment] = useState<string>(record.comment ?? '')
   const [isWorn, setIsWorn] = useState<boolean>(kind === 'listing' ? !!(record as Listing).is_worn : false)
+  const [isDyed, setIsDyed] = useState<boolean>(kind === 'listing' ? !!(record as Listing).is_dyed : false)
   const [servers, setServers] = useState<Server[]>(record.servers.map((s) => s.server))
   // 登録時点で選択済みのサーバー。これらは外せない（追加のみ許可）。
   const [lockedServers] = useState(() => new Set(record.servers.map((s) => s.server)))
@@ -46,7 +47,7 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
 
       const res =
         kind === 'listing'
-          ? await listingsApi.update(record.id, { ...base, is_worn: isWorn })
+          ? await listingsApi.update(record.id, { ...base, is_worn: isWorn, is_dyed: isDyed })
           : await buyRequestsApi.update(record.id, base)
       onSaved(res.data)
       onClose()
@@ -129,17 +130,28 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
           <p className="text-[11px] text-gray-500 mt-1">既存のサーバーは外せません。追加のみ可能です（登録済みキャラのあるサーバーのみ）。</p>
         </div>
 
-        {/* 削れ（出品のみ） */}
+        {/* 削れ・染色（出品のみ） */}
         {kind === 'listing' && (
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={isWorn}
-              onChange={(e) => setIsWorn(e.target.checked)}
-              className="accent-primary-500"
-            />
-            <span className="text-sm text-gray-300">削れあり（耐久度に削れがある中古品）</span>
-          </label>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isWorn}
+                onChange={(e) => setIsWorn(e.target.checked)}
+                className="accent-amber-500"
+              />
+              <span className="text-sm text-gray-300">削れあり（耐久度に削れがある中古品）</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isDyed}
+                onChange={(e) => setIsDyed(e.target.checked)}
+                className="accent-fuchsia-500"
+              />
+              <span className="text-sm text-gray-300">染色済み（染色液で色を変更済み）</span>
+            </label>
+          </div>
         )}
 
         {/* コメント */}

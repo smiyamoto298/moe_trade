@@ -298,6 +298,12 @@ export default function MyPage() {
         <h1 className="text-xl font-bold text-white">マイページ</h1>
 
         <div className="flex items-center gap-2">
+          <Link
+            to="/mypage/items"
+            className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+          >
+            📦 所有アイテム管理
+          </Link>
           <button
             onClick={async () => {
               const ok = await confirm('各ページの操作案内（初回ポップアップ）をもう一度表示するようにします。よろしいですか？')
@@ -765,7 +771,7 @@ export default function MyPage() {
               const u = updated as Listing
               setListings((prev) =>
                 prev.map((l) =>
-                  l.id === u.id ? { ...l, trade_type: u.trade_type, comment: u.comment, is_worn: u.is_worn, servers: u.servers } : l
+                  l.id === u.id ? { ...l, trade_type: u.trade_type, comment: u.comment, is_worn: u.is_worn, is_dyed: u.is_dyed, servers: u.servers } : l
                 )
               )
             } else {

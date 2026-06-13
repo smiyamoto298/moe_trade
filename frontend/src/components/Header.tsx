@@ -187,6 +187,13 @@ export default function Header() {
                     >
                       宣伝ポスト
                     </Link>
+                    <Link
+                      to="/admin/excluded-items"
+                      onClick={() => setAdminOpen(false)}
+                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                    >
+                      除外アイテム管理
+                    </Link>
                   </>
                 )}
               </div>
@@ -311,9 +318,16 @@ export default function Header() {
                   <Link
                     to="/admin/promo-tweets"
                     onClick={closeMobile}
-                    className="block py-3 text-gray-300 hover:text-white transition-colors"
+                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
                   >
                     宣伝ポスト
+                  </Link>
+                  <Link
+                    to="/admin/excluded-items"
+                    onClick={closeMobile}
+                    className="block py-3 text-gray-300 hover:text-white transition-colors"
+                  >
+                    除外アイテム管理
                   </Link>
                 </>
               )}

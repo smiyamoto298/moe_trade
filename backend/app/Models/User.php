@@ -56,6 +56,21 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Listing::class);
     }
 
+    public function moeAccounts()
+    {
+        return $this->hasMany(MoeAccount::class);
+    }
+
+    public function ownedItems()
+    {
+        return $this->hasMany(OwnedItem::class);
+    }
+
+    public function excludedItems()
+    {
+        return $this->hasMany(UserExcludedItem::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === 'admin';

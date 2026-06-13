@@ -71,11 +71,20 @@ class BuyRequestController extends Controller
         }
 
         // --- ソート ---
-        match ($request->sort ?? 'newest') {
-            'price_asc'  => $query->orderBy('price'),
-            'price_desc' => $query->orderByDesc('price'),
-            default      => $query->latest(),
-        };
+        $sort = $request->sort ?? 'newest';
+        if ($sort === 'name_asc' || $sort === 'name_desc') {
+            // アイテム名（あいうえお順）。かなは符号位置順で概ね五十音順になる。
+            $dir = $sort === 'name_asc' ? 'ASC' : 'DESC';
+            $query->join('items as sort_item_name', 'buy_requests.item_id', '=', 'sort_item_name.id')
+                  ->orderBy('sort_item_name.name', $dir)
+                  ->select('buy_requests.*');
+        } else {
+            match ($sort) {
+                'price_asc'  => $query->orderBy('price'),
+                'price_desc' => $query->orderByDesc('price'),
+                default      => $query->latest(),
+            };
+        }
 
         // 現在の売却申し出者数（順番待ち人数）。一覧の取引パネルで「N人待ち」を表示するのに使う。
         $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
@@ -84,6 +93,50 @@ class BuyRequestController extends Controller
         $result->getCollection()->each(fn(BuyRequest $b) => $b->resolveServerContacts());
 
         return response()->json($result);
+    }
+
+    /**
+     * 指定アイテム群について、現在募集中（active）の最高額買取を item_id ごとに返す。
+     * 所持アイテム管理で「他ユーザーが買取中の価格」を表示し、クリックで買取詳細へ遷移するのに使う。
+     * 買取が複数あるときは最高額を採用し、件数（count）も併せて返す。
+     * 戻り値: { "<item_id>": { buy_request_id, price, currency, count } }
+     */
+    public function prices(Request $request)
+    {
+        $data = $request->validate([
+            'item_ids'   => 'required|array|max:500',
+            'item_ids.*' => 'integer',
+        ]);
+
+        $itemIds = array_values(array_unique(array_map('intval', $data['item_ids'])));
+        if (empty($itemIds)) {
+            return response()->json((object) []);
+        }
+
+        // アイテムごとに最高額の active 買取を選ぶ（停止ユーザーは除外）。
+        $rows = BuyRequest::whereIn('item_id', $itemIds)
+            ->where('status', 'active')
+            ->whereHas('user', fn($q) => $q->where('is_suspended', false))
+            ->orderByDesc('price')
+            ->orderByDesc('id')
+            ->get(['id', 'item_id', 'price', 'currency']);
+
+        $result = [];
+        foreach ($rows as $row) {
+            // 件数を数えつつ、最初に出てきた（＝最高額）ものを採用
+            if (isset($result[$row->item_id])) {
+                $result[$row->item_id]['count']++;
+                continue;
+            }
+            $result[$row->item_id] = [
+                'buy_request_id' => $row->id,
+                'price'          => $row->price,
+                'currency'       => $row->currency,
+                'count'          => 1,
+            ];
+        }
+
+        return response()->json((object) $result);
     }
 
     public function show(int $id)
