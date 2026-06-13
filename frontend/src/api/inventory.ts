@@ -52,6 +52,10 @@ export const inventoryApi = {
   get: (): Promise<{ data: InventorySnapshot }> =>
     client.get<InventorySnapshot>('/mypage/inventory'),
 
+  // 本番（さくら）の WAF が実ボディ付き PUT を 403 で弾くため、POST + メソッド
+  // オーバーライドで送る（board.updatePost と同じホスト対策）。ルートは PUT のまま。
   replace: (payload: InventoryPutPayload): Promise<{ data: InventorySnapshot }> =>
-    client.put<InventorySnapshot>('/mypage/inventory', payload),
+    client.post<InventorySnapshot>('/mypage/inventory', payload, {
+      headers: { 'X-HTTP-Method-Override': 'PUT' },
+    }),
 }

@@ -12,6 +12,8 @@ backend/storage/framework/views/*
 # React
 frontend/dist/
 frontend/.env.local
+# TypeScript の増分ビルドキャッシュ
+*.tsbuildinfo
 
 # Docker
 docker/mysql/

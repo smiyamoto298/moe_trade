@@ -91,6 +91,25 @@ class InventoryApiTest extends TestCase
         $this->assertDatabaseHas('owned_items', ['user_id' => $other->id, 'name' => '他人の剣']);
     }
 
+    public function test_POSTとメソッドオーバーライドでもPUTハンドラに到達し保存できる(): void
+    {
+        // 本番（さくら）の WAF が実ボディ付き PUT を弾くため、フロントは
+        // POST + X-HTTP-Method-Override: PUT で送る。その経路でも保存できることを保証する。
+        $user = $this->makeUser();
+
+        $this->actingAs($user, 'sanctum')->postJson(
+            '/api/mypage/inventory',
+            [
+                'accounts'   => [['key' => 'n1', 'name' => '新']],
+                'items'      => [['account_key' => 'n1', 'name' => 'オーバーライド剣', 'count' => 2]],
+                'exclusions' => [],
+            ],
+            ['X-HTTP-Method-Override' => 'PUT'],
+        )->assertOk();
+
+        $this->assertDatabaseHas('owned_items', ['user_id' => $user->id, 'name' => 'オーバーライド剣', 'count' => 2]);
+    }
+
     public function test_名前が無い行はバリデーションエラーになる(): void
     {
         $user = $this->makeUser();
