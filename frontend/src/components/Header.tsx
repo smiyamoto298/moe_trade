@@ -9,8 +9,10 @@ export default function Header() {
   const { totalUnread, hasNewBoard, unverifiedItemCount, announcements } = useNotification()
   const navigate = useNavigate()
   const [adminOpen, setAdminOpen] = useState(false)
+  const [myPageOpen, setMyPageOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const adminRef = useRef<HTMLDivElement>(null)
+  const myPageRef = useRef<HTMLDivElement>(null)
 
   // ユーザーが「表示しない」にしたお知らせ（端末ごとに localStorage で保持）。
   // 内容が更新された場合は再表示するため、id と updated_at を組にしてキーにする。
@@ -58,6 +60,18 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [adminOpen])
 
+  // マイページドロップダウンの外側をクリックしたら閉じる
+  useEffect(() => {
+    if (!myPageOpen) return
+    const handleOutside = (e: MouseEvent) => {
+      if (myPageRef.current && !myPageRef.current.contains(e.target as Node)) {
+        setMyPageOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [myPageOpen])
+
   const handleLogout = async () => {
     setMobileOpen(false)
     await logout()
@@ -93,18 +107,6 @@ export default function Header() {
               <span className="absolute -top-1 -right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
             )}
           </Link>
-          <Link
-            to="/mypage"
-            onClick={closeMobile}
-            className="relative text-gray-300 hover:text-white transition-colors"
-          >
-            マイページ
-            {totalUnread > 0 && (
-              <span className="absolute -top-1.5 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none">
-                {totalUnread}
-              </span>
-            )}
-          </Link>
         </>
       )}
     </>
@@ -124,6 +126,46 @@ export default function Header() {
         {/* デスクトップナビ（lg以上） */}
         <nav className="hidden lg:flex items-center gap-6 text-sm">
           {navLinks}
+          {/* マイページメニュー：取引リストと所有アイテム管理へ */}
+          {user && (
+            <div ref={myPageRef} className="relative">
+              <button
+                onClick={() => setMyPageOpen((v) => !v)}
+                className="relative text-gray-300 hover:text-white transition-colors flex items-center gap-1"
+              >
+                マイページ
+                <span className="text-xs text-gray-500">{myPageOpen ? '▲' : '▼'}</span>
+                {totalUnread > 0 && (
+                  <span className="absolute -top-1.5 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none">
+                    {totalUnread}
+                  </span>
+                )}
+              </button>
+              {myPageOpen && (
+                <div className="absolute top-full left-0 mt-1 w-40 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
+                  <Link
+                    to="/mypage"
+                    onClick={() => setMyPageOpen(false)}
+                    className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                  >
+                    <span>取引リスト</span>
+                    {totalUnread > 0 && (
+                      <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                        {totalUnread}
+                      </span>
+                    )}
+                  </Link>
+                  <Link
+                    to="/mypage/items"
+                    onClick={() => setMyPageOpen(false)}
+                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                  >
+                    所有アイテム管理
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
           {/* 管理メニュー：アイテム管理は全員、ユーザー管理は admin のみ */}
           <div ref={adminRef} className="relative">
             <button
@@ -266,14 +308,20 @@ export default function Header() {
                   <span>運営掲示板</span>
                   {hasNewBoard && <span className="w-2 h-2 rounded-full bg-red-500" />}
                 </Link>
-                <Link to="/mypage" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-                  <span>マイページ</span>
-                  {totalUnread > 0 && (
-                    <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
-                      {totalUnread}
-                    </span>
-                  )}
-                </Link>
+                <div className="mt-2 pt-4 border-t border-surface-border">
+                  <p className="text-xs text-gray-500 mb-1">マイページ</p>
+                  <Link to="/mypage" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                    <span>取引リスト</span>
+                    {totalUnread > 0 && (
+                      <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                        {totalUnread}
+                      </span>
+                    )}
+                  </Link>
+                  <Link to="/mypage/items" onClick={closeMobile} className="block py-3 text-gray-300 hover:text-white transition-colors">
+                    所有アイテム管理
+                  </Link>
+                </div>
               </>
             )}
             <div className="mt-2 pt-4 border-t border-surface-border">
