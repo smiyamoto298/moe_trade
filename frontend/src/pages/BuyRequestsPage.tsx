@@ -185,6 +185,7 @@ export default function BuyRequestsPage() {
           className="bg-surface-card border border-surface-border rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-primary-500"
         >
           <option value="newest">新着順</option>
+          <option value="name_asc">あいうえお順</option>
           <option value="price_desc">買取価格が高い順</option>
           <option value="price_asc">買取価格が安い順</option>
         </select>
