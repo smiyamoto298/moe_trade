@@ -184,7 +184,7 @@ export default function Header() {
               )}
             </button>
             {adminOpen && (
-              <div className="absolute top-full left-0 mt-1 w-36 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
+              <div className="absolute top-full left-0 mt-1 w-44 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
                 <Link
                   to="/admin/items"
                   onClick={() => setAdminOpen(false)}
