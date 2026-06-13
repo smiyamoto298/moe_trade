@@ -17,6 +17,75 @@ class InventoryApiTest extends TestCase
         $this->getJson('/api/mypage/inventory')->assertUnauthorized();
         $this->putJson('/api/mypage/inventory', ['accounts' => [], 'items' => [], 'exclusions' => []])
             ->assertUnauthorized();
+        $this->putJson('/api/mypage/inventory/storage-mode', ['mode' => 'db'])->assertUnauthorized();
+    }
+
+    public function test_保存先モードの既定はlocalでスナップショットに含まれる(): void
+    {
+        $user = $this->makeUser();
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/mypage/inventory')
+            ->assertOk()
+            ->assertJsonPath('storage_mode', 'local');
+    }
+
+    public function test_保存先モードをサーバーに記憶でき他端末扱いの取得にも反映される(): void
+    {
+        $user = $this->makeUser();
+
+        // db へ切り替え（端末A相当）
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/mypage/inventory/storage-mode', ['mode' => 'db'])
+            ->assertOk()
+            ->assertJsonPath('storage_mode', 'db');
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'inventory_storage_mode' => 'db']);
+
+        // 別端末でログインしても（localStorage 非依存で）db が返る
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/mypage/inventory')
+            ->assertOk()
+            ->assertJsonPath('storage_mode', 'db');
+
+        // local へ戻すと反映される
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/mypage/inventory/storage-mode', ['mode' => 'local'])
+            ->assertOk()
+            ->assertJsonPath('storage_mode', 'local');
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'inventory_storage_mode' => 'local']);
+    }
+
+    public function test_不正な保存先モードはバリデーションエラーになる(): void
+    {
+        $user = $this->makeUser();
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/mypage/inventory/storage-mode', ['mode' => 'cloud'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('mode');
+    }
+
+    public function test_データ移行_既存のサーバーデータ保有ユーザーはdbに初期化される(): void
+    {
+        // 列追加時の既定 local に対し、既にサーバー保存済みのユーザーを db に引き上げる移行。
+        $withItems = $this->makeUser();
+        $withItems->update(['inventory_storage_mode' => 'local']);
+        $acc = MoeAccount::create(['user_id' => $withItems->id, 'name' => 'メイン', 'sort_order' => 0]);
+        OwnedItem::create(['user_id' => $withItems->id, 'moe_account_id' => $acc->id, 'name' => '剣', 'count' => 1]);
+
+        $withExclusionsOnly = $this->makeUser();
+        $withExclusionsOnly->update(['inventory_storage_mode' => 'local']);
+        UserExcludedItem::create(['user_id' => $withExclusionsOnly->id, 'name' => 'ゴミ']);
+
+        $withoutData = $this->makeUser();
+        $withoutData->update(['inventory_storage_mode' => 'local']);
+
+        // 一度適用済みのデータ移行を冪等に再実行して検証する
+        $migration = require database_path('migrations/2026_06_13_000013_set_db_inventory_mode_for_existing_data.php');
+        $migration->up();
+
+        $this->assertSame('db', $withItems->fresh()->inventory_storage_mode);
+        $this->assertSame('db', $withExclusionsOnly->fresh()->inventory_storage_mode);
+        $this->assertSame('local', $withoutData->fresh()->inventory_storage_mode);
     }
 
     public function test_全置換で保存しスナップショットを取得できる_アカウント紐づけと登録アイテム同梱(): void

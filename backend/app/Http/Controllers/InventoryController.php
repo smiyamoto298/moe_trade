@@ -23,6 +23,25 @@ class InventoryController extends Controller
         return response()->json($this->snapshot($user->id));
     }
 
+    /**
+     * 保存先モード（local / db）をユーザー単位で記憶する。
+     *
+     * 端末ごとの localStorage ではなくサーバーに持たせることで、どの端末でログインしても
+     * 同じ保存先が適用される（「サーバー」を選んだ事実が他端末にも反映される）。
+     */
+    public function setStorageMode(Request $request)
+    {
+        $data = $request->validate([
+            'mode' => 'required|in:local,db',
+        ]);
+
+        $user = $request->user();
+        $user->inventory_storage_mode = $data['mode'];
+        $user->save();
+
+        return response()->json(['storage_mode' => $user->inventory_storage_mode]);
+    }
+
     public function replace(Request $request)
     {
         $data = $request->validate([
@@ -118,10 +137,14 @@ class InventoryController extends Controller
         $exclusions = UserExcludedItem::where('user_id', $userId)
             ->orderBy('name')->pluck('name');
 
+        // 保存先モード（local / db）。クライアントはこれを正としてどの保存先を読むか決める。
+        $storageMode = \App\Models\User::whereKey($userId)->value('inventory_storage_mode') ?? 'local';
+
         return [
-            'accounts'   => $accounts,
-            'items'      => $items,
-            'exclusions' => $exclusions,
+            'storage_mode' => $storageMode,
+            'accounts'     => $accounts,
+            'items'        => $items,
+            'exclusions'   => $exclusions,
         ];
     }
 }

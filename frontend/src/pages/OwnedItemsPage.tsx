@@ -14,7 +14,7 @@ import { BaseStatBadges } from '../components/equipmentCells'
 import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts } from '../types'
 import { parseItemBox, isTransferNg, isTruncatedName, truncatedBase } from '../utils/itemBoxPaste'
 import { newLocalId, emptyInventory, buildExclusionSet, isExcluded } from '../utils/inventory'
-import { getStorageMode, setStorageMode, loadInventory, saveInventory, getSkipExcludeConfirm, setSkipExcludeConfirm } from '../utils/inventoryStore'
+import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getSkipExcludeConfirm, setSkipExcludeConfirm } from '../utils/inventoryStore'
 
 const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 1\tアイネの抱っこぬいぐるみ\t中級者レア\t○\t1
@@ -76,10 +76,14 @@ export default function OwnedItemsPage() {
     let active = true
     setLoading(true)
     Promise.all([
-      loadInventory(getStorageMode()).catch(() => emptyInventory()),
+      // 保存先モードはサーバー（ユーザー単位）を正として取得する。
+      // これにより、ある端末で「サーバー」を選べば別端末でも同じ保存先が適用される。
+      loadInitialInventory().catch(() => ({ mode: getStorageMode(), data: emptyInventory() })),
       excludedItemsApi.list().then((r) => r.data).catch(() => [] as string[]),
-    ]).then(([inv, common]) => {
+    ]).then(([{ mode: loadedMode, data: inv }, common]) => {
       if (!active) return
+      setMode(loadedMode)
+      modeRef.current = loadedMode
       setInventory(inv)
       setCommonExclusions(common)
       // 既定の貼り付け先は先頭アカウント
@@ -186,9 +190,10 @@ export default function OwnedItemsPage() {
     )
     if (!ok) return
     try {
-      // 現在の内容を新しい保存先へ書き出してから切り替える（移行）
+      // 現在の内容を新しい保存先へ書き出してから切り替える（移行）。
+      // その後、保存先モードをユーザー単位でサーバーに記録する（他端末にも反映される）。
       await saveInventory(next, latestRef.current)
-      setStorageMode(next)
+      await persistStorageMode(next)
       setMode(next)
       modeRef.current = next
       dirtyRef.current = false

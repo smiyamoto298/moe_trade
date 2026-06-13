@@ -122,6 +122,32 @@ export async function loadInventory(mode: InventoryStorageMode): Promise<Invento
   return loadLocal()
 }
 
+/**
+ * 初期ロード。保存先モードはサーバー（ユーザー単位）を正とする。
+ *
+ * これまでモードは端末の localStorage だけにあり、ある端末で「サーバー（DB）」を選んでも
+ * 別端末では既定の local 表示に戻ってしまっていた。サーバーのスナップショットに含まれる
+ * storage_mode を参照し、db なら DB の内容を、local ならこの端末の内容を返す。
+ * サーバー到達不可時のみ端末キャッシュ（localStorage）のモードにフォールバックする。
+ */
+export async function loadInitialInventory(): Promise<{ mode: InventoryStorageMode; data: InventoryData }> {
+  try {
+    const res = await inventoryApi.get()
+    const mode: InventoryStorageMode = res.data.storage_mode === 'db' ? 'db' : 'local'
+    setStorageMode(mode) // 端末キャッシュも揃えておく（オフライン時のフォールバック用）
+    return { mode, data: mode === 'db' ? snapshotToInventory(res.data) : loadLocal() }
+  } catch {
+    const mode = getStorageMode()
+    return { mode, data: mode === 'db' ? emptyInventory() : loadLocal() }
+  }
+}
+
+/** 保存先モードをサーバー（ユーザー単位）と端末キャッシュの両方へ記録する。 */
+export async function persistStorageMode(mode: InventoryStorageMode): Promise<void> {
+  setStorageMode(mode)
+  await inventoryApi.setMode(mode)
+}
+
 /** 指定した保存先へ台帳を保存する。 */
 export async function saveInventory(mode: InventoryStorageMode, data: InventoryData): Promise<void> {
   if (mode === 'db') {

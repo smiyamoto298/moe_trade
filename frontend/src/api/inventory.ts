@@ -25,6 +25,8 @@ export interface InventoryServerItem {
 }
 
 export interface InventorySnapshot {
+  // 保存先モード（local / db）。ユーザー単位でサーバーが正を持つ。
+  storage_mode: 'local' | 'db'
   accounts: InventoryServerAccount[]
   items: InventoryServerItem[]
   exclusions: string[]
@@ -56,6 +58,13 @@ export const inventoryApi = {
   // オーバーライドで送る（board.updatePost と同じホスト対策）。ルートは PUT のまま。
   replace: (payload: InventoryPutPayload): Promise<{ data: InventorySnapshot }> =>
     client.post<InventorySnapshot>('/mypage/inventory', payload, {
+      headers: { 'X-HTTP-Method-Override': 'PUT' },
+    }),
+
+  // 保存先モードをユーザー単位でサーバーに記憶させる。
+  // replace と同様、本番 WAF の PUT 対策で POST + メソッドオーバーライドで送る。
+  setMode: (mode: 'local' | 'db'): Promise<{ data: { storage_mode: 'local' | 'db' } }> =>
+    client.post<{ storage_mode: 'local' | 'db' }>('/mypage/inventory/storage-mode', { mode }, {
       headers: { 'X-HTTP-Method-Override': 'PUT' },
     }),
 }

@@ -171,6 +171,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // 所持アイテム台帳（DB保存）のスナップショット入出力
     Route::get('mypage/inventory', [InventoryController::class, 'show']);
     Route::put('mypage/inventory', [InventoryController::class, 'replace']);
+    // 保存先モード（local / db）をユーザー単位で記憶する
+    Route::put('mypage/inventory/storage-mode', [InventoryController::class, 'setStorageMode']);
 
     // 自分の買取一覧
     Route::get('mypage/buy-requests', function (\Illuminate\Http\Request $request) {
