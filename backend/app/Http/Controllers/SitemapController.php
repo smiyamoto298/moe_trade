@@ -3,14 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\BuyRequest;
+use App\Models\Item;
 use App\Models\Listing;
 
 /**
  * 検索エンジン向けサイトマップ（GET /sitemap.xml）。
  *
- * SPA のためクローラーは出品・買取の詳細URLをリンクから発見しづらい。
- * 出品中（active）の出品・買取の詳細ページと主要な一覧ページを列挙して
- * Google 等にインデックスさせる（robots.txt から参照される）。
+ * SPA のためクローラーは詳細URLをリンクから発見しづらい。主要な一覧ページに加え、
+ * 検索のランディング先となる詳細ページを列挙して Google 等にインデックスさせる
+ * （robots.txt から参照される）。列挙する詳細ページは次の3種:
+ *   - 確認済み（verified）アイテムの恒久ページ /items/{id}
+ *     … アイテム名で検索したときの正規ページ。出品の有無に関わらず常に存在し、
+ *       出品中の使い捨てURLと違って被リンク・クロール履歴が1URLに蓄積する。
+ *   - 出品中（active）の出品詳細 /listings/{id}
+ *   - 買取中（active）の買取詳細 /buy-requests/{id}
  */
 class SitemapController extends Controller
 {
@@ -24,6 +30,14 @@ class SitemapController extends Controller
             ['loc' => $base . '/assets'],
             ['loc' => $base . '/buy-requests'],
         ];
+
+        // 確認済みアイテムの恒久ページ。未確認（unverified）はユーザー投稿の精査前のため含めない
+        foreach (Item::where('verified_status', 'verified')->orderBy('id')->get(['id', 'updated_at']) as $item) {
+            $urls[] = [
+                'loc'     => "{$base}/items/{$item->id}",
+                'lastmod' => $item->updated_at?->toAtomString(),
+            ];
+        }
 
         // 出品中の出品詳細。取り下げ・期限切れ等は詳細APIが404を返すため含めない
         foreach (Listing::where('status', 'active')->orderBy('id')->get(['id', 'updated_at']) as $listing) {

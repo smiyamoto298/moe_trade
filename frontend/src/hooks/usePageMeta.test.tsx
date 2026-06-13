@@ -2,10 +2,18 @@
 // 出品・買取の詳細ページでアイテム名がタイトルに入り、検索エンジンにヒットさせるための要。
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from './usePageMeta'
+import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION, SITE_ORIGIN, type PageMetaOptions } from './usePageMeta'
 
-function Meta({ title, description }: { title?: string | null; description?: string | null }) {
-  usePageMeta(title, description)
+function Meta({
+  title,
+  description,
+  options,
+}: {
+  title?: string | null
+  description?: string | null
+  options?: PageMetaOptions
+}) {
+  usePageMeta(title, description, options)
   return null
 }
 
@@ -50,5 +58,40 @@ describe('usePageMeta', () => {
 
     rerender(<Meta title="ルビーの指輪 の買取" />)
     expect(document.title).toBe('ルビーの指輪 の買取 | MoE Trade')
+  })
+
+  const canonicalHref = () =>
+    document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')
+
+  it('canonicalPath を本番オリジンつきの絶対URLで設定し、アンマウントで除去する', () => {
+    const { unmount } = render(<Meta title="x" options={{ canonicalPath: '/items/12' }} />)
+
+    expect(canonicalHref()).toBe(`${SITE_ORIGIN}/items/12`)
+
+    unmount()
+    expect(canonicalHref()).toBeUndefined()
+  })
+
+  it('noindex 指定時のみ robots noindex を出力する', () => {
+    const robots = () => document.head.querySelector('meta[name="robots"]')?.getAttribute('content')
+
+    const { rerender, unmount } = render(<Meta title="x" options={{ noindex: true }} />)
+    expect(robots()).toBe('noindex')
+
+    rerender(<Meta title="x" options={{ noindex: false }} />)
+    expect(robots()).toBeUndefined()
+
+    unmount()
+  })
+
+  it('jsonLd を application/ld+json スクリプトとして出力し、アンマウントで除去する', () => {
+    const ld = { '@context': 'https://schema.org', '@type': 'Product', name: 'テストの剣' }
+    const script = () => document.head.querySelector('script[type="application/ld+json"]')
+
+    const { unmount } = render(<Meta title="x" options={{ jsonLd: ld }} />)
+    expect(JSON.parse(script()?.textContent ?? '{}')).toEqual(ld)
+
+    unmount()
+    expect(script()).toBeNull()
   })
 })

@@ -8,9 +8,9 @@ import { itemsApi } from '../api/items'
 import UnverifiedBadge from '../components/UnverifiedBadge'
 import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsComp from '../components/PriceAnalyticsAsync'
-import EquipmentSetBreakdown from '../components/EquipmentSetBreakdown'
+import ItemInfoCard from '../components/ItemInfoCard'
 import type { BuyRequest, ItemPriceAnalytics } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS, SPECIAL_CONDITIONS, BASE_STAT_LABELS, formatSignedValue } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS } from '../utils/constants'
 
 export default function BuyRequestDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -22,12 +22,14 @@ export default function BuyRequestDetailPage() {
   const [showTradePanel, setShowTradePanel] = useState(false)
   const [requested, setRequested] = useState(false)
 
-  // アイテム名入りのタイトルで検索エンジンにインデックスさせる
+  // アイテム名入りのタイトルで検索エンジンにインデックスさせる。
+  // 買取URLは期限切れで消える使い捨てのため、評価はアイテムの恒久ページ(/items/:id)へ canonical で集約する。
   usePageMeta(
     buyRequest ? `${buyRequest.item.name} の買取` : null,
     buyRequest
       ? `Master of Epic「${buyRequest.item.name}」の買取（買いたい）情報。価格・取引条件を確認して取引チャットで売却できます。`
-      : null
+      : null,
+    { canonicalPath: buyRequest ? `/items/${buyRequest.item.id}` : null }
   )
 
   useEffect(() => {
@@ -76,104 +78,12 @@ export default function BuyRequestDetailPage() {
       {item.verified_status === 'unverified' && <UnverifiedBadge />}
 
       {/* アイテム情報 */}
-      <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
-        <p className="text-sm text-gray-400 mb-1">{item.category.name}</p>
-        <h1 className="text-2xl font-bold text-white mb-4">{item.name}</h1>
+      <ItemInfoCard item={item} />
 
-        {item.description && (
-          <p className="text-sm text-gray-300 mb-4">{item.description}</p>
-        )}
-
-        {item.is_equipment_set && <EquipmentSetBreakdown members={item.set_members} />}
-
-        {(item.placement || (item.asset_width && item.asset_height) || (item.storage_count ?? 0) > 0 || item.special_function) && (
-          <div className="mb-4">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">アセット情報</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {item.placement && (
-                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
-                  <span className="text-gray-400">設置個所</span>
-                  <span className="text-white font-medium">{item.placement}</span>
-                </div>
-              )}
-              {item.asset_width && item.asset_height ? (
-                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
-                  <span className="text-gray-400">サイズ</span>
-                  <span className="text-white font-medium">{item.asset_width}×{item.asset_height}</span>
-                </div>
-              ) : null}
-              {(item.storage_count ?? 0) > 0 && (
-                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
-                  <span className="text-gray-400">ストレージ</span>
-                  <span className="text-white font-medium">{item.storage_count}</span>
-                </div>
-              )}
-              {item.special_function && (
-                <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
-                  <span className="text-gray-400">特殊機能</span>
-                  <span className="text-white font-medium">{item.special_function}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 装備セットはセット本体の性能（古いデータ）は無視し、セット内訳の部位ごとの性能のみ表示する */}
-        {!item.is_equipment_set && Object.keys(item.base_stats).length > 0 && (
-          <div className="mb-4">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">追加効果</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {Object.entries(item.base_stats).map(([key, val]) => (
-                <div key={key} className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
-                  <span className="text-gray-400">{BASE_STAT_LABELS[key] ?? key}</span>
-                  <span className="text-white font-medium">{formatSignedValue(val)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!item.is_equipment_set && item.bonus_effects.length > 0 && (
-          <div className="mb-4">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">付加効果</h2>
-            <div className="space-y-1">
-              {item.bonus_effects.map((e) => (
-                <div key={e.id} className="bg-surface rounded px-3 py-2 text-sm">
-                  <span className="text-primary-500 font-medium">{e.effect_name}</span>
-                  {e.values.length > 0 && (
-                    <span className="text-gray-300 ml-2">
-                      {e.values.map((v, i) => (
-                        <span key={i}>
-                          {i > 0 && <span className="text-gray-600 mx-1">/</span>}
-                          {v.label && <span className="text-gray-400">{v.label} </span>}
-                          <span>{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                  {e.description && (
-                    <span className="text-gray-500 ml-2 text-xs">— {e.description}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!item.is_equipment_set && item.special_conditions.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {item.special_conditions.map((c) => (
-              <span
-                key={c}
-                title={SPECIAL_CONDITIONS[c]}
-                className="bg-red-900/40 border border-red-700/50 text-red-300 text-xs px-2 py-0.5 rounded"
-              >
-                {c}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* このアイテムの相場・他の取引をまとめたアイテムページへ（評価集約のための導線） */}
+      <Link to={`/items/${item.id}`} className="block text-sm text-primary-500 hover:underline">
+        「{item.name}」の相場・取引をまとめて見る →
+      </Link>
 
       {/* 買取情報 */}
       <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">

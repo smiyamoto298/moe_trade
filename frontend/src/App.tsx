@@ -13,6 +13,7 @@ import BulkListingPage from './pages/BulkListingPage'
 import BuyRequestsPage from './pages/BuyRequestsPage'
 import BuyRequestDetailPage from './pages/BuyRequestDetailPage'
 import NewBuyRequestPage from './pages/NewBuyRequestPage'
+import ItemDetailPage from './pages/ItemDetailPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
@@ -69,6 +70,8 @@ export default function App() {
           />
           <Route path="/buy-requests" element={<BuyRequestsPage />} />
           <Route path="/buy-requests/:id" element={<BuyRequestDetailPage />} />
+          {/* アイテムの恒久公開ページ（アイテム名検索の正規ランディング先・SEO） */}
+          <Route path="/items/:id" element={<ItemDetailPage />} />
           <Route
             path="/buy-requests/new"
             element={<PrivateRoute><NewBuyRequestPage /></PrivateRoute>}
