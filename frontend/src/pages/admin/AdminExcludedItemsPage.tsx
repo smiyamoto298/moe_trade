@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { excludedItemsApi } from '../../api/excludedItems'
+import { compareJa } from '../../utils/collator'
 import { useDialog } from '../../contexts/DialogContext'
 import { usePageMeta } from '../../hooks/usePageMeta'
 import type { ExcludedItem, UserExclusionSuggestion } from '../../types'
@@ -21,6 +22,7 @@ export default function AdminExcludedItemsPage() {
   // ユーザー個別除外（DB保存分）の集計候補
   const [suggestions, setSuggestions] = useState<UserExclusionSuggestion[]>([])
   const [promotingName, setPromotingName] = useState<string | null>(null)
+  const [dismissingName, setDismissingName] = useState<string | null>(null)
 
   const loadSuggestions = () => {
     excludedItemsApi.userSuggestions()
@@ -50,6 +52,21 @@ export default function AdminExcludedItemsPage() {
       await alert('共通除外への追加に失敗しました。', { title: 'エラー' })
     } finally {
       setPromotingName(null)
+    }
+  }
+
+  // 候補を「共通にしない」と却下（以後この名前は候補に出さない）
+  const dismiss = async (name: string) => {
+    if (!(await confirm(`「${name}」を共通除外の候補に出さないようにしますか？（個別除外しているユーザーには影響しません）`, { title: '候補を共通にしない', confirmLabel: '共通にしない' }))) return
+    setDismissingName(name)
+    setMessage('')
+    try {
+      await excludedItemsApi.dismissSuggestion(name)
+      setSuggestions((p) => p.filter((s) => s.name !== name))
+    } catch {
+      await alert('候補の却下に失敗しました。', { title: 'エラー' })
+    } finally {
+      setDismissingName(null)
     }
   }
 
@@ -112,7 +129,7 @@ export default function AdminExcludedItemsPage() {
   // 共通除外リストは あいうえお順（日本語ロケール）で表示する
   const filtered = useMemo(() => {
     const list = search.trim() ? rows.filter((r) => r.name.includes(search.trim())) : rows
-    return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+    return [...list].sort((a, b) => compareJa(a.name, b.name))
   }, [rows, search])
 
   // 表示中の行がすべて選択されているか
@@ -180,10 +197,18 @@ export default function AdminExcludedItemsPage() {
                 <span className="text-xs text-gray-400 shrink-0" title="このアイテムを個別除外しているユーザー数">{s.user_count}人</span>
                 <button
                   onClick={() => promote([s.name])}
-                  disabled={promotingName !== null}
+                  disabled={promotingName !== null || dismissingName !== null}
                   className="text-xs bg-sky-900/40 hover:bg-sky-900/70 disabled:opacity-50 border border-sky-700/50 text-sky-300 px-3 py-1.5 rounded transition-colors shrink-0"
                 >
                   {promotingName === s.name ? '追加中...' : '共通へ追加'}
+                </button>
+                <button
+                  onClick={() => dismiss(s.name)}
+                  disabled={promotingName !== null || dismissingName !== null}
+                  title="以後この名前を共通除外の候補に出さない"
+                  className="text-xs bg-surface hover:bg-surface-border disabled:opacity-50 border border-surface-border text-gray-400 px-3 py-1.5 rounded transition-colors shrink-0"
+                >
+                  {dismissingName === s.name ? '却下中...' : '共通にしない'}
                 </button>
               </div>
             ))}

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DismissedExcludedSuggestion;
 use App\Models\ExcludedItem;
 use App\Models\UserExcludedItem;
 use Illuminate\Http\Request;
@@ -26,24 +27,51 @@ class ExcludedItemController extends Controller
 
     /**
      * 管理: ユーザーが個別に登録した除外アイテム（DB保存分）を名前で集計して返す。
-     * 共通除外（excluded_items）に既に登録済みの名前は除く。多くのユーザーが除外している
+     * 共通除外（excluded_items）に既に登録済みの名前、および管理者が「共通にしない」と
+     * 却下した名前（dismissed_excluded_suggestions）は除く。多くのユーザーが除外している
      * アイテムを共通除外へ昇格させる候補として使う。
      * 戻り値: [{ name, user_count }]（user_count 降順 → name 昇順）
      * ※ ローカルストレージ保存のユーザー分は DB に無いため集計対象外。
      */
     public function userSuggestions()
     {
-        $common = ExcludedItem::pluck('name')->all();
+        $excludeNames = ExcludedItem::pluck('name')
+            ->merge(DismissedExcludedSuggestion::pluck('name'))
+            ->unique()
+            ->all();
 
         $rows = UserExcludedItem::query()
             ->selectRaw('name, COUNT(DISTINCT user_id) as user_count')
-            ->when(!empty($common), fn($q) => $q->whereNotIn('name', $common))
+            ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
             ->groupBy('name')
             ->orderByDesc('user_count')
             ->orderBy('name')
             ->get();
 
         return response()->json($rows);
+    }
+
+    /**
+     * 管理: ユーザー個別除外の候補名を「共通にしない」と却下する（admin。`name`）。
+     * 以後この名前は user-suggestions に表示されない。既に却下済みなら何もしない。
+     */
+    public function dismissSuggestion(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:200',
+        ]);
+
+        $name = trim($data['name']);
+        if ($name === '') {
+            return response()->json(['message' => 'name is required'], 422);
+        }
+
+        DismissedExcludedSuggestion::firstOrCreate(
+            ['name' => $name],
+            ['dismissed_by' => $request->user()->id],
+        );
+
+        return response()->json(null, 204);
     }
 
     /**

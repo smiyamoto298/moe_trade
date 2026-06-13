@@ -310,6 +310,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('admin/excluded-items',                  [ExcludedItemController::class, 'adminIndex']);
         // ユーザー個別除外（DB保存分）の集計候補。{id} ルートより前に定義する。
         Route::get('admin/excluded-items/user-suggestions', [ExcludedItemController::class, 'userSuggestions']);
+        // 個別除外の候補を「共通にしない」と却下（以後候補に出さない）。{id} ルートより前に定義する。
+        Route::post('admin/excluded-items/dismiss-suggestion', [ExcludedItemController::class, 'dismissSuggestion']);
         Route::post('admin/excluded-items',                 [ExcludedItemController::class, 'store']);
         Route::delete('admin/excluded-items',               [ExcludedItemController::class, 'destroyMany']);
         Route::put('admin/excluded-items/{id}',    [ExcludedItemController::class, 'update']);

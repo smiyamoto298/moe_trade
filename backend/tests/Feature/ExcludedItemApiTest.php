@@ -86,6 +86,51 @@ class ExcludedItemApiTest extends TestCase
             ->getJson('/api/admin/excluded-items/user-suggestions')->assertForbidden();
     }
 
+    public function test_adminは候補を共通にしないと却下でき以後候補に出ない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ']);
+        UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ']);
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => '小石']);
+
+        // 「ゴミ」を共通にしない（却下）
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/excluded-items/dismiss-suggestion', ['name' => '  ゴミ  '])
+            ->assertNoContent();
+        $this->assertDatabaseHas('dismissed_excluded_suggestions', ['name' => 'ゴミ', 'dismissed_by' => $admin->id]);
+
+        // 候補からは「ゴミ」が消え、個別除外（user_excluded_items）自体は残る
+        $res = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')->assertOk();
+        $res->assertJsonCount(1)->assertJsonPath('0.name', '小石');
+        $this->assertDatabaseHas('user_excluded_items', ['name' => 'ゴミ']);
+    }
+
+    public function test_候補の却下は重複しても204で冪等(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/excluded-items/dismiss-suggestion', ['name' => 'ゴミ'])->assertNoContent();
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/excluded-items/dismiss-suggestion', ['name' => 'ゴミ'])->assertNoContent();
+
+        $this->assertSame(1, \App\Models\DismissedExcludedSuggestion::where('name', 'ゴミ')->count());
+    }
+
+    public function test_候補の却下はadminのみ_nameは必須(): void
+    {
+        $this->postJson('/api/admin/excluded-items/dismiss-suggestion', ['name' => 'x'])->assertUnauthorized();
+        $this->actingAs($this->makeUserWithRole('editor'), 'sanctum')
+            ->postJson('/api/admin/excluded-items/dismiss-suggestion', ['name' => 'x'])->assertForbidden();
+        $this->actingAs($this->makeUserWithRole('admin'), 'sanctum')
+            ->postJson('/api/admin/excluded-items/dismiss-suggestion', [])
+            ->assertStatus(422)->assertJsonValidationErrors('name');
+    }
+
     public function test_adminは除外アイテムを一括削除できる(): void
     {
         $admin = $this->makeUserWithRole('admin');
