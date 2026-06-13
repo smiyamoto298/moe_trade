@@ -86,11 +86,11 @@ class ItemApiTest extends TestCase
             'name'        => 'ユーザー登録の剣',
             'base_stats'  => ['atk' => 10],
             'mithril'     => true,
-            'exclusive_skill' => true,
             'bonus_effects' => [
                 [
-                    'effect_name' => '剛剣の使い手',
-                    'values'      => [['value' => 15, 'value_unit' => '%', 'label' => '物理ダメージ']],
+                    'effect_name'  => '剛剣の使い手',
+                    'is_exclusive' => true,
+                    'values'       => [['value' => 15, 'value_unit' => '%', 'label' => '物理ダメージ']],
                 ],
             ],
         ]);
@@ -98,10 +98,11 @@ class ItemApiTest extends TestCase
         $res->assertStatus(201)
             ->assertJsonPath('verified_status', 'unverified')
             ->assertJsonPath('mithril', true)
-            ->assertJsonPath('exclusive_skill', true)
-            ->assertJsonPath('submitted_by', $user->id);
+            ->assertJsonPath('submitted_by', $user->id)
+            // 専用技は付加効果単位（is_exclusive）で保持する（アイテム単位の exclusive_skill は廃止）
+            ->assertJsonPath('bonus_effects.0.is_exclusive', true);
 
-        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手']);
+        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手', 'is_exclusive' => true]);
     }
 
     public function test_未ログインではアイテム登録できない(): void
@@ -427,7 +428,6 @@ class ItemApiTest extends TestCase
                 [
                     'category_id'     => $cats['sword']->id,
                     'name'            => '専用技の剣',
-                    'exclusive_skill' => true,
                     'bonus_effects'   => [
                         ['effect_name' => '秘剣', 'is_exclusive' => true, 'values' => []],
                         ['effect_name' => '通常効果', 'is_exclusive' => false, 'values' => []],
@@ -561,6 +561,91 @@ class ItemApiTest extends TestCase
 
         $this->assertDatabaseMissing('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $pieceAId]);
         $this->assertDatabaseCount('equipment_set_members', 1);
+    }
+
+    public function test_部位アイテムを装備セットへ変換すると自身が構成部位として残り出品も保持される(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        // 出品のある通常の部位アイテム
+        $piece = $this->makeItem(['name' => '炎の大剣', 'category_id' => $cats['sword']->id, 'base_stats' => ['atk' => 10]]);
+        $listing = $this->makeListing(null, $piece);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson("/api/items/{$piece->id}/convert-to-set", [
+            'category_id' => $equipSet->id,
+            'name'        => '炎の大剣セット', // セット本体名（部位名とは別にする）
+            'pieces'      => [
+                [
+                    'id'          => $piece->id, // 自身を既存部位として採用
+                    'category_id' => $cats['sword']->id,
+                    'name'        => '炎の大剣',
+                    'base_stats'  => ['atk' => 10],
+                    'bonus_effects' => [
+                        ['effect_name' => '炎の魔剣', 'is_exclusive' => true, 'values' => []],
+                    ],
+                ],
+            ],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('is_equipment_set', true)
+            ->assertJsonPath('name', '炎の大剣セット');
+
+        $setId = $res->json('id');
+        // 新しいセット本体が作られ、元アイテムが構成部位として紐付く（id・出品は保持）
+        $this->assertNotSame($piece->id, $setId);
+        $this->assertDatabaseHas('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $piece->id]);
+        // 元アイテムは通常アイテムのまま残る（削除されない・セット化されない）
+        $piece->refresh();
+        $this->assertFalse($piece->is_equipment_set);
+        // 出品は元アイテム(部位)に紐づいたまま
+        $this->assertDatabaseHas('listings', ['id' => $listing->id, 'item_id' => $piece->id]);
+        // 部位の付加効果（専用技）が保存される
+        $this->assertDatabaseHas('item_bonus_effects', ['item_id' => $piece->id, 'effect_name' => '炎の魔剣', 'is_exclusive' => true]);
+    }
+
+    public function test_変換元以外のidを構成部位に渡しても採用されない(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $piece = $this->makeItem(['name' => '変換元の剣', 'category_id' => $cats['sword']->id]);
+        $victim = $this->makeItem(['name' => '無関係の剣', 'category_id' => $cats['sword']->id]);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson("/api/items/{$piece->id}/convert-to-set", [
+            'category_id' => $equipSet->id,
+            'name'        => '変換セット',
+            'pieces'      => [
+                ['id' => $piece->id, 'category_id' => $cats['sword']->id, 'name' => '変換元の剣'],
+                ['id' => $victim->id, 'category_id' => $cats['sword']->id, 'name' => '乗っ取り部位'],
+            ],
+        ]);
+
+        $res->assertStatus(201);
+        $setId = $res->json('id');
+        // 変換元は採用されるが、無関係アイテムは新規部位として複製され元アイテムは書き換えられない
+        $this->assertDatabaseHas('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $piece->id]);
+        $victim->refresh();
+        $this->assertSame('無関係の剣', $victim->name);
+        $this->assertDatabaseMissing('equipment_set_members', ['set_item_id' => $setId, 'piece_item_id' => $victim->id]);
+    }
+
+    public function test_既に装備セットのアイテムは変換できない(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+        $set = $this->makeItem(['name' => '既存セット', 'category_id' => $equipSet->id, 'is_equipment_set' => true, 'base_stats' => []]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/items/{$set->id}/convert-to-set", [
+                'category_id' => $equipSet->id,
+                'name'        => '別セット',
+                'pieces'      => [['id' => $set->id, 'category_id' => $equipSet->id, 'name' => '別セット部位']],
+            ])
+            ->assertStatus(422);
     }
 
     public function test_スキルアイテムは必要スキル値を保存できる(): void

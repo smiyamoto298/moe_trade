@@ -34,7 +34,7 @@ export default function ListingCard({ listing }: Props) {
           </div>
 
           {/* 追加効果 */}
-          {(Object.keys(item.base_stats).length > 0 || item.mithril || item.exclusive_skill) && (
+          {(Object.keys(item.base_stats).length > 0 || item.mithril) && (
             <div className="flex flex-wrap gap-1">
               {Object.entries(item.base_stats).map(([key, val]) => (
                 <span key={key} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
@@ -46,20 +46,18 @@ export default function ListingCard({ listing }: Props) {
                   ミスリル
                 </span>
               )}
-              {item.exclusive_skill && (
-                <span className="text-xs bg-amber-900/40 border border-amber-600/40 rounded px-1.5 py-0.5 text-amber-200">
-                  専用技
-                </span>
-              )}
             </div>
           )}
 
-          {/* 付加効果 */}
+          {/* 付加効果（専用技は付加効果ごとに表示） */}
           {item.bonus_effects.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {item.bonus_effects.map((e) => (
                 <span key={e.id} className="text-xs bg-surface border border-primary-500/20 rounded px-1.5 py-0.5 text-primary-500">
                   {e.effect_name}
+                  {e.is_exclusive && (
+                    <span className="ml-1 text-[10px] bg-amber-900/40 border border-amber-600/40 rounded px-1 py-px text-amber-200">専用技</span>
+                  )}
                   {e.values?.length > 0 && (
                     <span className="text-gray-400 ml-1">
                       {e.values.map((v, i) => (

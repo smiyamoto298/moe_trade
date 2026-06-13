@@ -12,7 +12,7 @@ import type { Item, ItemCategory } from '../../types'
 // - editor 未満（一般ユーザー）はコピーを利用できず、一覧へ戻される
 
 vi.mock('../../api/items', () => ({
-  itemsApi: { categories: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), verify: vi.fn() },
+  itemsApi: { categories: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), verify: vi.fn(), convertToSet: vi.fn() },
 }))
 
 // テストごとにロールを切り替えられる認証モック
@@ -32,8 +32,9 @@ vi.mock('../../contexts/AuthContext', () => ({
 }))
 
 const alertMock = vi.hoisted(() => vi.fn())
+const confirmMock = vi.hoisted(() => vi.fn())
 vi.mock('../../contexts/DialogContext', () => ({
-  useDialog: () => ({ alert: alertMock, confirm: vi.fn() }),
+  useDialog: () => ({ alert: alertMock, confirm: confirmMock }),
 }))
 
 vi.mock('../../hooks/useBonusValueLabels', () => ({
@@ -44,6 +45,7 @@ const mockedCategories = vi.mocked(itemsApi.categories)
 const mockedGet = vi.mocked(itemsApi.get)
 const mockedCreate = vi.mocked(itemsApi.create)
 const mockedUpdate = vi.mocked(itemsApi.update)
+const mockedConvertToSet = vi.mocked(itemsApi.convertToSet)
 
 const categories: ItemCategory[] = [
   {
@@ -67,7 +69,6 @@ const makeItem = (over: Partial<Item> = {}): Item => ({
   special_conditions: [],
   dyeable: null,
   mithril: false,
-  exclusive_skill: false,
   is_equipment_set: false,
   set_piece_category_ids: null,
   skill_requirements: null,
@@ -95,6 +96,7 @@ const sourceItem: Item = makeItem({
       type: { id: 1, type_key: 'custom', label: 'カスタム', category: 'other' },
       values: [{ value: 15, value_unit: '%', label: '炎耐性' }],
       description: '炎耐性+15%',
+      is_exclusive: true,
     },
   ],
 })
@@ -122,10 +124,23 @@ function renderCopyPage(entry: Entry = '/admin/items/new?copy=7') {
   )
 }
 
+function renderEditPage(entry: Entry = '/admin/items/7/edit') {
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <Routes>
+        <Route path="/admin/items/:id/edit" element={<AdminItemEditPage />} />
+        <Route path="/admin/items" element={<div data-testid="list-page" />} />
+      </Routes>
+    </MemoryRouter>
+  )
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   auth.user = makeUser('editor')
   alertMock.mockResolvedValue(undefined)
+  // 既定では「部位として登録」しない（テスト側で必要に応じて true に上書きする）
+  confirmMock.mockResolvedValue(false)
   mockedCategories.mockResolvedValue({ data: categories })
   mockedGet.mockResolvedValue({ data: sourceItem })
 })
@@ -203,5 +218,94 @@ describe('AdminItemEditPage コピーして編集', () => {
       { title: 'コピーできません' }
     )
     expect(mockedGet).not.toHaveBeenCalled()
+  })
+})
+
+// design.md「装備セット」: 編集中に種別を 部位（装備品）↔ 装備セット で切り替えても、
+// 部位フォームの追加効果・付加効果・特殊条件と「全部位共通」グループ[0]の間でデータを保持する。
+describe('AdminItemEditPage 部位↔装備セット切替時のデータ保持', () => {
+  it('部位→装備セット→部位 で追加効果・付加効果（専用技フラグ含む）を全部位共通グループとの間で引き継ぐ', async () => {
+    auth.user = makeUser('admin')
+    // 追加効果 atk:10 ＋ 専用技付き付加効果「炎の加護」を持つ装備品アイテムを編集
+    mockedGet.mockResolvedValue({ data: { ...sourceItem, locked_by_staff: false } })
+    renderEditPage('/admin/items/7/edit')
+
+    // 装備品として読み込まれ、効果・専用技チェックが表示される
+    expect(await screen.findByDisplayValue('炎の加護')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('10')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '専用技' })).toBeChecked()
+
+    // 部位 → 装備セット: 全部位共通グループへ追加効果・付加効果（専用技）が引き継がれる
+    await userEvent.selectOptions(screen.getByDisplayValue('頭(防)'), '4')
+    expect(await screen.findByDisplayValue('炎の加護')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('10')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '専用技' })).toBeChecked()
+
+    // 装備セット → 部位: 部位フォームへ戻る（専用技も保持）
+    await userEvent.selectOptions(screen.getByDisplayValue('⚔ 装備セット'), '11')
+    expect(await screen.findByDisplayValue('炎の加護')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('10')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '専用技' })).toBeChecked()
+  })
+
+  it('部位→装備セット切替で確認に「はい」を選ぶと、現在の部位を構成部位として引用する', async () => {
+    auth.user = makeUser('admin')
+    confirmMock.mockResolvedValue(true)
+    mockedGet.mockResolvedValue({ data: { ...sourceItem, locked_by_staff: false } })
+    renderEditPage('/admin/items/7/edit')
+
+    expect(await screen.findByDisplayValue('炎の大兜')).toBeInTheDocument()
+
+    // 部位 → 装備セット: 確認ダイアログが出て、「はい」で構成部位として引用される
+    await userEvent.selectOptions(screen.getByDisplayValue('頭(防)'), '4')
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalled())
+    // 部位カテゴリ（頭(防)）が選択され、部位アイテム名にアイテム名が引用される
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '頭(防)' })).toBeChecked())
+    // アイテム名（基本情報）と部位アイテム名の2か所に「炎の大兜」が入る
+    expect(screen.getAllByDisplayValue('炎の大兜')).toHaveLength(2)
+    // 効果も全部位共通グループへ引き継がれる
+    expect(screen.getByDisplayValue('炎の加護')).toBeInTheDocument()
+  })
+
+  it('部位→装備セット切替で確認に「いいえ」を選ぶと、構成部位は追加されず効果のみ引き継ぐ', async () => {
+    auth.user = makeUser('admin')
+    confirmMock.mockResolvedValue(false)
+    mockedGet.mockResolvedValue({ data: { ...sourceItem, locked_by_staff: false } })
+    renderEditPage('/admin/items/7/edit')
+
+    expect(await screen.findByDisplayValue('炎の大兜')).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByDisplayValue('頭(防)'), '4')
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalled())
+    // 構成部位は追加されない（頭(防) は未選択）。効果のみ全部位共通グループへ引き継ぐ
+    expect(await screen.findByDisplayValue('炎の加護')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '頭(防)' })).not.toBeChecked()
+    expect(screen.getAllByDisplayValue('炎の大兜')).toHaveLength(1)
+  })
+
+  it('「はい」で引用したまま保存すると convert-to-set を呼び、元アイテム(id)を構成部位として送る', async () => {
+    auth.user = makeUser('admin')
+    confirmMock.mockResolvedValue(true)
+    mockedConvertToSet.mockResolvedValue({ data: makeItem({ id: 200, is_equipment_set: true, name: '炎の大兜セット' }) })
+    mockedGet.mockResolvedValue({ data: { ...sourceItem, locked_by_staff: false } })
+    renderEditPage('/admin/items/7/edit')
+
+    await screen.findByDisplayValue('炎の大兜')
+    await userEvent.selectOptions(screen.getByDisplayValue('頭(防)'), '4')
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '頭(防)' })).toBeChecked())
+
+    await userEvent.click(screen.getByRole('button', { name: '変更を保存' }))
+
+    // 通常の update ではなく convert-to-set を呼ぶ
+    await waitFor(() => expect(mockedConvertToSet).toHaveBeenCalledTimes(1))
+    expect(mockedUpdate).not.toHaveBeenCalled()
+    const [calledId, payload] = mockedConvertToSet.mock.calls[0]
+    expect(calledId).toBe(7)
+    // 構成部位に元アイテム自身(id=7)が含まれ、出品等の紐付けを保持できる
+    expect(payload.pieces.some((p) => p.id === 7)).toBe(true)
+
+    expect(await screen.findByTestId('list-page')).toBeInTheDocument()
   })
 })

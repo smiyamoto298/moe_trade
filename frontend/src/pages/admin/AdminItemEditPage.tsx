@@ -24,11 +24,12 @@ interface BonusEffectForm {
   effect_name: string
   values: BonusValueForm[]
   description: string
+  is_exclusive: boolean // この付加効果が専用技か
 }
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
 const emptyBonus = (): BonusEffectForm => ({
-  effect_name: '', values: [emptyValue()], description: '',
+  effect_name: '', values: [emptyValue()], description: '', is_exclusive: false,
 })
 
 const isEquipmentSetCategory = (cat: ItemCategory) =>
@@ -46,7 +47,7 @@ export default function AdminItemEditPage() {
   const incomingState = location.state as { filter?: string; copyRename?: CopyRename } | null
   const incomingFilter = incomingState?.filter
   const copyRename = incomingState?.copyRename
-  const { alert } = useDialog()
+  const { alert, confirm } = useDialog()
   const { user } = useAuth()
   const bonusValueLabelOptions = useBonusValueLabels()
   // editor / admin は全アイテムを編集でき、「確認済みにする」も可能
@@ -70,7 +71,6 @@ export default function AdminItemEditPage() {
     special_conditions: [] as string[],
     dyeable: null as boolean | null,
     mithril: false as boolean,
-    exclusive_skill: false as boolean,
     is_equipment_set: false as boolean,
     skill_requirements: {} as Record<string, string>,
     mastery_requirements: [] as string[],
@@ -97,7 +97,6 @@ export default function AdminItemEditPage() {
         special_conditions: [...item.special_conditions],
         dyeable: item.dyeable,
         mithril: item.mithril ?? false,
-        exclusive_skill: item.exclusive_skill ?? false,
         is_equipment_set: item.is_equipment_set ?? false,
         skill_requirements: Object.fromEntries(
           Object.entries(item.skill_requirements ?? {}).map(([k, v]) => [k, String(v)])
@@ -125,6 +124,7 @@ export default function AdminItemEditPage() {
           ? e.values.map((v) => ({ value: String(v.value), value_unit: v.value_unit, label: v.label ?? '' }))
           : [emptyValue()],
         description: e.description ?? '',
+        is_exclusive: !!e.is_exclusive,
       })))
     }
 
@@ -191,7 +191,90 @@ export default function AdminItemEditPage() {
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))
 
-  const handleCategoryChange = (val: string) => {
+  // カテゴリIDから種別を判定（部位↔装備セット切替時のデータ移行に使う）
+  const classifyCategory = (catId: string): 'equipSet' | 'asset' | 'skill' | 'plain' | 'none' => {
+    const cat = allCategories.find((c) => String(c.id) === catId)
+    if (!cat) return 'none'
+    if (isEquipmentSetCategory(cat)) return 'equipSet'
+    if (isAssetCategory(cat)) return 'asset'
+    const parent = cat.parent_id ? categories.find((c) => c.id === cat.parent_id) : cat
+    return parent?.name === 'テクニック' ? 'skill' : 'plain'
+  }
+
+  const handleCategoryChange = async (val: string) => {
+    const prev = classifyCategory(form.category_id)
+    const next = classifyCategory(val)
+
+    // 部位（装備品）→ 装備セット: 入力済みの追加効果・付加効果・特殊条件を「全部位共通」グループ[0]へ引き継ぐ。
+    // グループ[0] のみ置き換え、部位（parts）や追加済みの設定グループ[1..] はそのまま残す。
+    if (prev === 'plain' && next === 'equipSet') {
+      const baseStatsGroups = [
+        { partCategoryIds: [], base_stats: { ...form.base_stats }, special_conditions: [...form.special_conditions] },
+        ...equipSetForm.baseStatsGroups.slice(1),
+      ]
+      const bonusGroups = [
+        {
+          partCategoryIds: [],
+          bonus_effects: bonusEffects
+            .filter((e) => e.effect_name.trim() || e.values.some((v) => v.value) || e.description.trim())
+            .map((e) => ({
+              effect_name: e.effect_name,
+              values: e.values.map((v) => ({ value: v.value, value_unit: v.value_unit, label: v.label })),
+              description: e.description,
+              is_exclusive: e.is_exclusive,
+            })),
+        },
+        ...equipSetForm.bonusGroups.slice(1),
+      ]
+
+      // 現在編集中の部位（名前・カテゴリ・ミスリル・染色）を、そのまま構成部位として引用するか確認する。
+      // 「はい」で部位リストへ追加（効果は上の全部位共通グループから適用される）。
+      const partCatId = Number(form.category_id)
+      const hasPlainData = form.name.trim() !== ''
+        || Object.keys(form.base_stats).length > 0
+        || bonusEffects.some((e) => e.effect_name.trim())
+      let parts = equipSetForm.parts
+      if (hasPlainData) {
+        const quote = await confirm(
+          `現在編集中の「${form.name.trim() || '(名称未設定)'}」を、この装備セットの構成部位としてそのまま登録しますか？\n` +
+          '「はい」で部位リストに追加し、入力済みの追加効果・付加効果を引き継ぎます。',
+          { title: '構成部位として登録', confirmLabel: 'はい（部位として登録）', cancelLabel: 'いいえ' }
+        )
+        if (quote && !parts.some((p) => p.category_id === partCatId)) {
+          parts = [...parts, {
+            // 既存アイテムの編集時は id を引き継ぎ、出品・取引などの紐付けを保持したまま構成部位にする
+            // （保存時は convert-to-set で、このアイテム自身をメンバーに含む新しいセットを作成する）
+            ...(!isNew && id ? { id: Number(id) } : {}),
+            category_id: partCatId, name: form.name.trim(), mithril: form.mithril, dyeable: form.dyeable ?? false,
+          }]
+        }
+      }
+
+      setEquipSetForm({ parts, baseStatsGroups, bonusGroups })
+      setField('category_id', val)
+      return
+    }
+
+    // 装備セット → 部位（装備品）: 「全部位共通」グループ[0]の追加効果・付加効果・特殊条件を部位フォームへ戻す。
+    if (prev === 'equipSet' && next === 'plain') {
+      const bg = equipSetForm.baseStatsGroups[0]
+      const ng = equipSetForm.bonusGroups[0]
+      setForm((p) => ({
+        ...p,
+        category_id: val,
+        base_stats: { ...(bg?.base_stats ?? {}) },
+        special_conditions: [...(bg?.special_conditions ?? [])],
+      }))
+      setBonusEffects((ng?.bonus_effects ?? []).map((e) => ({
+        effect_name: e.effect_name,
+        values: e.values.length > 0 ? e.values.map((v) => ({ ...v })) : [emptyValue()],
+        description: e.description,
+        is_exclusive: e.is_exclusive,
+      })))
+      return
+    }
+
+    // それ以外（既存挙動）: 装備セット以外のトップレベル種別（アセット）へ切り替えたら構成部位を初期化する
     const cat = categories.find((c) => String(c.id) === val)
     if (cat && !isEquipmentSetCategory(cat)) {
       setEquipSetForm(emptyEquipmentSetForm())
@@ -223,6 +306,9 @@ export default function AdminItemEditPage() {
 
   const setBonus = (idx: number, key: 'effect_name' | 'description', val: string) =>
     setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, [key]: val } : e))
+
+  const setBonusExclusive = (idx: number, val: boolean) =>
+    setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, is_exclusive: val } : e))
 
   const setBonusValue = (bonusIdx: number, valIdx: number, key: keyof BonusValueForm, val: string) =>
     setBonusEffects((prev) => prev.map((e, i) =>
@@ -278,7 +364,6 @@ export default function AdminItemEditPage() {
         special_conditions: isSkill ? [] : form.special_conditions,
         dyeable: isPlain ? form.dyeable : null,
         mithril: isPlain ? form.mithril : false,
-        exclusive_skill: isPlain ? form.exclusive_skill : false,
         is_equipment_set: isEquipSet,
         ...(isEquipSet ? { pieces } : {}),
         skill_requirements: isSkill
@@ -302,10 +387,22 @@ export default function AdminItemEditPage() {
               .filter((v) => v.value !== '')
               .map((v) => ({ value: Number(v.value), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
+            is_exclusive: e.is_exclusive,
           })) : [],
       }
+      // 既存の部位アイテム自身を構成部位に含む装備セットへ変換するケース
+      // （部位として残し、出品などの紐付けを保持したまま新しいセット本体を作成する）。
+      const convertSelfToSet = !isNew && isEquipSet && pieces.some((p) => p.id != null && Number(p.id) === Number(id))
       let itemId: number
-      if (isNew) {
+      if (convertSelfToSet) {
+        const created = await itemsApi.convertToSet(Number(id), {
+          category_id: Number(form.category_id),
+          name: form.name,
+          description: form.description,
+          pieces,
+        })
+        itemId = created.data.id
+      } else if (isNew) {
         const created = await itemsApi.create(payload as Parameters<typeof itemsApi.create>[0])
         itemId = created.data.id
       } else {
@@ -350,7 +447,7 @@ export default function AdminItemEditPage() {
             <select
               required
               value={form.category_id}
-              onChange={(e) => handleCategoryChange(e.target.value)}
+              onChange={(e) => { void handleCategoryChange(e.target.value) }}
               className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
             >
               <option value="">カテゴリを選択</option>
@@ -520,12 +617,23 @@ export default function AdminItemEditPage() {
             <div key={idx} className="border border-surface-border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-400 font-medium">付加効果 {idx + 1}</p>
-                <button
-                  type="button" onClick={() => removeBonus(idx)}
-                  className="text-xs text-red-400 hover:text-red-300"
-                >
-                  削除
-                </button>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs text-amber-200 select-none">
+                    <input
+                      type="checkbox"
+                      checked={e.is_exclusive}
+                      onChange={(ev) => setBonusExclusive(idx, ev.target.checked)}
+                      className="accent-amber-500"
+                    />
+                    専用技
+                  </label>
+                  <button
+                    type="button" onClick={() => removeBonus(idx)}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    削除
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -689,7 +797,7 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* ミスリル・専用技（装備品のみ） */}
+        {/* ミスリル（装備品のみ。専用技は付加効果ごとに設定する） */}
         {isPlain && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 flex items-center gap-6">
           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -700,15 +808,6 @@ export default function AdminItemEditPage() {
               className="accent-primary-500"
             />
             <span className="text-sm font-semibold text-gray-300">ミスリル</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.exclusive_skill}
-              onChange={(e) => setForm((p) => ({ ...p, exclusive_skill: e.target.checked }))}
-              className="accent-primary-500"
-            />
-            <span className="text-sm font-semibold text-gray-300">専用技</span>
           </label>
         </div>
         )}

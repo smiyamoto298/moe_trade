@@ -6,7 +6,8 @@ import { useNotification } from '../../contexts/NotificationContext'
 import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory } from '../../types'
 import { SERVERS } from '../../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, MASTERY_BY_CODE, formatSignedValue } from '../../utils/constants'
+import { SPECIAL_CONDITIONS, MASTERY_BY_CODE } from '../../utils/constants'
+import { BaseStatBadges, BonusEffectList, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../../components/equipmentCells'
 import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
 
 type Filter = 'all' | 'unverified' | 'verified'
@@ -498,6 +499,12 @@ export default function AdminItemsPage() {
                   <td className="px-4 py-3">
                     <p className="text-white font-medium">{item.name}</p>
                     {item.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{item.description}</p>}
+                    {/* 装備セットは構成部位（部位カテゴリ名チップ）をアイテム名の下に表示する */}
+                    {item.is_equipment_set && (item.set_members?.length ?? 0) > 0 && (
+                      <div className="mt-1">
+                        <PartNamesLabel names={item.set_members!.map((m) => m.category.name)} />
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-300">{item.category.name}</td>
                   {isSkillMode ? (
@@ -559,63 +566,39 @@ export default function AdminItemsPage() {
                   </>
                   ) : (
                   <>
+                  {/* 追加効果（出品一覧に合わせ、装備セットは構成部位を効果内容でまとめて表示） */}
                   <td className="px-4 py-3">
                     {item.is_equipment_set ? (
-                      // 装備セット本体は構成部位のアイコン（部位カテゴリ名チップ）を表示する。
-                      // セット本体自身の base_stats は旧データのため表示しない（部位ごとの性能が正）
-                      <div className="flex flex-wrap gap-0.5">
-                        {(item.set_members ?? []).length === 0 ? (
-                          <span className="text-xs text-gray-600">—</span>
-                        ) : (item.set_members ?? []).map((m) => (
-                          <span
-                            key={m.id}
-                            title={m.name}
-                            className="text-[10px] leading-tight bg-amber-900/40 border border-amber-700/40 text-amber-100 rounded px-1 py-px"
-                          >
-                            {m.category.name}
-                          </span>
-                        ))}
-                      </div>
+                      <SetBaseStatsCell members={item.set_members ?? []} />
                     ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {Object.entries(item.base_stats).map(([k, v]) => (
-                        <span key={k} className="text-xs bg-surface text-gray-300 px-1.5 py-0.5 rounded">
-                          {BASE_STAT_LABELS[k] ?? k}: {formatSignedValue(v)}
-                        </span>
-                      ))}
-                      {item.mithril && (
-                        <span className="text-xs bg-slate-700/40 border border-slate-400/40 text-slate-200 px-1.5 py-0.5 rounded">
-                          ミスリル
-                        </span>
-                      )}
-                      {item.exclusive_skill && (
-                        <span className="text-xs bg-amber-900/40 border border-amber-600/40 text-amber-200 px-1.5 py-0.5 rounded">
-                          専用技
-                        </span>
-                      )}
-                    </div>
+                      <div className="flex flex-wrap gap-1">
+                        {Object.keys(item.base_stats).length === 0 && !item.mithril ? (
+                          <span className="text-xs text-gray-600">—</span>
+                        ) : (
+                          <BaseStatBadges item={item} />
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  {/* 付加効果（装備セットは構成部位の付加効果をまとめて表示） */}
+                  <td className="px-4 py-3">
+                    {item.is_equipment_set ? (
+                      <SetBonusCell members={item.set_members ?? []} />
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        {item.bonus_effects.length === 0 ? (
+                          <span className="text-xs text-gray-600">—</span>
+                        ) : (
+                          <BonusEffectList item={item} />
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1.5">
-                      {item.bonus_effects.length === 0 ? (
-                        <span className="text-xs text-gray-600">—</span>
-                      ) : item.bonus_effects.map((e) => (
-                        <div key={e.id} className="text-xs bg-surface border border-primary-500/20 rounded px-2 py-1">
-                          <p className="text-primary-500 font-medium">{e.effect_name}</p>
-                          {e.values?.map((v, i) => (
-                            <p key={i} className="text-gray-400 whitespace-nowrap">
-                              {v.label && <span>{v.label}：</span>}
-                              <span className="text-gray-200">{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
-                            </p>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
-                      {item.special_conditions.map((c) => (
+                      {item.special_conditions.length === 0 ? (
+                        <span className="text-xs text-gray-600">—</span>
+                      ) : item.special_conditions.map((c) => (
                         <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
                           {c}
                         </span>

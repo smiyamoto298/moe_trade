@@ -8,7 +8,7 @@ class Item extends Model
 {
     protected $fillable = [
         'category_id', 'name', 'description', 'image_url',
-        'base_stats', 'special_conditions', 'dyeable', 'mithril', 'exclusive_skill',
+        'base_stats', 'special_conditions', 'dyeable', 'mithril',
         'is_equipment_set', 'set_piece_category_ids',
         'skill_requirements', 'mastery_requirements',
         'placement', 'asset_width', 'asset_height', 'storage_count', 'special_function',
@@ -23,7 +23,6 @@ class Item extends Model
             'special_conditions' => 'array',
             'dyeable' => 'boolean',
             'mithril' => 'boolean',
-            'exclusive_skill' => 'boolean',
             'is_equipment_set' => 'boolean',
             'set_piece_category_ids' => 'array',
             'skill_requirements' => 'array',

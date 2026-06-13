@@ -146,8 +146,7 @@ export function formToPieces(form: EquipmentSetForm): EquipmentSetPieceInput[] {
       special_conditions: bg.special_conditions,
       dyeable: p.dyeable,
       mithril: p.mithril,
-      // 専用技は付加効果ごとのフラグの論理和（部位として専用技を含むか）
-      exclusive_skill: ng.bonus_effects.some((e) => e.effect_name.trim() && e.is_exclusive),
+      // 専用技は付加効果ごとの is_exclusive で保持する（アイテム単位のフラグは廃止）
       bonus_effects: ng.bonus_effects
         .filter((e) => e.effect_name.trim())
         .map((e) => ({
@@ -180,6 +179,13 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
   )
   const allChildCats = partCategoryGroups.flatMap((c) => c.children ?? [])
   const partName = (catId: number) => allChildCats.find((c) => c.id === catId)?.name ?? `#${catId}`
+
+  // 名前入力欄は、追加した順ではなく構成部位チェックボックス（カテゴリ）の並び順で表示する
+  const partCategoryOrder = (catId: number) => {
+    const i = allChildCats.findIndex((c) => c.id === catId)
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i
+  }
+  const orderedParts = [...parts].sort((a, b) => partCategoryOrder(a.category_id) - partCategoryOrder(b.category_id))
 
   // ── 部位（parts）の編集 ──
   const togglePart = (categoryId: number) => {
@@ -297,7 +303,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
         </div>
         {parts.length > 0 && (
           <div className="space-y-1.5 mt-1">
-            {parts.map((p) => (
+            {orderedParts.map((p) => (
               <div key={p.category_id} className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-amber-300 w-20 shrink-0 truncate" title={partName(p.category_id)}>{partName(p.category_id)}</span>
                 <input type="text" placeholder="部位アイテム名"

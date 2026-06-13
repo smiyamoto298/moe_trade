@@ -12,9 +12,8 @@ import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
 import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
-import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, formatSignedValue } from '../utils/constants'
-import { groupPiecesByBaseStats, groupPiecesByBonusEffects, hasBaseStats, hasBonusEffects } from '../utils/equipmentSet'
-import type { Item } from '../types'
+import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
+import { BaseStatBadges, BonusEffectList, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../components/equipmentCells'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -62,115 +61,6 @@ function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
           </div>
         )
       })}
-    </div>
-  )
-}
-
-// 専用技バッジ
-function ExclusiveSkillBadge() {
-  return (
-    <span className="text-xs bg-amber-900/40 border border-amber-600/40 rounded px-1.5 py-0.5 text-amber-200">
-      専用技
-    </span>
-  )
-}
-
-// 追加効果（base_stats + ミスリル）のバッジ群。
-// 専用技は付加効果側で扱うため、装備セットでは showExclusive=false で除外する。
-function BaseStatBadges({ item, showExclusive = true }: { item: Item; showExclusive?: boolean }) {
-  return (
-    <>
-      {Object.entries(item.base_stats).map(([key, val]) => (
-        <span key={key} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
-          {BASE_STAT_LABELS[key] ?? key}: <span className="text-white font-medium">{formatSignedValue(val)}</span>
-        </span>
-      ))}
-      {item.mithril && (
-        <span className="text-xs bg-slate-700/40 border border-slate-400/40 rounded px-1.5 py-0.5 text-slate-200">
-          ミスリル
-        </span>
-      )}
-      {showExclusive && item.exclusive_skill && <ExclusiveSkillBadge />}
-    </>
-  )
-}
-
-// 付加効果（bonus_effects）の一覧
-function BonusEffectList({ item }: { item: Item }) {
-  return (
-    <>
-      {item.bonus_effects.map((e) => (
-        <div key={e.id} className="text-xs bg-surface border border-primary-500/20 rounded px-2 py-1">
-          <p className="text-primary-500 font-medium">
-            {e.effect_name}
-            {e.is_exclusive && (
-              <span className="ml-1 text-[10px] bg-amber-900/40 border border-amber-600/40 rounded px-1 py-px text-amber-200">専用技</span>
-            )}
-          </p>
-          {e.values?.map((v, i) => (
-            <p key={i} className="text-gray-400 whitespace-nowrap">
-              {v.label && <span>{v.label}：</span>}
-              <span className="text-gray-200">{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
-            </p>
-          ))}
-        </div>
-      ))}
-    </>
-  )
-}
-
-// 装備セットの部位名ラベル（追加効果/付加効果列の各グループ見出し）。
-// 変更前のアイコンホバー内訳と同じチップ（バッジ）デザインで部位名を並べる。
-function PartNamesLabel({ names }: { names: string[] }) {
-  return (
-    <span className="flex flex-wrap gap-0.5">
-      {names.map((n, i) => (
-        <span key={i} className="text-[10px] leading-tight bg-amber-900/40 border border-amber-700/40 text-amber-100 rounded px-1 py-px">
-          {n}
-        </span>
-      ))}
-    </span>
-  )
-}
-
-// 装備セットの追加効果セル。設定グループが1つ（全部位共通）なら効果のみ、複数なら部位名つきで分けて表示。
-function SetBaseStatsCell({ members }: { members: Item[] }) {
-  if (members.length === 0) return <span className="text-xs text-gray-600">—</span>
-  const groups = groupPiecesByBaseStats(members)
-  const renderEffects = (m: Item) =>
-    hasBaseStats(m) ? <BaseStatBadges item={m} showExclusive={false} /> : <span className="text-xs text-gray-600">—</span>
-  if (groups.length === 1) {
-    return <div className="flex flex-wrap gap-1">{renderEffects(groups[0].member)}</div>
-  }
-  return (
-    <div className="flex flex-col gap-1.5">
-      {groups.map((g, gi) => (
-        <div key={gi}>
-          <PartNamesLabel names={g.partNames} />
-          <div className="flex flex-wrap gap-1 mt-0.5">{renderEffects(g.member)}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// 装備セットの付加効果セル。設定グループが1つなら効果のみ、複数なら部位名つきで分けて表示。
-function SetBonusCell({ members }: { members: Item[] }) {
-  if (members.length === 0) return <span className="text-xs text-gray-600">—</span>
-  const groups = groupPiecesByBonusEffects(members)
-  const renderEffects = (m: Item) =>
-    hasBonusEffects(m) ? <BonusEffectList item={m} /> : <span className="text-xs text-gray-600">—</span>
-  if (groups.length === 1) {
-    return <div className="flex flex-col gap-1.5">{renderEffects(groups[0].member)}</div>
-  }
-  return (
-    <div className="flex flex-col gap-1.5">
-      {groups.map((g, gi) => (
-        <div key={gi}>
-          <PartNamesLabel names={g.partNames} />
-          <div className="flex flex-col gap-1 mt-0.5">{renderEffects(g.member)}</div>
-        </div>
-      ))}
     </div>
   )
 }
@@ -805,6 +695,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               onChange={(e) => setParam('sort', e.target.value)}
             >
               <option value="newest">新着順</option>
+              <option value="name_asc">あいうえお順</option>
               <option value="price_asc">価格が安い順</option>
               <option value="price_desc">価格が高い順</option>
               {(params.base_stat_keys ?? []).map((k) => (
@@ -894,6 +785,14 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                                 className="text-xs text-amber-300 bg-amber-900/30 border border-amber-600/40 rounded px-1.5 py-0.5 shrink-0"
                               >
                                 ⚠ 削れあり
+                              </span>
+                            )}
+                            {!isSkillMode && l.is_dyed && (
+                              <span
+                                title="染色済み（染色液で色を変更済み）"
+                                className="text-xs text-fuchsia-300 bg-fuchsia-900/30 border border-fuchsia-600/40 rounded px-1.5 py-0.5 shrink-0"
+                              >
+                                🎨 染色済み
                               </span>
                             )}
                           </div>
@@ -986,7 +885,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                               <SetBaseStatsCell members={l.item.set_members ?? []} />
                             ) : (
                               <div className="flex flex-wrap gap-1">
-                                {Object.keys(l.item.base_stats).length === 0 && !l.item.mithril && !l.item.exclusive_skill ? (
+                                {Object.keys(l.item.base_stats).length === 0 && !l.item.mithril ? (
                                   <span className="text-xs text-gray-600">—</span>
                                 ) : (
                                   <BaseStatBadges item={l.item} />

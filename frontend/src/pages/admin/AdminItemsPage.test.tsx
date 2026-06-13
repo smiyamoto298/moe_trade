@@ -72,7 +72,6 @@ const makeItem = (over: Partial<Item> = {}): Item => ({
   special_conditions: [],
   dyeable: null,
   mithril: false,
-  exclusive_skill: false,
   is_equipment_set: false,
   set_piece_category_ids: null,
   skill_requirements: null,
@@ -84,12 +83,27 @@ const makeItem = (over: Partial<Item> = {}): Item => ({
   ...over,
 })
 
-// 構成部位（通常アイテムとして登録され、equipment_set_members でセットに紐付く）
-const pieceHead = makeItem({ id: 101, name: '騎士セットの頭' })
+// 構成部位（通常アイテムとして登録され、equipment_set_members でセットに紐付く）。
+// 出品一覧と同じく、追加効果・付加効果は部位（set_members）から組み立てて表示する。
+const knightBonus = (id: number): Item['bonus_effects'][number] => ({
+  id,
+  effect_name: '騎士の守り',
+  type: { id: 1, type_key: 'defense_up', label: '防御強化', category: 'defense' },
+  values: [{ label: '防御', value: 5, value_unit: '%' }],
+  description: '',
+})
+const pieceHead = makeItem({
+  id: 101,
+  name: '騎士セットの頭',
+  base_stats: { def: 30 },
+  bonus_effects: [knightBonus(901)],
+})
 const pieceBody = makeItem({
   id: 102,
   name: '騎士セットの胴',
   category: { id: 12, parent_id: 1, name: '胴(防)', sort_order: 2 },
+  base_stats: { def: 30 },
+  bonus_effects: [knightBonus(902)],
 })
 // セット本体（set_members に部位を持つ。base_stats は旧データで一覧には表示しない）
 const setItem = makeItem({
@@ -189,17 +203,18 @@ describe('AdminItemsPage 装備セットを展開表示', () => {
     expect(screen.getByRole('checkbox', { name: '装備セットを展開表示' })).toBeInTheDocument()
   })
 
-  it('装備セット行の追加効果列は部位アイコンを表示し、本体の旧base_statsは表示しない', async () => {
+  it('装備セット行は出品一覧と同じ表示（部位チップ・構成部位の追加効果/付加効果）にする', async () => {
     renderPage()
     await waitForLoaded()
 
     const row = (await screen.findByText('騎士セット')).closest('tr')!
-    // 構成部位の部位カテゴリ名チップ（ホバーで部位アイテム名）
+    // アイテム名の下に構成部位の部位カテゴリ名チップを表示する
     expect(within(row).getByText('頭(防)')).toBeInTheDocument()
     expect(within(row).getByText('胴(防)')).toBeInTheDocument()
-    expect(within(row).getByTitle('騎士セットの頭')).toBeInTheDocument()
-    expect(within(row).getByTitle('騎士セットの胴')).toBeInTheDocument()
-    // セット本体自身の base_stats（旧データ）は表示しない
+    // 追加効果・付加効果は構成部位（set_members）から表示する
+    expect(within(row).getByText(/防御力/)).toBeInTheDocument()
+    expect(within(row).getByText('騎士の守り')).toBeInTheDocument()
+    // セット本体自身の base_stats（旧データ・atk=99）は表示しない
     expect(within(row).queryByText(/攻撃力/)).not.toBeInTheDocument()
   })
 

@@ -138,7 +138,6 @@ class ItemController extends Controller
             'special_conditions.*'     => 'string',
             'dyeable'                  => 'nullable|boolean',
             'mithril'                  => 'nullable|boolean',
-            'exclusive_skill'          => 'nullable|boolean',
             'is_equipment_set'         => 'nullable|boolean',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'skill_requirements'       => 'nullable|array',
@@ -239,7 +238,6 @@ class ItemController extends Controller
             'special_conditions'       => 'nullable|array',
             'dyeable'                  => 'nullable|boolean',
             'mithril'                  => 'nullable|boolean',
-            'exclusive_skill'          => 'nullable|boolean',
             'is_equipment_set'         => 'nullable|boolean',
             'set_piece_category_ids.*' => 'integer|exists:item_categories,id',
             'skill_requirements'       => 'nullable|array',
@@ -308,6 +306,90 @@ class ItemController extends Controller
     }
 
     /**
+     * 通常の部位アイテム($id)を、それ自身を構成部位に含む新しい装備セットへ変換する。
+     *
+     * 編集中のアイテム($id)はそのまま部位アイテムとして残るため、紐づく出品・買取・取引履歴・相場は
+     * 部位側に保持される（セット本体は別アイテムとして新規作成される）。
+     * 編集権限は update と同じ。乗っ取り防止のため、既存部位として採用できるのは変換元($id)のみ。
+     */
+    public function convertToSet(Request $request, int $id)
+    {
+        $item = Item::findOrFail($id);
+        $user = $request->user();
+
+        // 編集権限チェック（update と同条件）
+        $isOwnerEditable = $item->submitted_by === $user->id
+            && $item->verified_status === 'unverified'
+            && !$item->locked_by_staff;
+        if (!$user->isEditor() && !$isOwnerEditable) {
+            if ($item->submitted_by === $user->id && $item->locked_by_staff) {
+                abort(403, 'このアイテムは編集者または管理者によって更新されたため、編集できません。');
+            }
+            abort(403, 'このアイテムを編集する権限がありません。');
+        }
+
+        if ($item->is_equipment_set) {
+            return response()->json(['message' => 'このアイテムは既に装備セットです。'], 422);
+        }
+
+        $data = $request->validate([
+            'category_id' => 'required|exists:item_categories,id',
+            // セット本体の名前。既存の全アイテムと重複不可（変換元は部位として残るため除外しない）。
+            'name'        => 'required|string|max:200|unique:items,name',
+            'description' => 'nullable|string',
+            ...$this->pieceValidationRules(),
+        ], [
+            'name.unique' => '同じ名前のアイテムが既に登録されています。',
+        ]);
+
+        // 採用できる既存部位は変換元($id)のみ。他の id は除去して新規部位として扱う（乗っ取り防止）。
+        $pieces = $this->sanitizePieceIds($data['pieces'] ?? [], [$item->id]);
+        if (!collect($pieces)->contains(fn ($p) => (int) ($p['id'] ?? 0) === $item->id)) {
+            return response()->json(['message' => '変換元アイテムを構成部位に含めてください。'], 422);
+        }
+        $this->assertPieceNamesUnique($pieces);
+        // セット本体の名前が構成部位名と重複しないこと（items.name のユニーク制約に違反するため）
+        foreach ($pieces as $i => $p) {
+            if (mb_strtolower(trim($p['name'] ?? '')) === mb_strtolower(trim($data['name']))) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    "pieces.$i.name" => 'セット本体と構成部位に同じ名前は使えません。名前を変えてください。',
+                ]);
+            }
+        }
+
+        $isAdmin  = $user->isAdmin();
+        $isEditor = $user->isEditor();
+
+        $set = DB::transaction(function () use ($data, $pieces, $user, $isAdmin, $isEditor) {
+            $set = Item::create([
+                'category_id'            => $data['category_id'],
+                'name'                   => $data['name'],
+                'description'            => $data['description'] ?? '',
+                'base_stats'             => [],
+                'special_conditions'     => [],
+                'is_equipment_set'       => true,
+                'set_piece_category_ids' => [],
+                'verified_status'        => $isAdmin ? 'verified' : 'unverified',
+                'submitted_by'           => $user->id,
+                'verified_by'            => $isAdmin ? $user->id : null,
+                'verified_at'            => $isAdmin ? now() : null,
+                'locked_by_staff'        => $isAdmin,
+            ]);
+
+            // 構成部位を同期。変換元($id)は既存部位として update され（is_equipment_set は false のまま）、
+            // 出品等の紐付けを保持したままセットのメンバーになる。
+            $this->syncSetPieces($set, $pieces, $user, $isAdmin, $isEditor);
+
+            return $set;
+        });
+
+        return response()->json(
+            $set->load('bonusEffects', 'category', 'setMembers.category', 'setMembers.bonusEffects'),
+            201
+        );
+    }
+
+    /**
      * 装備セットの構成部位（pieces）入力のバリデーションルール。
      * 各部位は通常アイテムとして登録される。
      */
@@ -323,7 +405,6 @@ class ItemController extends Controller
             'pieces.*.special_conditions.*'   => 'string',
             'pieces.*.dyeable'                => 'nullable|boolean',
             'pieces.*.mithril'                => 'nullable|boolean',
-            'pieces.*.exclusive_skill'        => 'nullable|boolean',
             'pieces.*.bonus_effects'          => 'nullable|array',
             'pieces.*.bonus_effects.*.effect_name' => 'required|string|max:200',
             'pieces.*.bonus_effects.*.values'      => 'nullable|array',
@@ -400,7 +481,6 @@ class ItemController extends Controller
                 'special_conditions' => $piece['special_conditions'] ?? [],
                 'dyeable'            => $piece['dyeable'] ?? null,
                 'mithril'            => $piece['mithril'] ?? false,
-                'exclusive_skill'    => $piece['exclusive_skill'] ?? false,
                 'is_equipment_set'   => false,
             ];
 

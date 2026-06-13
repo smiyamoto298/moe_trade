@@ -18,10 +18,11 @@ interface BonusEffectForm {
   effect_name: string
   values: BonusValueForm[]
   description: string
+  is_exclusive: boolean // この付加効果が専用技か
 }
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
-const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '' })
+const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false })
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 
@@ -59,7 +60,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     mastery_requirements: [] as string[],
     dyeable: null as boolean | null,
     mithril: false,
-    exclusive_skill: false,
     placement: '' as '' | AssetPlacement,
     asset_width: '',
     asset_height: '',
@@ -121,6 +121,9 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const setBonus = (i: number, key: 'effect_name' | 'description', val: string) =>
     setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, [key]: val } : e))
 
+  const setBonusExclusive = (i: number, val: boolean) =>
+    setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, is_exclusive: val } : e))
+
   const setBonusVal = (bi: number, vi: number, key: keyof BonusValueForm, val: string) =>
     setBonusEffects((prev) => prev.map((e, i) => i !== bi ? e : {
       ...e, values: e.values.map((v, j) => j === vi ? { ...v, [key]: val } : v),
@@ -165,7 +168,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         special_conditions: isSkill ? [] : form.special_conditions,
         dyeable: isPlain ? form.dyeable : null,
         mithril: isPlain ? form.mithril : false,
-        exclusive_skill: isPlain ? form.exclusive_skill : false,
         skill_requirements: isSkill
           ? Object.fromEntries(
               Object.entries(form.skill_requirements)
@@ -188,6 +190,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
               .filter((v) => v.value !== '')
               .map((v) => ({ value: Number(v.value), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
+            is_exclusive: e.is_exclusive,
           })) : [],
         ...(isEquipSet && {
           is_equipment_set: true,
@@ -473,7 +476,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         </div>
       </div>
 
-      {/* ミスリル・専用技 */}
+      {/* ミスリル（専用技は付加効果ごとに設定する） */}
       <div className="flex items-center gap-6">
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
@@ -483,15 +486,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
             className="accent-primary-500"
           />
           <span className="text-sm text-gray-300">ミスリル</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={form.exclusive_skill}
-            onChange={(e) => setField('exclusive_skill', e.target.checked)}
-            className="accent-primary-500"
-          />
-          <span className="text-sm text-gray-300">専用技</span>
         </label>
       </div>
 
@@ -529,7 +523,13 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
             <div key={idx} className="border border-surface-border rounded p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">付加効果 {idx + 1}</span>
-                <button type="button" onClick={() => setBonusEffects((p) => p.filter((_, i) => i !== idx))} className="text-xs text-red-400 hover:text-red-300">削除</button>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs text-amber-200 select-none">
+                    <input type="checkbox" checked={e.is_exclusive} onChange={(ev) => setBonusExclusive(idx, ev.target.checked)} className="accent-amber-500" />
+                    専用技
+                  </label>
+                  <button type="button" onClick={() => setBonusEffects((p) => p.filter((_, i) => i !== idx))} className="text-xs text-red-400 hover:text-red-300">削除</button>
+                </div>
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-0.5">効果名</label>

@@ -11,7 +11,6 @@ export interface EquipmentSetPieceInput {
   special_conditions: string[]
   dyeable?: boolean | null
   mithril?: boolean
-  exclusive_skill?: boolean
   bonus_effects: {
     effect_name: string
     values: { value: number; value_unit: string; label?: string }[]
@@ -86,7 +85,6 @@ export const itemsApi = {
     mastery_requirements?: string[] | null
     dyeable?: boolean | null
     mithril?: boolean
-    exclusive_skill?: boolean
     placement?: AssetPlacement | null
     asset_width?: number | null
     asset_height?: number | null
@@ -113,7 +111,6 @@ export const itemsApi = {
         special_conditions: data.special_conditions,
         dyeable: null,
         mithril: data.mithril ?? false,
-        exclusive_skill: data.exclusive_skill ?? false,
         is_equipment_set: data.is_equipment_set ?? false,
         set_piece_category_ids: data.set_piece_category_ids ?? null,
         set_members: [],
@@ -142,7 +139,6 @@ export const itemsApi = {
     base_stats?: Record<string, number>
     special_conditions?: string[]
     mithril?: boolean
-    exclusive_skill?: boolean
     placement?: AssetPlacement | null
     asset_width?: number | null
     asset_height?: number | null
@@ -165,13 +161,54 @@ export const itemsApi = {
       if (data.base_stats !== undefined) item.base_stats = data.base_stats
       if (data.special_conditions !== undefined) item.special_conditions = data.special_conditions
       if (data.mithril !== undefined) item.mithril = data.mithril
-      if (data.exclusive_skill !== undefined) item.exclusive_skill = data.exclusive_skill
       if (data.category_id !== undefined) {
         item.category = mockCategories.flatMap((c) => c.children ?? []).find((c) => c.id === data.category_id) ?? item.category
       }
       return Promise.resolve({ data: { ...item } })
     }
     return client.put<Item>(`/items/${id}`, data)
+  },
+
+  // 通常の部位アイテム(id)を、それ自身を構成部位に含む新しい装備セットへ変換する。
+  // 元アイテムは部位として残るため、出品・取引などの紐付けは保持される。
+  convertToSet: (id: number, data: {
+    category_id: number
+    name: string
+    description: string
+    pieces: EquipmentSetPieceInput[]
+  }): Promise<{ data: Item }> => {
+    if (USE_MOCK) {
+      const allCategories = mockCategories.flatMap((c) => [c, ...(c.children ?? [])])
+      const category = allCategories.find((c) => c.id === data.category_id)!
+      const set: Item = {
+        id: Date.now(),
+        category,
+        name: data.name,
+        description: data.description,
+        image_url: null,
+        base_stats: {},
+        special_conditions: [],
+        dyeable: null,
+        mithril: false,
+        is_equipment_set: true,
+        set_piece_category_ids: data.pieces.map((p) => p.category_id),
+        set_members: [],
+        skill_requirements: null,
+        mastery_requirements: null,
+        placement: null,
+        asset_width: null,
+        asset_height: null,
+        storage_count: null,
+        special_function: null,
+        verified_status: 'unverified',
+        submitted_by: 99,
+        locked_by_staff: false,
+        bonus_effects: [],
+      }
+      mockItems.push(set)
+      return Promise.resolve({ data: set })
+    }
+    return client.post<Item>(`/items/${id}/convert-to-set`, data)
   },
 
   verify: (id: number): Promise<{ data: Item }> => {

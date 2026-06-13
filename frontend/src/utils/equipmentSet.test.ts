@@ -23,7 +23,6 @@ const piece = (partName: string, over: Partial<Item> = {}): Item => ({
   special_conditions: [],
   dyeable: null,
   mithril: false,
-  exclusive_skill: false,
   is_equipment_set: false,
   set_piece_category_ids: null,
   skill_requirements: null,
