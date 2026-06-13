@@ -277,6 +277,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // X宣伝ツイート文面の生成
         Route::get('admin/promo-tweets', [PromoTweetController::class, 'index']);
+        // 「Xでポスト」押下時に前回ツイート時刻を記録（単日モードの集計開始時刻になる）
+        Route::post('admin/promo-tweets/posted', [PromoTweetController::class, 'posted']);
 
         // お知らせ管理
         Route::get('admin/announcements',          [AnnouncementController::class, 'adminIndex']);

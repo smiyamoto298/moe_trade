@@ -16,7 +16,8 @@ type Mode = 'day' | 'range'
 
 export default function PromoTweetsPage() {
   const [mode, setMode] = useState<Mode>('day')
-  const [date, setDate] = useState(todayStr())
+  // 単日モードの集計開始（前回ツイート時刻）。'' のときはサーバ既定（記録済みの前回ツイート時刻・無ければ当日0:00）
+  const [since, setSince] = useState('')
   const [from, setFrom] = useState(todayStr())
   const [to, setTo] = useState(todayStr())
   const [data, setData] = useState<PromoTweetsResponse | null>(null)
@@ -28,12 +29,24 @@ export default function PromoTweetsPage() {
     if (mode === 'range' && from > to) return // 期間が逆転している間は取得しない
     setLoading(true)
     setError(false)
+    const query = mode === 'day' ? (since ? { since } : {}) : { from, to }
     promoTweetsApi
-      .list(mode === 'day' ? { date } : { from, to })
-      .then((r) => setData(r.data))
+      .list(query)
+      .then((r) => {
+        setData(r.data)
+        // 入力が空（初回・モード切替直後）のときはサーバ既定の開始時刻を入力に反映する
+        if (mode === 'day' && !since && r.data.since) setSince(r.data.since)
+      })
       .catch(() => setError(true))
       .finally(() => setLoading(false))
-  }, [mode, date, from, to])
+  }, [mode, since, from, to])
+
+  // 「Xでポスト」押下時に前回ツイート時刻を記録する（次回の単日モードの集計開始になる）
+  const markPosted = () => {
+    promoTweetsApi.markPosted().catch(() => {
+      // 記録に失敗しても投稿フロー自体は妨げない（次回は手動で開始時刻を調整可能）
+    })
+  }
 
   const copy = async (text: string, idx: number) => {
     try {
@@ -68,12 +81,23 @@ export default function PromoTweetsPage() {
             ))}
           </div>
           {mode === 'day' ? (
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => e.target.value && setDate(e.target.value)}
-              className={dateInputClass}
-            />
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-gray-400">前回ツイート〜現在</span>
+              <input
+                type="datetime-local"
+                value={since}
+                onChange={(e) => setSince(e.target.value)}
+                className={dateInputClass}
+              />
+              {/* サーバに記録された前回ツイート時刻へ戻す */}
+              <button
+                onClick={() => setSince('')}
+                title="記録済みの前回ツイート時刻に戻す"
+                className="text-xs text-gray-400 hover:text-white px-2 py-1.5"
+              >
+                リセット
+              </button>
+            </div>
           ) : (
             <div className="flex items-center gap-1">
               <input
@@ -94,8 +118,9 @@ export default function PromoTweetsPage() {
         </div>
       </div>
       <p className="text-sm text-gray-400 mb-5">
-        指定した{mode === 'day' ? '日' : '期間（累計）'}の「新規出品」「新規買取」「取引件数」をX（旧Twitter）の文字数制限内に分割した文面です。
+        {mode === 'day' ? '前回ツイート時刻から現在まで' : '指定した期間（累計）'}の「新規出品」「新規買取」「取引件数」をX（旧Twitter）の文字数制限内に分割した文面です。
         「Xでポスト」を押すと投稿画面が開くので、内容を確認して順番に投稿してください（API不要・無料）。
+        {mode === 'day' && '「Xでポスト」を押した時刻が前回ツイート時刻として自動記録され、次回はその時刻からの集計になります（開始時刻は手動で変更も可能）。'}
         複数に分かれた場合、<span className="text-gray-300">2通目以降は1通目への返信として投稿</span>してください（スレッドとしてつながり、サイトリンクは1通目にのみ付きます）。
       </p>
 
@@ -139,6 +164,7 @@ export default function PromoTweetsPage() {
                     href={intentUrl(t.text)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={markPosted}
                     className="text-sm bg-primary-500 hover:bg-primary-600 text-white px-5 py-1.5 rounded-md transition-colors"
                   >
                     Xでポスト

@@ -82,8 +82,12 @@ class PromoTweetApiTest extends TestCase
 
         $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/promo-tweets');
 
+        // 前回ツイート時刻が未記録なら当日0:00〜現在を集計する
         $res->assertOk()
-            ->assertJsonPath('date', '2026-06-12')
+            ->assertJsonPath('mode', 'day')
+            ->assertJsonPath('since', '2026-06-12T00:00')
+            ->assertJsonPath('until', '2026-06-12T12:00')
+            ->assertJsonPath('last_posted_at', null)
             ->assertJsonPath('trade_count', 2)
             ->assertJsonPath('listing_count', 1)
             ->assertJsonPath('buy_request_count', 1);
@@ -115,28 +119,79 @@ class PromoTweetApiTest extends TestCase
         $this->assertStringContainsString('売)量産の矢 100AC ×3', $all);
     }
 
-    public function test_date指定で過去日の文面を生成できる(): void
+    public function test_since指定で集計開始時刻を絞り込める(): void
     {
-        $admin = $this->makeUserWithRole('admin');
-        // 当日に1件出品があっても、過去日を指定すれば含まれない
-        $this->makeListing($this->makeUser(), $this->makeItem(['name' => '当日の剣']));
+        $admin  = $this->makeUserWithRole('admin');
+        $seller = $this->makeUser();
 
-        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/promo-tweets?date=2026-06-10');
+        // 5時間前の出品（since より前なので対象外）
+        $oldItem = $this->makeItem(['name' => '5時間前の剣']);
+        $old     = $this->makeListing($seller, $oldItem, ['price' => 3000]);
+        Listing::where('id', $old->id)->update(['created_at' => now()->subHours(5)]);
+
+        // 直近の出品（since 以降なので対象）
+        $recent = $this->makeItem(['name' => '直近の盾', 'category_id' => $oldItem->category_id]);
+        $this->makeListing($seller, $recent, ['price' => 800]);
+
+        // 前回ツイート時刻を2時間前に指定する（JST）
+        $since = \Carbon\CarbonImmutable::now('Asia/Tokyo')->subHours(2)->format('Y-m-d\TH:i');
+        $res   = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/promo-tweets?since=' . $since);
 
         $res->assertOk()
-            ->assertJsonPath('date', '2026-06-10')
-            ->assertJsonPath('listing_count', 0)
-            ->assertJsonPath('trade_count', 0);
+            ->assertJsonPath('mode', 'day')
+            ->assertJsonPath('since', $since)
+            ->assertJsonPath('listing_count', 1);
         $all = implode("\n", array_column($res->json('tweets'), 'text'));
-        $this->assertStringNotContainsString('当日の剣', $all);
-        $this->assertStringContainsString('新着の出品・買取はなし', $all);
+        $this->assertStringContainsString('売)直近の盾 800AC', $all);
+        $this->assertStringNotContainsString('5時間前の剣', $all);
     }
 
-    public function test_不正な日付形式は422(): void
+    public function test_不正なsince形式は422(): void
     {
         $this->actingAs($this->makeUserWithRole('admin'), 'sanctum')
-            ->getJson('/api/admin/promo-tweets?date=2026/06/10')
+            ->getJson('/api/admin/promo-tweets?since=not-a-date')
             ->assertStatus(422);
+    }
+
+    public function test_xでポスト押下で前回ツイート時刻が記録され次回集計の起点になる(): void
+    {
+        $admin  = $this->makeUserWithRole('admin');
+        $seller = $this->makeUser();
+
+        // 記録前の出品（記録時刻より前なので次回は対象外になる）
+        $before = $this->makeItem(['name' => '記録前の剣']);
+        $this->makeListing($seller, $before, ['price' => 100]);
+
+        // 12:30 JST に「Xでポスト」＝前回ツイート時刻を記録
+        $this->travelTo(Carbon::parse('2026-06-12 03:30:00', 'UTC'));
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/promo-tweets/posted')
+            ->assertOk()
+            ->assertJsonPath('last_posted_at', '2026-06-12T12:30');
+
+        // 13:00 JST に新たな出品
+        $this->travelTo(Carbon::parse('2026-06-12 04:00:00', 'UTC'));
+        $after = $this->makeItem(['name' => '記録後の盾', 'category_id' => $before->category_id]);
+        $this->makeListing($seller, $after, ['price' => 800]);
+
+        // since 省略時は記録済みの前回ツイート時刻（12:30）が起点になる
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/promo-tweets');
+
+        $res->assertOk()
+            ->assertJsonPath('since', '2026-06-12T12:30')
+            ->assertJsonPath('last_posted_at', '2026-06-12T12:30')
+            ->assertJsonPath('listing_count', 1);
+        $all = implode("\n", array_column($res->json('tweets'), 'text'));
+        $this->assertStringContainsString('売)記録後の盾 800AC', $all);
+        $this->assertStringNotContainsString('記録前の剣', $all);
+    }
+
+    public function test_postedは管理者以外拒否される(): void
+    {
+        $this->postJson('/api/admin/promo-tweets/posted')->assertStatus(401);
+        $this->actingAs($this->makeUser(), 'sanctum')
+            ->postJson('/api/admin/promo-tweets/posted')->assertStatus(403);
     }
 
     public function test_期間指定で複数日の累計を取得できる(): void
