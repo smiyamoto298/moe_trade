@@ -14,6 +14,7 @@ import { BaseStatBadges } from '../components/equipmentCells'
 import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts } from '../types'
 import { parseItemBox, isTransferNg, isTruncatedName, truncatedBase } from '../utils/itemBoxPaste'
 import { newLocalId, emptyInventory, buildExclusionSet, isExcluded } from '../utils/inventory'
+import { compareJa } from '../utils/collator'
 import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getSkipExcludeConfirm, setSkipExcludeConfirm } from '../utils/inventoryStore'
 
 const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
@@ -458,8 +459,9 @@ export default function OwnedItemsPage() {
         if (markedOnly && !i.marked) return false
         return true
       })
-      // 常にあいうえお順（日本語ロケール）で表示する
-      .sort((a, b) => displayName(a).localeCompare(displayName(b), 'ja'))
+      // 常にあいうえお順（日本語ロケール）で表示する。
+      // 共有コレーター（compareJa）を使い、大きな一覧でもソートが重くならないようにする。
+      .sort((a, b) => compareJa(displayName(a), displayName(b)))
   }, [inventory.items, filterAccountId, markedOnly])
 
   const markedCount = inventory.items.filter((i) => i.marked).length

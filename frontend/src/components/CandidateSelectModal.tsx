@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { itemsApi } from '../api/items'
 import Spinner from './Spinner'
+import { compareJa } from '../utils/collator'
 import type { Item } from '../types'
 
 interface Props {
@@ -31,7 +32,7 @@ export default function CandidateSelectModal({ baseName, originalName, onSelect,
         // 前方一致のみに絞り込む（API は部分一致のため）
         const filtered = r.data
           .filter((i) => i.name.startsWith(keyword))
-          .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+          .sort((a, b) => compareJa(a.name, b.name))
         setCandidates(filtered)
       })
       .finally(() => active && setLoading(false))
