@@ -15,6 +15,8 @@ frontend/.env.local
 
 # Docker
 docker/mysql/
+# ルートの .env は worktree ごとの compose 設定（プロジェクト名・ポート）。雛形は .env.example
+/.env
 
 # OS
 .DS_Store
