@@ -72,7 +72,7 @@ describe('STAT_INPUT_COLUMNS', () => {
   it('design.md の追加効果入力欄の並び（3列構成）と一致する', () => {
     expect(STAT_INPUT_COLUMNS).toEqual([
       ['max_hp', 'max_st', 'max_mp', 'move_speed', 'max_weight', 'atk_delay', 'mag_delay'],
-      ['atk', 'def', 'hit', 'eva', 'mag'],
+      ['atk', 'mag', 'def', 'hit', 'eva'],
       ['res_fire', 'res_water', 'res_earth', 'res_wind', 'res_none'],
     ])
   })

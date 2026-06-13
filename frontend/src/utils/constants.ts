@@ -76,10 +76,10 @@ export const BASE_STAT_LABELS: Record<string, string> = {
   atk_delay:  '攻撃ディレイ',
   mag_delay:  '魔法ディレイ',
   atk:        '攻撃力',
+  mag:        '魔力',
   def:        '防御力',
   hit:        '命中',
   eva:        '回避',
-  mag:        '魔力',
   res_fire:   '耐火属性',
   res_water:  '耐水属性',
   res_earth:  '耐地属性',
@@ -91,7 +91,7 @@ export const BASE_STAT_LABELS: Record<string, string> = {
 // 各配列が1列分で、列内は上から順に表示する。キーは BASE_STAT_LABELS と完全一致させること。
 export const STAT_INPUT_COLUMNS: string[][] = [
   ['max_hp', 'max_st', 'max_mp', 'move_speed', 'max_weight', 'atk_delay', 'mag_delay'],
-  ['atk', 'def', 'hit', 'eva', 'mag'],
+  ['atk', 'mag', 'def', 'hit', 'eva'],
   ['res_fire', 'res_water', 'res_earth', 'res_wind', 'res_none'],
 ]
 
