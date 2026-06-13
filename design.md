@@ -1173,6 +1173,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/NotificationApiTest.php` | 通知サマリー（未読チャット・掲示板新着・対象者判定） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |
+| `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
 
 > 既知の未カバー領域（今後追加推奨）: `GET /api/listings/:id` の公開制限(404)、アイテム削除の確認モーダル(409)/`force`連鎖削除、`items/:id/merge`、アセット種別の絞り込み、パスワード再設定の期限切れ・スロットル(429)。
 
@@ -1316,6 +1317,7 @@ cd frontend && npm run test:watch  # ウォッチ実行
 | `deploy.ps1` | 手元PC用（Windows PowerShell）: rsync不要、標準 ssh/scp/tar のみで同等のデプロイ。`-SkipBuild` / `-BackendOnly` / `-FrontendOnly` オプション |
 | `update-on-server.sh` | サーバ側更新処理（composer install --no-dev → migrate --force → config/route/view キャッシュ再構築） |
 | `cron-expire-listings.sh` | 期限切れ出品バッチの cron 用ラッパー |
+| `cron-purge-announcements.sh` | 期限切れお知らせ削除バッチ（`announcements:purge-expired`）の cron 用ラッパー（毎日6:00） |
 
 ### 本番 .env の重要キー
 - `APP_DEBUG=false` / `APP_ENV=production`
