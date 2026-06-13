@@ -15,6 +15,11 @@ class ItemController extends Controller
     public function index(Request $request)
     {
         $query = Item::with(['category', 'bonusEffects', 'setMembers.category', 'setMembers.bonusEffects'])
+            // 取引情報表示用: 募集中（active）の出品数・買取数を集計して付与する
+            ->withCount([
+                'listings as active_listing_count' => fn($q) => $q->where('status', 'active'),
+                'buyRequests as active_buy_request_count' => fn($q) => $q->where('status', 'active'),
+            ])
             ->when($request->name, fn($q) => $q->where('name', 'like', "%{$request->name}%"))
             ->when($request->verified_status, fn($q) => $q->where('verified_status', $request->verified_status))
             ->when($request->special_conditions, function ($q) use ($request) {

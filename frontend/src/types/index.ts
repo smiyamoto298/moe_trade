@@ -86,6 +86,9 @@ export interface Item {
   // editor/admin が編集・確認すると true。true の間は登録者(user)が上書き編集できない（排他制御）。
   locked_by_staff: boolean
   bonus_effects: ItemBonusEffect[]
+  // ---- 取引情報（一覧取得時に付与。募集中=active の件数） ----
+  active_listing_count?: number      // 出品数
+  active_buy_request_count?: number  // 買取数
 }
 
 // ---- アセット ----

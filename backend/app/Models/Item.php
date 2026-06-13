@@ -46,6 +46,16 @@ class Item extends Model
         return $this->hasMany(ItemBonusEffect::class);
     }
 
+    public function listings()
+    {
+        return $this->hasMany(Listing::class);
+    }
+
+    public function buyRequests()
+    {
+        return $this->hasMany(BuyRequest::class);
+    }
+
     /**
      * 装備セットの構成部位（通常アイテム）。多対多。
      * 部位アイテムは独立した通常アイテムなので、セット削除時はピボット行のみ削除される。

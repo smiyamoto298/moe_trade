@@ -79,6 +79,8 @@ export default function AdminItemsPage() {
   // 装備セットを展開表示（装備品タブのみ）。
   // チェックなし: セット本体のみ表示し構成部位は隠す / チェックあり: 構成部位を表示しセット本体は隠す
   const [expandSets, setExpandSets] = useState(false)
+  // 取引情報（出品数・買取数）を各行に表示するか（デフォルト表示）
+  const [showTrade, setShowTrade] = useState(true)
   const [loading, setLoading] = useState(true)
   const [mastersLoading, setMastersLoading] = useState(true)
 
@@ -438,6 +440,16 @@ export default function AdminItemsPage() {
             <span>装備セットを展開表示</span>
           </label>
         )}
+        {/* 取引情報（出品数・買取数）の表示切替 */}
+        <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
+          <input
+            type="checkbox"
+            checked={showTrade}
+            onChange={(e) => setShowTrade(e.target.checked)}
+            className="accent-sky-500 w-4 h-4"
+          />
+          <span>取引情報を表示</span>
+        </label>
       </div>
 
       {/* テーブル */}
@@ -465,15 +477,18 @@ export default function AdminItemsPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
                 </>
               )}
+              {showTrade && (
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">取引情報</th>
+              )}
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">状態</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border">
             {loading ? (
-              <tr><td colSpan={7} className="text-center py-10 text-gray-500">読み込み中...</td></tr>
+              <tr><td colSpan={showTrade ? 8 : 7} className="text-center py-10 text-gray-500">読み込み中...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-10 text-gray-500">アイテムが見つかりません</td></tr>
+              <tr><td colSpan={showTrade ? 8 : 7} className="text-center py-10 text-gray-500">アイテムが見つかりません</td></tr>
             ) : (
               filtered.map((item) => (
                 <tr
@@ -608,6 +623,24 @@ export default function AdminItemsPage() {
                     </div>
                   </td>
                   </>
+                  )}
+                  {showTrade && (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        <span
+                          title="出品数（募集中）"
+                          className="text-xs bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 px-1.5 py-0.5 rounded whitespace-nowrap"
+                        >
+                          出品 {item.active_listing_count ?? 0}
+                        </span>
+                        <span
+                          title="買取数（募集中）"
+                          className="text-xs bg-sky-900/30 border border-sky-700/40 text-sky-300 px-1.5 py-0.5 rounded whitespace-nowrap"
+                        >
+                          買取 {item.active_buy_request_count ?? 0}
+                        </span>
+                      </div>
+                    </td>
                   )}
                   <td className="px-4 py-3">
                     {item.verified_status === 'verified' ? (

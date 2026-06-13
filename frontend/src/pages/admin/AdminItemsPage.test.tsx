@@ -216,6 +216,36 @@ describe('AdminItemsPage 装備セットを展開表示', () => {
   })
 })
 
+describe('AdminItemsPage 取引情報の表示', () => {
+  it('デフォルト（チェックあり）で各行に出品数・買取数を表示し、外すと非表示になる', async () => {
+    const tradedItem = makeItem({ id: 1, name: '炎の大剣', active_listing_count: 3, active_buy_request_count: 2 })
+    mockedList.mockResolvedValue({ data: [tradedItem] })
+    renderPage()
+    await waitForLoaded()
+
+    // デフォルトは表示（チェックあり）
+    const checkbox = screen.getByRole('checkbox', { name: '取引情報を表示' })
+    expect(checkbox).toBeChecked()
+    const row = (await screen.findByText('炎の大剣')).closest('tr')!
+    expect(within(row).getByText('出品 3')).toBeInTheDocument()
+    expect(within(row).getByText('買取 2')).toBeInTheDocument()
+
+    // チェックを外すと取引情報を表示しない
+    await userEvent.click(checkbox)
+    expect(screen.queryByText('出品 3')).not.toBeInTheDocument()
+  })
+
+  it('件数が無いアイテムは出品0・買取0を表示する', async () => {
+    mockedList.mockResolvedValue({ data: [makeItem({ id: 1, name: '炎の大剣' })] })
+    renderPage()
+    await waitForLoaded()
+
+    const row = (await screen.findByText('炎の大剣')).closest('tr')!
+    expect(within(row).getByText('出品 0')).toBeInTheDocument()
+    expect(within(row).getByText('買取 0')).toBeInTheDocument()
+  })
+})
+
 describe('AdminItemsPage 行操作アイコン', () => {
   const rowFor = async (name: string) => (await screen.findByText(name)).closest('tr')!
 

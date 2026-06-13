@@ -42,6 +42,40 @@ class ItemApiTest extends TestCase
         $this->assertSame(1, $this->getJson('/api/items?per_page=0')->assertOk()->json('per_page'));
     }
 
+    public function test_アイテム一覧は募集中の出品数と買取数を返す(): void
+    {
+        $item  = $this->makeItem();
+        $other = $this->makeItem(['name' => '別の剣']);
+
+        // 募集中（active）の出品 2件 + 終了済み 1件（集計対象外）
+        $this->makeListing(null, $item);
+        $this->makeListing(null, $item);
+        $this->makeListing(null, $item, ['status' => 'completed']);
+
+        // 募集中の買取 1件
+        \App\Models\BuyRequest::create([
+            'user_id'    => $this->makeUser()->id,
+            'item_id'    => $item->id,
+            'price'      => 500,
+            'currency'   => 'AC',
+            'quantity'   => 1,
+            'trade_type' => 'fixed',
+            'status'     => 'active',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $data = collect($this->getJson('/api/items')->assertOk()->json('data'));
+
+        $target = $data->firstWhere('id', $item->id);
+        $this->assertSame(2, $target['active_listing_count']);
+        $this->assertSame(1, $target['active_buy_request_count']);
+
+        // 取引のないアイテムは 0 を返す
+        $empty = $data->firstWhere('id', $other->id);
+        $this->assertSame(0, $empty['active_listing_count']);
+        $this->assertSame(0, $empty['active_buy_request_count']);
+    }
+
     public function test_ログインユーザーはアイテムを登録できる_unverifiedで作成される(): void
     {
         $user = $this->makeUser();
