@@ -6,6 +6,7 @@ export interface AnnouncementPayload {
   level?: string
   link_url?: string | null
   link_label?: string | null
+  link_new_tab?: boolean
   is_active?: boolean
   // 表示期間（日数）。null = 無期限。
   display_days?: number | null

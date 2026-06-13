@@ -83,6 +83,7 @@ class AnnouncementController extends Controller
             'level'        => 'nullable|in:info,warning,error',
             'link_url'     => 'nullable|url|max:500',
             'link_label'   => 'nullable|string|max:100',
+            'link_new_tab' => 'nullable|boolean',
             'is_active'    => 'nullable|boolean',
             // 表示期間（日数）。null/未指定 = 無期限。
             'display_days' => 'nullable|integer|min:1|max:3650',

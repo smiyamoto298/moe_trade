@@ -402,6 +402,7 @@ export interface Announcement {
   level: AnnouncementLevel
   link_url: string | null
   link_label: string | null
+  link_new_tab: boolean
   is_active: boolean
   sort_order: number
   display_days: number | null

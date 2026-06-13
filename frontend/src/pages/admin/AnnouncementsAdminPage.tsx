@@ -10,6 +10,7 @@ interface Draft {
   level: AnnouncementLevel
   link_url: string
   link_label: string
+  link_new_tab: boolean
   is_active: boolean
   display_days: number | null
   expires_at: string | null
@@ -21,6 +22,7 @@ const toDraft = (a: Announcement): Draft => ({
   level: a.level,
   link_url: a.link_url ?? '',
   link_label: a.link_label ?? '',
+  link_new_tab: a.link_new_tab ?? false,
   is_active: a.is_active,
   display_days: a.display_days ?? null,
   expires_at: a.expires_at ?? null,
@@ -32,6 +34,7 @@ const newDraft = (): Draft => ({
   level: 'warning',
   link_url: '',
   link_label: '',
+  link_new_tab: false,
   is_active: true,
   display_days: null,
   expires_at: null,
@@ -93,6 +96,7 @@ export default function AnnouncementsAdminPage() {
       level: d.level,
       link_url: d.link_url.trim() || null,
       link_label: d.link_label.trim() || null,
+      link_new_tab: d.link_new_tab,
       is_active: d.is_active,
       display_days: d.display_days && d.display_days > 0 ? d.display_days : null,
     }
@@ -224,28 +228,37 @@ export default function AnnouncementsAdminPage() {
                     className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
                   />
                 </div>
-                <div className="sm:col-span-2">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">リンクの開き方</label>
+                  <select
+                    value={d.link_new_tab ? 'blank' : 'self'}
+                    onChange={(e) => setField(idx, { link_new_tab: e.target.value === 'blank' })}
+                    className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+                  >
+                    <option value="self">同じウィンドウで開く</option>
+                    <option value="blank">新しいウィンドウで開く</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs text-gray-400 mb-1">表示期間（日数・任意）</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={1}
-                      value={d.display_days ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setField(idx, { display_days: v === '' ? null : Math.max(1, Number(v)) })
-                      }}
-                      placeholder="無期限"
-                      className="w-28 bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
-                    />
-                    <span className="text-xs text-gray-500">
-                      {d.display_days && d.display_days > 0
-                        ? d.id != null && d.expires_at
-                          ? `日間（表示期限: ${fmtDate(d.expires_at)}）`
-                          : '日間（保存時の日時から起算）'
-                        : '空欄で無期限表示'}
-                    </span>
-                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    value={d.display_days ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setField(idx, { display_days: v === '' ? null : Math.max(1, Number(v)) })
+                    }}
+                    placeholder="無期限"
+                    className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    {d.display_days && d.display_days > 0
+                      ? d.id != null && d.expires_at
+                        ? `日間（表示期限: ${fmtDate(d.expires_at)}）`
+                        : '日間（保存時の日時から起算）'
+                      : '空欄で無期限表示'}
+                  </p>
                 </div>
               </div>
 

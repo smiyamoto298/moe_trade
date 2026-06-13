@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Announcement extends Model
 {
     protected $fillable = [
-        'message', 'level', 'link_url', 'link_label', 'is_active', 'sort_order',
+        'message', 'level', 'link_url', 'link_label', 'link_new_tab', 'is_active', 'sort_order',
         'display_days', 'expires_at',
     ];
 
@@ -15,6 +15,7 @@ class Announcement extends Model
     {
         return [
             'is_active'    => 'boolean',
+            'link_new_tab' => 'boolean',
             'sort_order'   => 'integer',
             'display_days' => 'integer',
             'expires_at'   => 'datetime',

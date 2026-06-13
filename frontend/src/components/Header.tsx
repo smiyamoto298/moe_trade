@@ -433,8 +433,8 @@ export default function Header() {
                       {' '}
                       <a
                         href={a.link_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        target={a.link_new_tab ? '_blank' : '_self'}
+                        rel={a.link_new_tab ? 'noopener noreferrer' : undefined}
                         className={`underline hover:text-white transition-colors ${c.link}`}
                       >
                         {a.link_label || a.link_url}
