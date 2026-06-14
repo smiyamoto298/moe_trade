@@ -693,6 +693,27 @@ class ItemApiTest extends TestCase
         $this->assertSame(1, \App\Models\BinderLabel::where('label', '薬調合')->count());
     }
 
+    public function test_レシピは必要スキル値を保存できる(): void
+    {
+        $user   = $this->makeUser();
+        $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $recipe = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $other->id, 'sort_order' => 1]);
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'        => $recipe->id,
+            'name'               => '上級ポーションのレシピ',
+            'recipe_name'        => '上級ポーション',
+            'skill_requirements' => ['薬調合' => 70, '料理' => 30],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('recipe_name', '上級ポーション');
+        $this->assertSame(
+            ['薬調合' => 70, '料理' => 30],
+            Item::find($res->json('id'))->skill_requirements
+        );
+    }
+
     public function test_バインダー候補一覧は公開取得できる(): void
     {
         \App\Models\BinderLabel::create(['label' => '料理', 'sort_order' => 0]);

@@ -106,6 +106,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   })()
   // 装備品（効果系の入力欄を出す通常アイテム）。装備セット本体は効果を持たない（部位側で設定）。
   const isPlain = !isSkill && !isAsset && !isEquipSet && !isOther
+  // 必要スキル値の入力欄を出す種別（テクニック＋レシピ）。レシピは作成に必要なスキル値を持つ。
+  const showSkillRequirements = isSkill || isRecipe
 
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -182,7 +184,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         special_conditions: isSkill ? [] : form.special_conditions,
         dyeable: isPlain ? form.dyeable : null,
         mithril: isPlain ? form.mithril : false,
-        skill_requirements: isSkill
+        skill_requirements: showSkillRequirements
           ? Object.fromEntries(
               Object.entries(form.skill_requirements)
                 .filter(([, v]) => v !== '')
@@ -373,10 +375,13 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         </div>
       )}
 
-      {/* 必要スキル（スキルカテゴリのみ） */}
-      {isSkill && (
+      {/* 必要スキル値（テクニック＋レシピ） */}
+      {showSkillRequirements && (
         <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-3">
           <p className="text-xs font-semibold text-primary-400">必要スキル値</p>
+          {isRecipe && (
+            <p className="text-[10px] text-gray-500">このレシピの作成に必要なスキル値があれば入力してください。</p>
+          )}
           {SKILL_GROUPS.map((group) => (
             <div key={group.group}>
               <p className="text-xs text-gray-500 mb-1.5">{group.group}</p>

@@ -489,6 +489,37 @@ class ListingApiTest extends TestCase
         $this->assertSame(['普通の剣'], $names($equipment));
     }
 
+    public function test_その他タブはレシピを必要スキル値で絞り込める(): void
+    {
+        $otherTop = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $recipe   = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $otherTop->id, 'sort_order' => 1]);
+
+        // 薬調合70 が必要なレシピと、料理40 のみのレシピ
+        $potion = $this->makeItem(['name' => '上級ポーションのレシピ', 'category_id' => $recipe->id, 'skill_requirements' => ['薬調合' => 70]]);
+        $bread  = $this->makeItem(['name' => 'パンのレシピ', 'category_id' => $recipe->id, 'skill_requirements' => ['料理' => 40]]);
+        $this->makeListing(null, $potion);
+        $this->makeListing(null, $bread);
+
+        $names = fn($res) => collect($res->json('data'))->pluck('item.name')->all();
+
+        // 薬調合を必要とするレシピのみ
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'item_type'  => 'other',
+            'skill_keys' => ['薬調合'],
+        ]));
+        $res->assertOk();
+        $this->assertSame(['上級ポーションのレシピ'], $names($res));
+
+        // 数値範囲（薬調合 <= 50）で絞ると該当なし
+        $res2 = $this->getJson('/api/listings?' . http_build_query([
+            'item_type'    => 'other',
+            'skill_keys'   => ['薬調合'],
+            'skill_ranges' => ['薬調合' => ['max' => 50]],
+        ]));
+        $res2->assertOk();
+        $this->assertSame([], $names($res2));
+    }
+
     public function test_出品詳細は出品中と取引成立のみ公開され他は404(): void
     {
         // active は閲覧可

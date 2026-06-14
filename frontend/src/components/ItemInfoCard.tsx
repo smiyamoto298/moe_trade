@@ -1,5 +1,6 @@
 import type { Item } from '../types'
 import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
+import { OTHER_RECIPE } from '../utils/itemType'
 import EquipmentSetBreakdown from './EquipmentSetBreakdown'
 
 /**
@@ -9,6 +10,10 @@ import EquipmentSetBreakdown from './EquipmentSetBreakdown'
  * 確認バッジ（UnverifiedBadge）や取引情報はページ固有なので呼び出し側で表示する。
  */
 export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: string }) {
+  // レシピの必要スキル値（テクニックの同項目と区別するため、レシピ種別のみ表示する）
+  const recipeSkills = item.category.name === OTHER_RECIPE
+    ? Object.entries(item.skill_requirements ?? {})
+    : []
   return (
     <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
       <p className="text-sm text-gray-400 mb-1">{item.category.name}</p>
@@ -54,8 +59,8 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
         </div>
       )}
 
-      {/* 「その他」種別情報（未開封ペット: ペット名 / レシピ: バインダー・レシピ名） */}
-      {(item.pet_name || item.recipe_name || item.recipe_binder) && (
+      {/* 「その他」種別情報（未開封ペット: ペット名 / レシピ: バインダー・レシピ名・必要スキル値） */}
+      {(item.pet_name || item.recipe_name || item.recipe_binder || recipeSkills.length > 0) && (
         <div className="mb-4">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{item.category.name}情報</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -78,6 +83,18 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
               </div>
             )}
           </div>
+          {recipeSkills.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 mb-1">必要スキル値</p>
+              <div className="flex flex-wrap gap-1">
+                {recipeSkills.map(([skill, val]) => (
+                  <span key={skill} className="text-xs bg-primary-500/10 border border-primary-500/30 rounded px-2 py-0.5 text-primary-300">
+                    {skill}: <span className="text-white font-medium">{val}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

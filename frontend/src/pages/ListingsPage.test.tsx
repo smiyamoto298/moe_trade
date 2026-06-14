@@ -110,7 +110,7 @@ const page = (data: Listing[]): { data: Paginated<Listing> } => ({
   data: { data, current_page: 1, last_page: 1, per_page: 20, total: data.length },
 })
 
-function renderAt(path: '/listings' | '/skills' | '/assets') {
+function renderAt(path: '/listings' | '/skills' | '/assets' | '/others') {
   // App.tsx と同じルーティング構成（ルートごとの key で再マウント）を再現する
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -118,6 +118,7 @@ function renderAt(path: '/listings' | '/skills' | '/assets') {
         <Route path="/listings" element={<ListingsPage key="equipment" mode="equipment" />} />
         <Route path="/skills" element={<ListingsPage key="skill" mode="skill" />} />
         <Route path="/assets" element={<ListingsPage key="asset" mode="asset" />} />
+        <Route path="/others" element={<ListingsPage key="other" mode="other" />} />
       </Routes>
     </MemoryRouter>
   )
@@ -365,6 +366,32 @@ describe('ListingsPage 絞り込み（テクニックタブ）', () => {
     // 構成検索へ切り替え。マスタリ込みチェックは通常検索専用なので消える
     await userEvent.click(screen.getByRole('button', { name: '構成検索' }))
     await waitFor(() => expect(lastParams()).toMatchObject({ skill_match: 'composition' }))
+    expect(
+      screen.queryByRole('checkbox', { name: 'マスタリに含まれるスキルも対象にする' })
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('ListingsPage 絞り込み（その他タブ＝レシピ）', () => {
+  it('必要スキルで絞り込めるが、テクニック専用の検索モード切替・マスタリチェックは出さない', async () => {
+    renderAt('/others')
+    await waitForLoaded()
+
+    // レシピの必要スキル値で絞り込み（skill_match は送らず、バックエンド既定の通常検索になる）
+    await userEvent.click(screen.getByText('必要スキルを選択'))
+    await userEvent.click(screen.getByRole('checkbox', { name: '薬調合' }))
+    await waitFor(() => expect(lastParams()).toMatchObject({ item_type: 'other', skill_keys: ['薬調合'] }))
+    expect(lastParams()).not.toHaveProperty('skill_match')
+
+    // 数値範囲も skill_ranges として送れる
+    const rangeArea = screen.getByText('必要スキル値 — 数値絞り込み').closest('div')!
+    await userEvent.type(within(rangeArea).getByPlaceholderText('最大'), '70')
+    await waitFor(() =>
+      expect(lastParams()).toMatchObject({ skill_ranges: { 薬調合: { max: 70 } } })
+    )
+
+    // テクニック専用UI（構成検索ボタン・マスタリ込みチェック）は表示されない
+    expect(screen.queryByRole('button', { name: '構成検索' })).not.toBeInTheDocument()
     expect(
       screen.queryByRole('checkbox', { name: 'マスタリに含まれるスキルも対象にする' })
     ).not.toBeInTheDocument()

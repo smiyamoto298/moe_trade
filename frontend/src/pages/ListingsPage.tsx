@@ -439,8 +439,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
             </div>
             )}
 
-            {/* 必要スキル（スキルモードのみ） */}
-            {isSkillMode && (
+            {/* 必要スキル（テクニック＋その他＝レシピ）。レシピは作成に必要なスキル値で絞り込む。 */}
+            {(isSkillMode || isOtherMode) && (
               <div>
                 <label className="block text-xs text-gray-400 mb-1.5">必要スキル</label>
                 <FilterPopup
@@ -450,7 +450,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                   onChange={setSkillKeys}
                   searchable
                 />
-                {/* 検索モード: 通常検索 / 構成検索 */}
+                {/* 検索モード: 通常検索 / 構成検索（マスタリ概念のあるテクニックのみ） */}
+                {isSkillMode && (
                 <div className="mt-2">
                   <div className="flex rounded-md overflow-hidden border border-surface-border text-xs">
                     {([
@@ -478,6 +479,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                       : '条件に設定したスキル構成で使用できるテクニックを表示'}
                   </p>
                 </div>
+                )}
               </div>
             )}
 
@@ -676,8 +678,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 ranges={params.skill_ranges ?? {}}
                 onChange={setSkillRange}
               />
-              {/* 通常検索のとき、マスタリ構成スキルも対象にするか */}
-              {(params.skill_match ?? 'normal') === 'normal' && (
+              {/* 通常検索のとき、マスタリ構成スキルも対象にするか（テクニックのみ） */}
+              {isSkillMode && (params.skill_match ?? 'normal') === 'normal' && (
                 <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
                   <input
                     type="checkbox"

@@ -197,6 +197,8 @@ export default function AdminItemEditPage() {
   })()
   // 装備品（効果系の入力欄を出す通常アイテム）。装備セット本体は効果を持たない（部位側で設定）。
   const isPlain = !isSkill && !isAsset && !isEquipSet && !isOther
+  // 必要スキル値の入力欄を出す種別（テクニック＋レシピ）。レシピは作成に必要なスキル値を持つ。
+  const showSkillRequirements = isSkill || isRecipe
 
   // 一覧に戻るとき、編集中アイテムの種別タブを復元するための state
   const listState = {
@@ -383,7 +385,7 @@ export default function AdminItemEditPage() {
         mithril: isPlain ? form.mithril : false,
         is_equipment_set: isEquipSet,
         ...(isEquipSet ? { pieces } : {}),
-        skill_requirements: isSkill
+        skill_requirements: showSkillRequirements
           ? Object.fromEntries(
               Object.entries(form.skill_requirements)
                 .filter(([, v]) => v !== '')
@@ -780,10 +782,13 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* スキル要件（スキルカテゴリのみ） */}
-        {isSkill && (
+        {/* スキル要件（テクニック＋レシピ） */}
+        {showSkillRequirements && (
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
             <h2 className="text-sm font-semibold text-gray-300">必要スキル値</h2>
+            {isRecipe && (
+              <p className="text-xs text-gray-500">このレシピの作成に必要なスキル値があれば入力してください。</p>
+            )}
             {SKILL_GROUPS.map((group) => (
               <div key={group.group}>
                 <p className="text-xs text-gray-500 mb-2">{group.group}</p>
