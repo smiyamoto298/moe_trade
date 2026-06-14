@@ -102,6 +102,42 @@ export default function OwnedItemsPage() {
     }
   }, [inventory.accounts, pasteAccountId])
 
+  // ---- 一覧表示時の自動再紐づけ ----
+  // 登録アイテムと未紐づけ（itemId=null）の行を、一覧を表示するタイミングで登録アイテムへ再照合し、
+  // 一致したものを自動でリンクする。取り込み時点では未登録だったアイテムが後から新規登録された場合などに、
+  // ページを開き直すだけで登録アイテム情報（カテゴリ・追加効果・相場・出品判定）が紐づく。
+  // 末尾「...」の省略名は誤紐づけを避けるため対象外（候補ボタンで手動選択する）。
+  const relinkedRef = useRef(false)
+  useEffect(() => {
+    if (loading || relinkedRef.current) return
+    relinkedRef.current = true
+    const names = Array.from(new Set(
+      latestRef.current.items
+        .filter((i) => i.itemId == null && !isTruncatedName(i.name))
+        .map((i) => i.name)
+    ))
+    if (names.length === 0) return
+    let active = true
+    itemsApi.matchNames(names)
+      .then((res) => {
+        if (!active) return
+        const map = res.data
+        if (Object.keys(map).length === 0) return
+        commit((p) => ({
+          ...p,
+          items: p.items.map((i) =>
+            i.itemId == null && !isTruncatedName(i.name) && map[i.name]
+              ? { ...i, itemId: map[i.name].id, item: map[i.name] }
+              : i
+          ),
+        }))
+      })
+      .catch(() => {})
+    return () => { active = false }
+    // commit は安定参照（再生成されない）ため依存に含めない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
+
   // ---- 買取中価格の取得（紐づけ済みアイテムが対象） ----
   const linkedItemIds = useMemo(
     () => Array.from(new Set(inventory.items.map((i) => i.itemId).filter((v): v is number => v != null))),
