@@ -16,48 +16,57 @@
 
 ## エージェント運用（自動化開発のルール）
 
-このリポジトリは複数のサブエージェントで開発を自動化する。役割とモデルは `.claude/agents/` の定義で固定されている。**設定で縛るのが原則で、安いモデルへ勝手に落としたり、品質ゲートを飛ばしたりしない。**
+このリポジトリは複数のサブエージェントで開発を自動化する。役割とモデルは `.claude/agents/` の定義で固定されている。**設定で縛るのが原則。品質の上流（仕様・テスト観点）は必ず opus が担い、ゲートは飛ばさない。** コスト削減は「ゲート省略」ではなく **実行回数・モデル・コンテキストの最適化** で行う。
+
+> **起動はユーザー起点（重要）**: 以下のサブエージェント・フローは、ユーザーが明示的に依頼したとき（例: 「エージェントフローで実装して」「architect に設計させて」）にのみ起動する。**この文書を根拠にサブエージェントを自動起動しない。** ハーネス側で「ユーザーが明示依頼しない限りサブエージェントを起動しない」と制約されている場合はそれに従う（本文書はフローの**手順**を定義するもので、自動起動を許可するものではない）。明示依頼が無いタスクは、メインセッションが自分のツールでインライン処理する。
 
 | エージェント | モデル | 役割 |
 |---|---|---|
-| architect | opus | 仕様策定・タスク分類（simple/normal）・ファイル領域割当 |
-| test-designer | opus | テスト観点設計・テストレビュー（品質ゲート） |
+| architect | opus | 仕様策定・タスク分類（simple/normal/critical）・worktree ストリーム割当 |
+| test-designer | opus | テスト観点設計（全タスク）・テストレビュー（`[critical]` のみ品質ゲート） |
 | implementer | sonnet | 判断を要する通常実装 |
 | simple-impl | haiku | 仕様が自明な単純実装 |
-| reviewer | sonnet | コードレビュー |
+| reviewer | sonnet | コードレビュー（既定の単一レビュー） |
 | linter | haiku | リント/フォーマットの機械的修正 |
 
 ### 標準フロー
 
-1. **architect（opus）** が要件を `design.md` 準拠の仕様に落とし、各タスクを `[simple]`/`[normal]` に分類、編集ファイルと `[shared]` を作業計画の表で明示する。
-2. **test-designer（opus）** がテスト観点を `docs/test-plan/` に設計する。
-3. orchestrator が並行ディスパッチ。**編集ファイルが重ならないタスクのみ並行**で走らせ、重なる場合・`[shared]` ファイルはロックで順番待ちさせる（下記）。
-4. **implementer / simple-impl** が仕様＋テスト計画どおりに実装＋テストを書く。
+1. **architect（opus）** が要件を `design.md` 準拠の仕様に落とし、各タスクを `[simple]`/`[normal]` に分類（取引ロジック・認可・破壊的処理は `[critical]`）、**worktree 作業ストリーム** と編集ファイルを作業計画の表で明示する。
+2. **test-designer（opus）** がテスト観点を `docs/test-plan/` に設計する（全タスク）。
+3. orchestrator が **独立ストリームを `isolation: "worktree"` で並行ディスパッチ**（必要に応じ `run_in_background: true`）。各サブエージェントは自分の worktree 内だけで作業する（下記）。
+4. **implementer / simple-impl** が仕様＋テスト計画どおりに実装し、`bash .claude/test-scope.sh` で**変更したテストだけ**を緑にする。
 5. **reviewer（sonnet）** がレビュー（`REVIEW: APPROVED` / `CHANGES_REQUESTED`）。
-6. **test-designer（opus）** がテストをレビューし `GATE: PASS` / `FAIL` を出す。
-7. Stop 時に最終品質ゲート（テスト緑・ビルド通過・design.md 鮮度）を自動チェック。
+6. `[critical]` タスクのみ **test-designer（opus）** が事後テストレビューで `GATE: PASS` / `FAIL` を出す。
+7. orchestrator が各 worktree をマージして統合。**Stop 時に最終品質ゲート（全件テスト緑・ビルド通過・design.md 鮮度）を main ツリーで自動チェック**。
 
-品質の上流（仕様・テスト観点）は必ず opus が担う。実装のみ sonnet/haiku に流すが、テスト観点・テストレビューは落とさない。
+### 並行作業は git worktree で分離する（第一原則）
 
-### 並行作業のファイル衝突防止（重要）
+同一ファイルの同時編集による破壊を、ロックの順番待ち（＝直列化）ではなく **worktree 分離** で根本的に防ぐ。各作業ストリームに独立した git チェックアウトを与え、衝突は git のマージ時に解決する。
 
-同一ファイルを複数エージェントが同時編集すると破壊が起きる。3層で防ぐ:
+- orchestrator は独立ストリームを **`isolation: "worktree"`** でディスパッチする。各 implementer/simple-impl は自分の worktree 内だけで編集・テストする。ストリーム間はファイルが物理的に別ツリーなので衝突しない。
+- architect は「重ならないモジュール単位（例: order/ risk/ feed/）」でストリームを割り当てる。**依存のあるタスクは同一ストリームに寄せる**（直列に処理させる）。
+- 統合は orchestrator が各 worktree をマージして行い、コンフリクトは git で解決する。
+- **フォールバック（単一ツリーで複数編集する場合のみ）**: `bash .claude/lock.sh acquire/release/check <agent> <相対パス>` と `.claude/shared_paths.txt` を手動で使う。pre/post edit の自動ロック hook は撤去済み（worktree が標準のため不要かつ毎編集のオーバーヘッド）。
 
-1. **領域分割（第一防衛線）**: architect が各タスクの編集ファイルを重複しないように割り当てる。担当外のファイルは編集しない。
-2. **共有ファイルのロック**: ルーティング定義・共通型・`design.md` など避けられない共有対象は `.claude/shared_paths.txt` に列挙してある。これらを編集する前に必ずロックを取り、取れなければ**待つ**。
-   - 取得: `bash .claude/lock.sh acquire <自分のagent名> <相対パス>`（非0で失敗＝保有者あり。待つ）
-   - 解放: `bash .claude/lock.sh release <自分のagent名> <相対パス>`（編集完了後すぐ）
-   - 確認: `bash .claude/lock.sh check <相対パス>`
-   - ロックが取れない間は、自分の他の割当タスクを先に進める。空くまで対象ファイルは触らない。
-3. **hook による強制**: `Edit/Write` の前後で `.claude/hooks/pre_edit_lock.sh` / `post_edit_unlock.sh` が自動でロック取得・解放する。共有ファイルがロック中なら編集はブロックされる（人手に頼らず機械的に順番待ちになる）。
+### テスト品質ゲート（カバレッジ維持・実行回数を最適化）
 
-`[shared]` に新しいファイルが必要になったら `.claude/shared_paths.txt` に追記する。
+全件テストを毎サブエージェント停止ごとに回すのをやめ（最大のコスト要因だった）、**スコープ実行＋統合時全件**でカバレッジを同等に保つ:
+
+- **実装中（各 worktree）**: `bash .claude/test-scope.sh` が **変更したテストファイルだけ** を実行する。テストは SQLite `:memory:` なので worktree ごとのエフェメラル php コンテナで並列実行しても DB 競合しない。backend のコードを変更したのにテスト未追加なら **gate FAIL**（テスト追加を機械的に強制）。
+- **統合時（Stop hook）**: `stop_quality_gate.sh` が main ツリーで **全件**（backend PHPUnit ＋ frontend ビルド）を実行し、回帰を最終担保する。
+- SubagentStop hook は backstop（main ツリーに変更が見えればスコープ実行、無ければ no-op）。
+
+### レビュー
+
+- 既定は **reviewer（sonnet）1本**。`[critical]`（取引ロジック・認可・破壊的処理）のみ **test-designer（opus）** の事後テストレビューを追加する。
+- 実装前の **opus テスト計画は全タスクで実施**（高レバレッジなので落とさない）。
 
 ### コスト運用
 
-- タスク完了したエージェントは停止する（アイドルの opus セッションもトークンを消費する）。
-- ディスパッチ間で `/clear` し、陳腐化した履歴の再送を避ける。
-- code review は sonnet、lint は haiku に固定（`.claude/agents/` で強制済み）。
+- 完了したエージェントは停止する（アイドルの opus もトークンを消費する）。
+- ディスパッチ間で `/clear`。サブエージェントは**簡潔な構造化結果**（task_id / PASS・FAIL / 変更ファイル一覧）だけ返し、orchestrator のコンテキストを薄く保つ。
+- 独立ストリームは `run_in_background` で非同期化し、待ちの往復を減らす。
+- 全件テストは統合時1回。code review は sonnet、lint は haiku に固定（`.claude/agents/` で強制済み）。
 
 ## 構成
 

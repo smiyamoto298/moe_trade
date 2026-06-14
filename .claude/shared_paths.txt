@@ -1,7 +1,9 @@
 # .claude/shared_paths.txt
+# 【フォールバック専用】標準フローは worktree 分離(別チェックアウト)で衝突を防ぐため、
+# このロック一覧は使わない。worktree を使わず単一ツリーで複数編集する場合にのみ、
+# `bash .claude/lock.sh acquire/release/check` を手動で使うときの共有ファイル一覧。
 # 複数タスクが同時に触りうる「共有ファイル」を1行1パターンで列挙する(部分一致)。
-# ここに載るファイルだけが編集前ロック(順番待ち)の対象になる。
-# architect が作業計画で [shared] とした実ファイルに合わせて随時メンテナンスする。
+# pre/post edit の自動ロック hook は settings.json から撤去済み(worktree が標準のため)。
 #
 # 行頭 # はコメント。空行は無視。
 #
