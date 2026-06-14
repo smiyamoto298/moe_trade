@@ -21,8 +21,11 @@ class PromoTweetComposer
     /** URLは長さによらず t.co 短縮で23文字としてカウントされる */
     public const URL_WEIGHT = 23;
 
-    public const SECTION_TRADES = '【本日の取引件数】';
+    public const SECTION_TRADES = '【本日の取引成立】';
     public const SECTION_ITEMS  = '【新規の取引】';
+
+    // 現在有効な出品・買取の登録総数（期間に依存しないスナップショット）
+    public const SECTION_REGISTERED = '【現在の登録数】';
 
     // 期間（累計）モード用の見出し
     public const SECTION_TRADES_RANGE = '【期間中の取引成立数】';
@@ -34,6 +37,8 @@ class PromoTweetComposer
      * @param array<int, array{name: string, price: int, currency: string, count: int}> $listings
      * @param array<int, array{name: string, price: int, currency: string, count: int}> $buyRequests
      * @param int $tradeCount 取引成立件数
+     * @param int $activeListingCount 現在有効な出品の総数
+     * @param int $activeBuyRequestCount 現在有効な買取の総数
      * @param string $siteUrl 各ツイート末尾に付けるサイトURL
      * @param bool $cumulative true なら期間（累計）モードの見出し（【期間中の〜】）を使う
      * @return string[] ツイート文面（投稿順）
@@ -43,6 +48,8 @@ class PromoTweetComposer
         array $listings,
         array $buyRequests,
         int $tradeCount,
+        int $activeListingCount,
+        int $activeBuyRequestCount,
         string $siteUrl,
         bool $cumulative = false,
         string $hashtags = self::HASHTAGS
@@ -63,6 +70,7 @@ class PromoTweetComposer
         $current = [
             "📢MoE Trade（{$dateLabel}）",
             $tradesHeader . "{$tradeCount}件",
+            self::SECTION_REGISTERED . "出品{$activeListingCount}件:買取{$activeBuyRequestCount}件",
         ];
 
         // 現在のツイートに行を追加できるか（改行1文字分を含めて）判定する

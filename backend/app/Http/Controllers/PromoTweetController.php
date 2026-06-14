@@ -79,12 +79,22 @@ class PromoTweetController extends Controller
             ->where('traded_at', $endOp, $end)
             ->count();
 
+        // 現在有効な出品・買取の登録総数（公開一覧と同じ条件: active かつ非凍結ユーザー）
+        $activeListingCount = Listing::where('status', 'active')
+            ->whereHas('user', fn ($q) => $q->where('is_suspended', false))
+            ->count();
+        $activeBuyRequestCount = BuyRequest::where('status', 'active')
+            ->whereHas('user', fn ($q) => $q->where('is_suspended', false))
+            ->count();
+
         $siteUrl = rtrim(config('app.frontend_url'), '/') . '/listings';
         $tweets  = (new PromoTweetComposer())->compose(
             $dateLabel,
             $listings,
             $buyRequests,
             $tradeCount,
+            $activeListingCount,
+            $activeBuyRequestCount,
             $siteUrl,
             $cumulative
         );

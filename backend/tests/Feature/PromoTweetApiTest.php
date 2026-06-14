@@ -93,7 +93,9 @@ class PromoTweetApiTest extends TestCase
             ->assertJsonPath('buy_request_count', 1);
 
         $all = implode("\n", array_column($res->json('tweets'), 'text'));
-        $this->assertStringContainsString('【本日の取引件数】2件', $all);
+        $this->assertStringContainsString('【本日の取引成立】2件', $all);
+        // 現在有効な出品（剛力の剣＋過去の槍。取り下げの斧は cancelled で除外）と買取（守りの盾）の登録総数
+        $this->assertStringContainsString('【現在の登録数】出品2件:買取1件', $all);
         $this->assertStringContainsString('【新規の取引】', $all);
         $this->assertStringContainsString('売)剛力の剣 12,000AC', $all);
         $this->assertStringContainsString('買)守りの盾 500AC', $all);
