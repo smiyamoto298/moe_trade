@@ -18,7 +18,7 @@ import type { Item, ItemCategory, Listing, Paginated, User } from '../types'
 // - 出品コメントがある場合はアイテム行の直下にコメント行を表示する
 // - 削れあり出品は種別（カテゴリ名／⚔ 装備セット）バッジの横に「⚠ 削れあり」を表示する
 
-vi.mock('../api/listings', () => ({ listingsApi: { list: vi.fn() } }))
+vi.mock('../api/listings', () => ({ listingsApi: { list: vi.fn(), counts: vi.fn() } }))
 vi.mock('../api/items', () => ({ itemsApi: { categories: vi.fn() } }))
 vi.mock('../api/client', () => ({
   default: { get: vi.fn() },
@@ -40,6 +40,7 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 const mockedList = vi.mocked(listingsApi.list)
+const mockedCounts = vi.mocked(listingsApi.counts)
 const mockedCategories = vi.mocked(itemsApi.categories)
 const mockedClientGet = vi.mocked(client.get)
 
@@ -133,6 +134,7 @@ beforeEach(() => {
   auth.user = null
   mockedCategories.mockResolvedValue({ data: categories })
   mockedList.mockResolvedValue(page([makeListing()]))
+  mockedCounts.mockResolvedValue({ data: { equipment: 12, technique: 3, asset: 5, other: 1 } })
   mockedClientGet.mockImplementation((url: string) => {
     if (url === '/bonus-value-labels') return Promise.resolve({ data: ['物理ダメージ'] })
     if (url === '/mypage/chats') return Promise.resolve({ data: [] })
@@ -199,12 +201,34 @@ describe('ListingsPage タブ', () => {
     expect(screen.getByText('銀行')).toBeInTheDocument()
   })
 
+  it('各種別タブに件数バッジを表示する（counts API の結果）', async () => {
+    renderAt('/listings')
+    await waitForLoaded()
+
+    expect(mockedCounts).toHaveBeenCalledWith(false)
+    // 各タブのラベルと件数が同じリンク内に表示される
+    const equip = await screen.findByRole('link', { name: /装備品/ })
+    expect(equip).toHaveTextContent('12')
+    expect(screen.getByRole('link', { name: /テクニック/ })).toHaveTextContent('3')
+    expect(screen.getByRole('link', { name: /アセット/ })).toHaveTextContent('5')
+    expect(screen.getByRole('link', { name: /その他/ })).toHaveTextContent('1')
+  })
+
+  it('「取引完了を含める」を切り替えると counts を完了込みで取り直す', async () => {
+    renderAt('/listings')
+    await waitForLoaded()
+    expect(mockedCounts).toHaveBeenCalledWith(false)
+
+    await userEvent.click(screen.getByRole('checkbox', { name: '取引完了を含める' }))
+    await waitFor(() => expect(mockedCounts).toHaveBeenCalledWith(true))
+  })
+
   it('タブリンクで装備品→テクニックに切り替えると再マウントして再検索する', async () => {
     renderAt('/listings')
     await waitForLoaded()
     expect(lastParams()).toMatchObject({ item_type: 'equipment' })
 
-    await userEvent.click(screen.getByRole('link', { name: 'テクニック' }))
+    await userEvent.click(screen.getByRole('link', { name: /テクニック/ }))
     await waitFor(() =>
       expect(lastParams()).toEqual({
         sort: 'newest', page: 1, item_type: 'technique', skill_match: 'normal',

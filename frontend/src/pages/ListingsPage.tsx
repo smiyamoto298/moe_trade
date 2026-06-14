@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { usePageMeta } from '../hooks/usePageMeta'
 import client from '../api/client'
-import { listingsApi } from '../api/listings'
+import { listingsApi, type ListingCounts } from '../api/listings'
 import { itemsApi } from '../api/items'
 import FilterPopup, { type FilterOption } from '../components/FilterPopup'
 import StatRangeFilter from '../components/StatRangeFilter'
@@ -65,6 +65,25 @@ function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
   )
 }
 
+// 種別切替タブ。ラベルの右に件数バッジを表示する。
+// 件数バッジは未取得（count === undefined）でも領域を確保し（invisible）、
+// 読み込み前後でタブ幅が変わらないようにする。桁数差でも幅が動きにくいよう min-w と中央寄せを付ける。
+function TabLink({ to, label, active, count }: { to: string; label: string; active: boolean; count?: number }) {
+  return (
+    <Link
+      to={to}
+      className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 transition-colors ${active ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+    >
+      <span>{label}</span>
+      <span
+        className={`text-[10px] leading-none px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center tabular-nums ${active ? 'bg-white/20 text-white' : 'bg-surface-border/60 text-gray-400'} ${count === undefined ? 'invisible' : ''}`}
+      >
+        {count ?? 0}
+      </span>
+    </Link>
+  )
+}
+
 interface Props { mode?: 'equipment' | 'skill' | 'asset' | 'other' }
 
 export default function ListingsPage({ mode = 'equipment' }: Props) {
@@ -110,6 +129,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set())
   // 既に取引希望済みの listing_id セット
   const [requestedListingIds, setRequestedListingIds] = useState<Set<number>>(new Set())
+  // 種別切替タブに表示する各種別の出品件数
+  const [counts, setCounts] = useState<ListingCounts | null>(null)
 
   useEffect(() => {
     setMastersLoading(true)
@@ -139,6 +160,13 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
       })
       .finally(() => setLoading(false))
   }, [params])
+
+  // 種別タブの件数を取得（「取引完了を含める」の切替に追従させる）
+  useEffect(() => {
+    listingsApi.counts(params.include_completed ?? false)
+      .then((r) => setCounts(r.data))
+      .catch(() => {})
+  }, [params.include_completed])
 
   // 汎用セッター
   const setParam = (key: keyof ListingSearchParams, value: unknown) =>
@@ -282,10 +310,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <h1 className="text-lg sm:text-xl font-bold text-white">出品一覧</h1>
             <div data-tour="listings-modes" className="flex border border-surface-border rounded-lg overflow-hidden text-xs sm:text-sm">
-              <Link to="/listings" className={`px-3 sm:px-4 py-1.5 transition-colors ${isEquipmentMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>装備品</Link>
-              <Link to="/skills" className={`px-3 sm:px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>テクニック</Link>
-              <Link to="/assets" className={`px-3 sm:px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>アセット</Link>
-              <Link to="/others" className={`px-3 sm:px-4 py-1.5 transition-colors ${isOtherMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>その他</Link>
+              <TabLink to="/listings" label="装備品" active={isEquipmentMode} count={counts?.equipment} />
+              <TabLink to="/skills" label="テクニック" active={isSkillMode} count={counts?.technique} />
+              <TabLink to="/assets" label="アセット" active={isAssetMode} count={counts?.asset} />
+              <TabLink to="/others" label="その他" active={isOtherMode} count={counts?.other} />
             </div>
           </div>
         {user && (

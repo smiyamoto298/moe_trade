@@ -14,10 +14,27 @@ export interface ListingCreatePayload {
   servers: { server: string; character_id: number | null }[]
 }
 
+// 種別タブに表示する各種別の出品件数
+export interface ListingCounts {
+  equipment: number
+  technique: number
+  asset: number
+  other: number
+}
+
 export const listingsApi = {
   list: (params: ListingSearchParams): Promise<{ data: Paginated<Listing> }> => {
     if (USE_MOCK) return Promise.resolve({ data: mockListings })
     return client.get<Paginated<Listing>>('/listings', { params })
+  },
+
+  counts: (includeCompleted = false): Promise<{ data: ListingCounts }> => {
+    if (USE_MOCK) {
+      return Promise.resolve({ data: { equipment: 0, technique: 0, asset: 0, other: 0 } })
+    }
+    return client.get<ListingCounts>('/listings/counts', {
+      params: includeCompleted ? { include_completed: true } : {},
+    })
   },
 
   get: (id: number): Promise<{ data: Listing }> => {

@@ -25,28 +25,7 @@ class ListingController extends Controller
         if (!$itemType && $request->has('is_skill')) {
             $itemType = $request->boolean('is_skill') ? 'technique' : 'equipment';
         }
-        if ($itemType) {
-            // 対象のトップカテゴリ名と包含/除外を決定
-            [$names, $include] = match ($itemType) {
-                'technique' => [['テクニック'], true],
-                'asset'     => [['アセット'], true],
-                'other'     => [['その他'], true],
-                // equipment: テクニック・アセット・その他のいずれでもないもの
-                default     => [['テクニック', 'アセット', 'その他'], false],
-            };
-
-            // アイテムのトップカテゴリ名（子カテゴリは親名、トップ自身はその名前）で判定
-            $query->whereHas('item.category', function ($cq) use ($names, $include) {
-                $cq->where(function ($q) use ($names, $include) {
-                    $q->whereHas('parent', function ($pq) use ($names, $include) {
-                        $include ? $pq->whereIn('name', $names) : $pq->whereNotIn('name', $names);
-                    })->orWhere(function ($q2) use ($names, $include) {
-                        $q2->whereDoesntHave('parent');
-                        $include ? $q2->whereIn('name', $names) : $q2->whereNotIn('name', $names);
-                    });
-                });
-            });
-        }
+        $this->applyItemTypeFilter($query, $itemType);
 
         // フィルター
         $query->when($request->item_name, fn($q) =>
@@ -371,6 +350,57 @@ class ListingController extends Controller
         $result->getCollection()->each(fn(Listing $l) => $l->resolveServerContacts());
 
         return response()->json($result);
+    }
+
+    /**
+     * 種別（装備品 / テクニック / アセット / その他）でクエリを絞り込む。
+     * アイテムのトップカテゴリ名（子カテゴリは親名、トップ自身はその名前）で判定する。
+     */
+    private function applyItemTypeFilter($query, ?string $itemType): void
+    {
+        if (!$itemType) {
+            return;
+        }
+        // 対象のトップカテゴリ名と包含/除外を決定
+        [$names, $include] = match ($itemType) {
+            'technique' => [['テクニック'], true],
+            'asset'     => [['アセット'], true],
+            'other'     => [['その他'], true],
+            // equipment: テクニック・アセット・その他のいずれでもないもの
+            default     => [['テクニック', 'アセット', 'その他'], false],
+        };
+
+        $query->whereHas('item.category', function ($cq) use ($names, $include) {
+            $cq->where(function ($q) use ($names, $include) {
+                $q->whereHas('parent', function ($pq) use ($names, $include) {
+                    $include ? $pq->whereIn('name', $names) : $pq->whereNotIn('name', $names);
+                })->orWhere(function ($q2) use ($names, $include) {
+                    $q2->whereDoesntHave('parent');
+                    $include ? $q2->whereIn('name', $names) : $q2->whereNotIn('name', $names);
+                });
+            });
+        });
+    }
+
+    /**
+     * 種別タブに表示する各種別の出品件数。
+     * 一覧と同じ公開条件（出品中／取引成立・凍結ユーザー除外）で集計する。
+     * include_completed は一覧と揃えるが、その他の絞り込みは反映しない（タブの総件数）。
+     */
+    public function counts(Request $request)
+    {
+        $includeCompleted = $request->boolean('include_completed', false);
+        $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
+
+        $counts = [];
+        foreach (['equipment', 'technique', 'asset', 'other'] as $type) {
+            $query = Listing::whereIn('status', $statuses)
+                ->whereHas('user', fn($q) => $q->where('is_suspended', false));
+            $this->applyItemTypeFilter($query, $type);
+            $counts[$type] = $query->count();
+        }
+
+        return response()->json($counts);
     }
 
     public function show(int $id)

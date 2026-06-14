@@ -62,8 +62,9 @@ Route::get('binder-labels', [\App\Http\Controllers\BinderLabelController::class,
 Route::get('items',              [ItemController::class, 'index']);
 Route::get('items/{id}', [ItemController::class, 'show']);
 Route::get('items/{id}/price-analytics', [ItemController::class, 'priceAnalytics']);
-Route::get('listings',      [ListingController::class, 'index']);
-Route::get('listings/{id}', [ListingController::class, 'show']);
+Route::get('listings',        [ListingController::class, 'index']);
+Route::get('listings/counts', [ListingController::class, 'counts']);
+Route::get('listings/{id}',   [ListingController::class, 'show']);
 Route::get('buy-requests',      [BuyRequestController::class, 'index']);
 Route::post('buy-requests/prices', [BuyRequestController::class, 'prices']);
 Route::get('buy-requests/{id}', [BuyRequestController::class, 'show']);

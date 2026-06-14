@@ -44,6 +44,54 @@ class ListingApiTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
+    public function test_種別件数エンドポイントは各種別の出品数を返す(): void
+    {
+        $cats  = $this->makeCategoryTree();
+        $asset = ItemCategory::create(['name' => 'アセット', 'sort_order' => 3]);
+        $other = ItemCategory::create(['name' => 'その他', 'sort_order' => 4]);
+
+        // 装備品2件・テクニック1件・アセット1件・その他0件
+        $this->makeListing(null, $this->makeItem(['name' => '剣A', 'category_id' => $cats['sword']->id]));
+        $this->makeListing(null, $this->makeItem(['name' => '剣B', 'category_id' => $cats['sword']->id]));
+        $this->makeListing(null, $this->makeItem(['name' => 'テク', 'category_id' => $cats['noah']->id]));
+        $this->makeListing(null, $this->makeItem(['name' => 'アセA', 'category_id' => $asset->id]));
+
+        $this->getJson('/api/listings/counts')
+            ->assertOk()
+            ->assertExactJson(['equipment' => 2, 'technique' => 1, 'asset' => 1, 'other' => 0]);
+    }
+
+    public function test_種別件数は既定では取引完了を含めずinclude_completedで含める(): void
+    {
+        $cats = $this->makeCategoryTree();
+        $sword = $cats['sword'];
+
+        $this->makeListing(null, $this->makeItem(['name' => '出品中', 'category_id' => $sword->id]));
+        $this->makeListing(null, $this->makeItem(['name' => '完了', 'category_id' => $sword->id]), ['status' => 'completed']);
+
+        // 既定では active のみ
+        $this->getJson('/api/listings/counts')
+            ->assertOk()
+            ->assertJsonPath('equipment', 1);
+
+        // include_completed=true で取引完了も含める
+        $this->getJson('/api/listings/counts?include_completed=1')
+            ->assertOk()
+            ->assertJsonPath('equipment', 2);
+    }
+
+    public function test_種別件数は凍結ユーザーの出品を除外する(): void
+    {
+        $cats = $this->makeCategoryTree();
+        $suspended = $this->makeUser(['is_suspended' => true]);
+
+        $this->makeListing($suspended, $this->makeItem(['name' => '凍結出品', 'category_id' => $cats['sword']->id]));
+
+        $this->getJson('/api/listings/counts')
+            ->assertOk()
+            ->assertJsonPath('equipment', 0);
+    }
+
     public function test_不正なbase_statキーはSQLとして実行されず無視される(): void
     {
         $this->makeListing();
