@@ -74,6 +74,8 @@ export default function App() {
           />
           <Route path="/buy-requests" element={<BuyRequestsPage />} />
           <Route path="/buy-requests/:id" element={<BuyRequestDetailPage />} />
+          {/* アイテム一覧の公開ページ（クロール可。旧 /admin/items は robots.txt の Disallow: /admin に該当するため公開URLを分離） */}
+          <Route path="/items" element={<AdminItemsPage />} />
           {/* アイテムの恒久公開ページ（アイテム名検索の正規ランディング先・SEO） */}
           <Route path="/items/:id" element={<ItemDetailPage />} />
           <Route
@@ -102,9 +104,9 @@ export default function App() {
             path="/board/:id"
             element={<PrivateRoute><BoardThreadPage /></PrivateRoute>}
           />
-          <Route path="/admin" element={<Navigate to="/admin/items" replace />} />
-          {/* アイテム管理：閲覧は全員（ゲスト含む）可。操作はページ内で権限別に制御。 */}
-          <Route path="/admin/items" element={<AdminItemsPage />} />
+          <Route path="/admin" element={<Navigate to="/items" replace />} />
+          {/* 旧アイテム管理URL。robots.txt でブロックされる /admin 配下のため、公開URL /items へ恒久転送して SEO 評価を集約する */}
+          <Route path="/admin/items" element={<Navigate to="/items" replace />} />
           {/* 追加・編集はログイン必須（権限の細部はページ内・APIで制御） */}
           <Route
             path="/admin/items/new"

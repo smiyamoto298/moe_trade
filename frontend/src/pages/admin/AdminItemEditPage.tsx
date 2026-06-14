@@ -158,7 +158,7 @@ export default function AdminItemEditPage() {
               : 'このアイテムを編集する権限がありません。',
             { title: '編集できません' }
           )
-          navigate('/admin/items')
+          navigate('/items')
           return
         }
         fillFormFromItem(item, false)
@@ -168,7 +168,7 @@ export default function AdminItemEditPage() {
       tasks.push((async () => {
         if (!isEditor) {
           await alert('アイテムのコピーは編集者・管理者のみ利用できます。', { title: 'コピーできません' })
-          navigate('/admin/items')
+          navigate('/items')
           return
         }
         const r = await itemsApi.get(copyFromId)
@@ -205,7 +205,7 @@ export default function AdminItemEditPage() {
     mode: (isSkill ? 'skill' : isAsset ? 'asset' : isOther ? 'other' : 'equipment') as 'equipment' | 'skill' | 'asset' | 'other',
     filter: incomingFilter,
   }
-  const backToList = () => navigate('/admin/items', { state: listState })
+  const backToList = () => navigate('/items', { state: listState })
 
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))

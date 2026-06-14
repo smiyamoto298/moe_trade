@@ -186,7 +186,7 @@ export default function Header() {
             {adminOpen && (
               <div className="absolute top-full left-0 mt-1 w-44 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
                 <Link
-                  to="/admin/items"
+                  to="/items"
                   onClick={() => setAdminOpen(false)}
                   className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
                 >
@@ -336,7 +336,7 @@ export default function Header() {
             <div className="mt-2 pt-4 border-t border-surface-border">
               <p className="text-xs text-gray-500 mb-1">管理</p>
               <Link
-                to="/admin/items"
+                to="/items"
                 onClick={closeMobile}
                 className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
               >

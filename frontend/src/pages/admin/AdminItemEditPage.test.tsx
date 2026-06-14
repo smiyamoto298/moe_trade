@@ -118,7 +118,7 @@ function renderCopyPage(entry: Entry = '/admin/items/new?copy=7') {
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/admin/items/new" element={<AdminItemEditPage />} />
-        <Route path="/admin/items" element={<div data-testid="list-page" />} />
+        <Route path="/items" element={<div data-testid="list-page" />} />
       </Routes>
     </MemoryRouter>
   )
@@ -129,7 +129,7 @@ function renderEditPage(entry: Entry = '/admin/items/7/edit') {
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/admin/items/:id/edit" element={<AdminItemEditPage />} />
-        <Route path="/admin/items" element={<div data-testid="list-page" />} />
+        <Route path="/items" element={<div data-testid="list-page" />} />
       </Routes>
     </MemoryRouter>
   )

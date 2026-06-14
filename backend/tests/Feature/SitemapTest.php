@@ -37,7 +37,7 @@ class SitemapTest extends TestCase
         $res->assertOk();
         $res->assertHeader('Content-Type', 'application/xml; charset=UTF-8');
         $this->assertStringContainsString('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', $res->getContent());
-        foreach (['/listings', '/skills', '/assets', '/buy-requests'] as $path) {
+        foreach (['/listings', '/skills', '/assets', '/items', '/buy-requests'] as $path) {
             $this->assertStringContainsString("<loc>{$base}{$path}</loc>", $res->getContent());
         }
     }

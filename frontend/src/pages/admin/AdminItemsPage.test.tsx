@@ -131,9 +131,9 @@ function LocationProbe() {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/admin/items']}>
+    <MemoryRouter initialEntries={['/items']}>
       <Routes>
-        <Route path="/admin/items" element={<AdminItemsPage />} />
+        <Route path="/items" element={<AdminItemsPage />} />
         <Route path="*" element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>
@@ -264,6 +264,15 @@ describe('AdminItemsPage 取引情報の表示', () => {
 
 describe('AdminItemsPage 行操作アイコン', () => {
   const rowFor = async (name: string) => (await screen.findByText(name)).closest('tr')!
+
+  it('アイテム名はアイテム恒久ページ /items/:id への公開リンクになっている', async () => {
+    renderPage()
+    await waitForLoaded()
+
+    // 名前リンク（id=1 の通常アイテム）をクリックすると公開詳細ページへ遷移する
+    await userEvent.click(screen.getByRole('link', { name: '炎の大剣' }))
+    expect(await screen.findByTestId('location')).toHaveTextContent('/items/1')
+  })
 
   it('admin は確認済み行に相場登録・編集・コピー・削除のアイコンを表示する', async () => {
     renderPage()

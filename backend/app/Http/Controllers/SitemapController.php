@@ -28,6 +28,7 @@ class SitemapController extends Controller
             ['loc' => $base . '/listings'],
             ['loc' => $base . '/skills'],
             ['loc' => $base . '/assets'],
+            ['loc' => $base . '/items'],
             ['loc' => $base . '/buy-requests'],
         ];
 

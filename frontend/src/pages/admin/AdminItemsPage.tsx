@@ -516,7 +516,13 @@ export default function AdminItemsPage() {
                   className={`hover:bg-surface-border/30 transition-colors ${item.verified_status === 'unverified' ? 'bg-yellow-900/5' : ''}`}
                 >
                   <td className="px-4 py-3">
-                    <p className="text-white font-medium">{item.name}</p>
+                    {/* アイテム名はアイテム恒久ページ（公開・SEOの正規ランディング先）への導線 */}
+                    <Link
+                      to={`/items/${item.id}`}
+                      className="text-white font-medium hover:text-primary-500 hover:underline transition-colors"
+                    >
+                      {item.name}
+                    </Link>
                     {item.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{item.description}</p>}
                     {/* 装備セットは構成部位（部位カテゴリ名チップ）をアイテム名の下に表示する */}
                     {item.is_equipment_set && (item.set_members?.length ?? 0) > 0 && (
