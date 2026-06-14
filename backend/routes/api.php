@@ -290,7 +290,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:editor')->group(function () {
         Route::get('admin/bonus-value-labels',            [BonusValueLabelController::class, 'adminIndex']);
         Route::post('admin/bonus-value-labels',           [BonusValueLabelController::class, 'store']);
-        Route::post('admin/bonus-value-labels/reorder',   [BonusValueLabelController::class, 'reorder']);
+        Route::post('admin/bonus-value-labels/organize',  [BonusValueLabelController::class, 'organize']);
         Route::put('admin/bonus-value-labels/{id}',       [BonusValueLabelController::class, 'update']);
         Route::delete('admin/bonus-value-labels/{id}',    [BonusValueLabelController::class, 'destroy']);
 

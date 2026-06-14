@@ -8,10 +8,11 @@ class BonusValueLabel extends Model
 {
     public $timestamps = false;
 
-    protected $fillable = ['label', 'sort_order'];
+    protected $fillable = ['label', 'is_organized', 'sort_order'];
 
     protected $casts = [
-        'sort_order' => 'integer',
+        'is_organized' => 'boolean',
+        'sort_order'   => 'integer',
     ];
 
     /**
@@ -47,11 +48,11 @@ class BonusValueLabel extends Model
             return;
         }
 
-        // 末尾に追加（並び順は既存の最大値の次から連番）
-        $order = (int) (static::max('sort_order') ?? -1) + 1;
-        $rows  = [];
+        // 自動追加分は「未整理」として登録する。未整理は文字順で表示するため
+        // 並び順(sort_order)は持たせない（0 固定）。管理者がドラッグで整理済みにした時に採番する。
+        $rows = [];
         foreach ($missing as $label) {
-            $rows[] = ['label' => $label, 'sort_order' => $order++];
+            $rows[] = ['label' => $label, 'is_organized' => false, 'sort_order' => 0];
         }
         // 競合（同時登録）を考慮し、重複は無視して挿入
         static::insertOrIgnore($rows);
