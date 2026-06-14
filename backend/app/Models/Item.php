@@ -12,6 +12,7 @@ class Item extends Model
         'is_equipment_set', 'set_piece_category_ids',
         'skill_requirements', 'mastery_requirements',
         'placement', 'asset_width', 'asset_height', 'storage_count', 'special_function',
+        'pet_name', 'recipe_name', 'recipe_binder',
         'verified_status', 'submitted_by', 'verified_by', 'verified_at',
         'locked_by_staff',
     ];

@@ -43,6 +43,7 @@ vi.mock('../../contexts/NotificationContext', () => ({
     unverifiedEquipmentCount: 0,
     unverifiedTechniqueCount: 0,
     unverifiedAssetCount: 0,
+    unverifiedOtherCount: 0,
   }),
 }))
 

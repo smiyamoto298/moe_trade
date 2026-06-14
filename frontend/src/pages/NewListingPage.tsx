@@ -10,7 +10,7 @@ import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import type { Item, MyItemCounts, ItemCategory } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL } from '../utils/constants'
-import { itemTypeOf } from '../utils/itemType'
+import { itemTypeOf, topCategoryName, OTHER_CATEGORY } from '../utils/itemType'
 
 export default function NewListingPage() {
   const { user } = useAuth()
@@ -42,6 +42,10 @@ export default function NewListingPage() {
 
   // テクニックは耐久度の概念がないため「削れあり」は不要
   const isTechnique = !!selectedItem && categories.length > 0 && itemTypeOf(selectedItem.category, categories) === 'technique'
+  // 「その他」種別（未開封ペット・レシピ）は耐久度・染色の概念がないため削れ・染色は不要
+  const isOther = !!selectedItem && categories.length > 0 && topCategoryName(selectedItem.category, categories) === OTHER_CATEGORY
+  // 削れ・染色の入力を出さない種別
+  const hideWornDyed = isTechnique || isOther
 
   const [form, setForm] = useState({
     price: '',
@@ -93,8 +97,8 @@ export default function NewListingPage() {
         quantity: 1,
         trade_type: form.trade_type,
         comment: form.comment,
-        is_worn: isTechnique ? false : form.is_worn,
-        is_dyed: isTechnique ? false : form.is_dyed,
+        is_worn: hideWornDyed ? false : form.is_worn,
+        is_dyed: hideWornDyed ? false : form.is_dyed,
         servers: serverPayload,
       })
       navigate('/mypage')
@@ -288,7 +292,7 @@ export default function NewListingPage() {
             />
           </div>
 
-          {!isTechnique && (
+          {!hideWornDyed && (
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input

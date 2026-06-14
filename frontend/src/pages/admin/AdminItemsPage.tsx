@@ -7,11 +7,11 @@ import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory } from '../../types'
 import { SERVERS } from '../../types'
 import { SPECIAL_CONDITIONS, MASTERY_BY_CODE } from '../../utils/constants'
-import { BaseStatBadges, BonusEffectList, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../../components/equipmentCells'
+import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../../components/equipmentCells'
 import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
 
 type Filter = 'all' | 'unverified' | 'verified'
-type Mode = 'equipment' | 'skill' | 'asset'
+type Mode = 'equipment' | 'skill' | 'asset' | 'other'
 
 // 行操作のアイコンボタン（相場登録・編集・コピー・削除）。title と aria-label にラベルを設定する。
 function ActionIconButton({ label, onClick, disabled, className, children }: {
@@ -65,7 +65,7 @@ function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
 
 export default function AdminItemsPage() {
   const { user } = useAuth()
-  const { unverifiedEquipmentCount, unverifiedTechniqueCount, unverifiedAssetCount } = useNotification()
+  const { unverifiedEquipmentCount, unverifiedTechniqueCount, unverifiedAssetCount, unverifiedOtherCount } = useNotification()
   const navigate = useNavigate()
   const location = useLocation()
   // 編集ページから戻ったときは、編集していたアイテムの種別タブ・フィルタを復元する
@@ -94,6 +94,7 @@ export default function AdminItemsPage() {
     isEditor || (!!user && item.submitted_by === user.id && item.verified_status === 'unverified' && !item.locked_by_staff)
   const isSkillMode = mode === 'skill'
   const isAssetMode = mode === 'asset'
+  const isOtherMode = mode === 'other'
   const [actioningId, setActioningId] = useState<number | null>(null)
 
   // 削除確認モーダル
@@ -131,6 +132,7 @@ export default function AdminItemsPage() {
   }
   const skillCategoryIds = idsForTop('テクニック')
   const assetCategoryIds = idsForTop('アセット')
+  const otherCategoryIds = idsForTop('その他')
 
   const fetchItems = () => {
     setLoading(true)
@@ -318,7 +320,8 @@ export default function AdminItemsPage() {
   const modeItems = items.filter((i) => {
     if (isSkillMode) return skillCategoryIds.has(i.category.id)
     if (isAssetMode) return assetCategoryIds.has(i.category.id)
-    if (skillCategoryIds.has(i.category.id) || assetCategoryIds.has(i.category.id)) return false
+    if (isOtherMode) return otherCategoryIds.has(i.category.id)
+    if (skillCategoryIds.has(i.category.id) || assetCategoryIds.has(i.category.id) || otherCategoryIds.has(i.category.id)) return false
     // 装備セットの展開表示: チェックありは構成部位を表示してセット本体を隠し、
     // チェックなしはセット本体のみ表示して構成部位を隠す（セットに属さない通常アイテムは常に表示）
     return expandSets ? !i.is_equipment_set : !setMemberIds.has(i.id)
@@ -391,6 +394,20 @@ export default function AdminItemsPage() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => { setMode('other'); setFilter('all') }}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${isOtherMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              その他
+              {unverifiedOtherCount > 0 && (
+                <span
+                  title={`未確認アイテム ${unverifiedOtherCount}件`}
+                  className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
+                >
+                  {unverifiedOtherCount}
+                </span>
+              )}
+            </button>
           </div>
         </div>
         {isLoggedIn && (
@@ -430,7 +447,7 @@ export default function AdminItemsPage() {
           className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-full sm:w-56"
         />
         {/* 装備セットを展開表示（装備品タブのみ） */}
-        {!isSkillMode && !isAssetMode && (
+        {!isSkillMode && !isAssetMode && !isOtherMode && (
           <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
             <input
               type="checkbox"
@@ -471,6 +488,8 @@ export default function AdminItemsPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">ストレージ・特殊機能</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
                 </>
+              ) : isOtherMode ? (
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={3}>情報</th>
               ) : (
                 <>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">追加効果</th>
@@ -564,6 +583,10 @@ export default function AdminItemsPage() {
                     </div>
                   </td>
                   </>
+                  ) : isOtherMode ? (
+                  <td className="px-4 py-3" colSpan={3}>
+                    <OtherInfoCell item={item} />
+                  </td>
                   ) : (
                   <>
                   {/* 追加効果（出品一覧に合わせ、装備セットは構成部位を効果内容でまとめて表示） */}

@@ -57,6 +57,8 @@ Route::get('bonus-effect-names', fn() => response()->json(
 // 付加効果の「項目名」候補一覧。アイテム登録フォームの datalist と
 // 一覧の絞り込み候補に使用。管理者・編集者が管理画面で編集する。
 Route::get('bonus-value-labels', [\App\Http\Controllers\BonusValueLabelController::class, 'index']);
+// レシピの「バインダー」候補一覧（付加効果の項目名と同じ仕組み）。
+Route::get('binder-labels', [\App\Http\Controllers\BinderLabelController::class, 'index']);
 Route::get('items',              [ItemController::class, 'index']);
 Route::get('items/{id}', [ItemController::class, 'show']);
 Route::get('items/{id}/price-analytics', [ItemController::class, 'priceAnalytics']);
@@ -291,6 +293,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('admin/bonus-value-labels/reorder',   [BonusValueLabelController::class, 'reorder']);
         Route::put('admin/bonus-value-labels/{id}',       [BonusValueLabelController::class, 'update']);
         Route::delete('admin/bonus-value-labels/{id}',    [BonusValueLabelController::class, 'destroy']);
+
+        // レシピのバインダー候補の管理
+        Route::get('admin/binder-labels',          [\App\Http\Controllers\BinderLabelController::class, 'adminIndex']);
+        Route::post('admin/binder-labels',         [\App\Http\Controllers\BinderLabelController::class, 'store']);
+        Route::post('admin/binder-labels/reorder', [\App\Http\Controllers\BinderLabelController::class, 'reorder']);
+        Route::put('admin/binder-labels/{id}',     [\App\Http\Controllers\BinderLabelController::class, 'update']);
+        Route::delete('admin/binder-labels/{id}',  [\App\Http\Controllers\BinderLabelController::class, 'destroy']);
     });
 
     // ユーザー管理（admin限定）

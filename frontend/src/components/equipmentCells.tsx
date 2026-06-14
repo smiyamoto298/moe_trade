@@ -83,6 +83,25 @@ export function SetBaseStatsCell({ members }: { members: Item[] }) {
   )
 }
 
+// 「その他」種別（未開封ペット・レシピ）の固有情報セル。
+// ペット名 / バインダー / レシピ名 を項目名つきバッジで表示する。
+export function OtherInfoCell({ item }: { item: Item }) {
+  const entries: { label: string; value: string }[] = []
+  if (item.pet_name) entries.push({ label: 'ペット名', value: item.pet_name })
+  if (item.recipe_binder) entries.push({ label: 'バインダー', value: item.recipe_binder })
+  if (item.recipe_name) entries.push({ label: 'レシピ名', value: item.recipe_name })
+  if (entries.length === 0) return <span className="text-xs text-gray-600">—</span>
+  return (
+    <div className="flex flex-wrap gap-1">
+      {entries.map((e) => (
+        <span key={e.label} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+          {e.label}: <span className="text-white font-medium">{e.value}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // 装備セットの付加効果セル。設定グループが1つなら効果のみ、複数なら部位名つきで分けて表示。
 export function SetBonusCell({ members }: { members: Item[] }) {
   if (members.length === 0) return <span className="text-xs text-gray-600">—</span>

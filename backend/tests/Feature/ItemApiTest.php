@@ -648,6 +648,76 @@ class ItemApiTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_未開封ペットはペット名を保存できる(): void
+    {
+        $user   = $this->makeUser();
+        $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $pet    = ItemCategory::create(['name' => '未開封ペット', 'parent_id' => $other->id, 'sort_order' => 0]);
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $pet->id,
+            'name'        => '未開封のもこもこ羊',
+            'pet_name'    => 'もこもこ羊',
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('pet_name', 'もこもこ羊');
+        $this->assertDatabaseHas('items', ['name' => '未開封のもこもこ羊', 'pet_name' => 'もこもこ羊']);
+    }
+
+    public function test_レシピはレシピ名とバインダーを保存しバインダー候補が自動追加される(): void
+    {
+        $user   = $this->makeUser();
+        $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $recipe = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $other->id, 'sort_order' => 1]);
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'   => $recipe->id,
+            'name'          => '上級ポーションのレシピ',
+            'recipe_name'   => '上級ポーション',
+            'recipe_binder' => '薬調合',
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('recipe_name', '上級ポーション')
+            ->assertJsonPath('recipe_binder', '薬調合');
+        // バインダー名は候補テーブル（binder_labels）に自動追加される
+        $this->assertDatabaseHas('binder_labels', ['label' => '薬調合']);
+
+        // 同じバインダー名で別レシピを登録しても候補は重複しない
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'   => $recipe->id,
+            'name'          => '中級ポーションのレシピ',
+            'recipe_binder' => '薬調合',
+        ])->assertStatus(201);
+        $this->assertSame(1, \App\Models\BinderLabel::where('label', '薬調合')->count());
+    }
+
+    public function test_バインダー候補一覧は公開取得できる(): void
+    {
+        \App\Models\BinderLabel::create(['label' => '料理', 'sort_order' => 0]);
+        \App\Models\BinderLabel::create(['label' => '鍛冶', 'sort_order' => 1]);
+
+        $this->getJson('/api/binder-labels')
+            ->assertOk()
+            ->assertExactJson(['料理', '鍛冶']);
+    }
+
+    public function test_バインダー候補の管理はeditor以上のみ(): void
+    {
+        $user   = $this->makeUser();
+        $editor = $this->makeUserWithRole('editor');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/admin/binder-labels', ['label' => '木工'])
+            ->assertStatus(403);
+
+        $this->actingAs($editor, 'sanctum')
+            ->postJson('/api/admin/binder-labels', ['label' => '木工'])
+            ->assertStatus(201);
+        $this->assertDatabaseHas('binder_labels', ['label' => '木工']);
+    }
+
     public function test_スキルアイテムは必要スキル値を保存できる(): void
     {
         $user = $this->makeUser();

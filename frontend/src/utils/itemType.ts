@@ -4,6 +4,10 @@ import type { ItemCategory, ItemType } from '../types'
 export const TECHNIQUE_CATEGORY = 'テクニック'
 export const ASSET_CATEGORY = 'アセット'
 export const EQUIPMENT_SET_CATEGORY = '装備セット'
+// 既存種別に当てはまらないアイテムの親種別（子: 未開封ペット / レシピ）
+export const OTHER_CATEGORY = 'その他'
+export const OTHER_PET = '未開封ペット'
+export const OTHER_RECIPE = 'レシピ'
 
 /**
  * カテゴリのトップ（最上位）カテゴリ名を返す。
@@ -16,10 +20,11 @@ export function topCategoryName(cat: ItemCategory, categories: ItemCategory[]): 
   return parent?.name ?? cat.name
 }
 
-/** カテゴリから種別（装備品 / テクニック / アセット）を判定する。 */
+/** カテゴリから種別（装備品 / テクニック / アセット / その他）を判定する。 */
 export function itemTypeOf(cat: ItemCategory, categories: ItemCategory[]): ItemType {
   const top = topCategoryName(cat, categories)
   if (top === TECHNIQUE_CATEGORY) return 'technique'
   if (top === ASSET_CATEGORY) return 'asset'
+  if (top === OTHER_CATEGORY) return 'other'
   return 'equipment'
 }

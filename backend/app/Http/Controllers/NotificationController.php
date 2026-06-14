@@ -139,6 +139,7 @@ class NotificationController extends Controller
 
             $techIds  = $idsForTop('テクニック');
             $assetIds = $idsForTop('アセット');
+            $otherIds = $idsForTop('その他');
 
             $technique = count($techIds) > 0
                 ? Item::where('verified_status', 'unverified')->whereIn('category_id', $techIds)->count()
@@ -146,16 +147,21 @@ class NotificationController extends Controller
             $asset = count($assetIds) > 0
                 ? Item::where('verified_status', 'unverified')->whereIn('category_id', $assetIds)->count()
                 : 0;
+            $other = count($otherIds) > 0
+                ? Item::where('verified_status', 'unverified')->whereIn('category_id', $otherIds)->count()
+                : 0;
             $equipment = Item::where('verified_status', 'unverified')
                 ->when(count($techIds) > 0, fn ($q) => $q->whereNotIn('category_id', $techIds))
                 ->when(count($assetIds) > 0, fn ($q) => $q->whereNotIn('category_id', $assetIds))
+                ->when(count($otherIds) > 0, fn ($q) => $q->whereNotIn('category_id', $otherIds))
                 ->count();
 
             $unverifiedItems = [
                 'equipment' => $equipment,
                 'technique' => $technique,
                 'asset'     => $asset,
-                'total'     => $equipment + $technique + $asset,
+                'other'     => $other,
+                'total'     => $equipment + $technique + $asset + $other,
             ];
         }
 

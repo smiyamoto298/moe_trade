@@ -417,6 +417,30 @@ class ListingApiTest extends TestCase
         $this->assertSame(['銀行アセット'], $names($res3));
     }
 
+    public function test_その他種別は専用タブで絞り込め装備品タブには出ない(): void
+    {
+        $cats     = $this->makeCategoryTree();
+        $otherTop = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $recipe   = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $otherTop->id, 'sort_order' => 1]);
+
+        $sword     = $this->makeItem(['name' => '普通の剣', 'category_id' => $cats['sword']->id]);
+        $recipeItem = $this->makeItem(['name' => '上級ポーションのレシピ', 'category_id' => $recipe->id, 'recipe_name' => '上級ポーション', 'recipe_binder' => '薬調合']);
+        $this->makeListing(null, $sword);
+        $this->makeListing(null, $recipeItem);
+
+        $names = fn($res) => collect($res->json('data'))->pluck('item.name')->all();
+
+        // その他タブにはレシピのみ
+        $other = $this->getJson('/api/listings?' . http_build_query(['item_type' => 'other']));
+        $other->assertOk();
+        $this->assertSame(['上級ポーションのレシピ'], $names($other));
+
+        // 装備品タブにはその他（レシピ）は出ない
+        $equipment = $this->getJson('/api/listings?' . http_build_query(['item_type' => 'equipment']));
+        $equipment->assertOk();
+        $this->assertSame(['普通の剣'], $names($equipment));
+    }
+
     public function test_出品詳細は出品中と取引成立のみ公開され他は404(): void
     {
         // active は閲覧可

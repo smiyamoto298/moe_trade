@@ -151,6 +151,10 @@ class ItemController extends Controller
             'asset_height'             => 'nullable|integer|min:1|max:255',
             'storage_count'            => 'nullable|integer|min:0',
             'special_function'         => 'nullable|in:販売員,銀行,タイプカプセル,栽培,生産施設,カタログ',
+            // 「その他」種別の固有パラメータ（未開封ペット: ペット名 / レシピ: レシピ名・バインダー）
+            'pet_name'                 => 'nullable|string|max:100',
+            'recipe_name'              => 'nullable|string|max:200',
+            'recipe_binder'            => 'nullable|string|max:100',
             'bonus_effects'            => 'nullable|array',
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
@@ -196,6 +200,9 @@ class ItemController extends Controller
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
+
+            // レシピのバインダー名を候補テーブルに自動追加（付加効果の項目名と同じ仕組み）
+            \App\Models\BinderLabel::syncFromBinder($data['recipe_binder'] ?? null);
 
             if ($isSet) {
                 $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $isAdmin, $isAdmin);
@@ -251,6 +258,10 @@ class ItemController extends Controller
             'asset_height'             => 'nullable|integer|min:1|max:255',
             'storage_count'            => 'nullable|integer|min:0',
             'special_function'         => 'nullable|in:販売員,銀行,タイプカプセル,栽培,生産施設,カタログ',
+            // 「その他」種別の固有パラメータ（未開封ペット: ペット名 / レシピ: レシピ名・バインダー）
+            'pet_name'                 => 'nullable|string|max:100',
+            'recipe_name'              => 'nullable|string|max:200',
+            'recipe_binder'            => 'nullable|string|max:100',
             'bonus_effects'            => 'nullable|array',
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
@@ -293,6 +304,11 @@ class ItemController extends Controller
                 }
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
+            }
+
+            // レシピのバインダー名を候補テーブルに自動追加（付加効果の項目名と同じ仕組み）
+            if (array_key_exists('recipe_binder', $data)) {
+                \App\Models\BinderLabel::syncFromBinder($data['recipe_binder']);
             }
 
             if ($isSet) {

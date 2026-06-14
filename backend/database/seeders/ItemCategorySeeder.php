@@ -22,6 +22,7 @@ class ItemCategorySeeder extends Seeder
             ['name' => '防具', 'children' => ['頭', '胴', '手', 'パ', '靴', '肩', '腰']],
             ['name' => '装飾品', 'children' => ['頭(装)', '顔(装)', '耳(装)', '指(装)', '胸(装)', '背中(装)', '腰(装)']],
             ['name' => 'アセット', 'children' => []],
+            ['name' => 'その他', 'children' => ['未開封ペット', 'レシピ']],
         ];
 
         foreach ($data as $sort => $cat) {

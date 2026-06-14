@@ -31,6 +31,7 @@ const AdminItemEditPage = lazy(() => import('./pages/admin/AdminItemEditPage'))
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
 const AnnouncementsAdminPage = lazy(() => import('./pages/admin/AnnouncementsAdminPage'))
 const BonusValueLabelsAdminPage = lazy(() => import('./pages/admin/BonusValueLabelsAdminPage'))
+const BinderLabelsAdminPage = lazy(() => import('./pages/admin/BinderLabelsAdminPage'))
 const PromoTweetsPage = lazy(() => import('./pages/admin/PromoTweetsPage'))
 const AdminExcludedItemsPage = lazy(() => import('./pages/admin/AdminExcludedItemsPage'))
 
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/listings" element={<ListingsPage key="equipment" mode="equipment" />} />
           <Route path="/skills" element={<ListingsPage key="skill" mode="skill" />} />
           <Route path="/assets" element={<ListingsPage key="asset" mode="asset" />} />
+          <Route path="/others" element={<ListingsPage key="other" mode="other" />} />
           <Route path="/listings/:id" element={<ListingDetailPage />} />
           <Route
             path="/listings/new"
@@ -123,6 +125,10 @@ export default function App() {
           <Route
             path="/admin/bonus-value-labels"
             element={<RoleRoute roles={['editor', 'admin']}><BonusValueLabelsAdminPage /></RoleRoute>}
+          />
+          <Route
+            path="/admin/binder-labels"
+            element={<RoleRoute roles={['editor', 'admin']}><BinderLabelsAdminPage /></RoleRoute>}
           />
           <Route
             path="/admin/promo-tweets"

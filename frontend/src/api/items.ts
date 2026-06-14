@@ -90,6 +90,9 @@ export const itemsApi = {
     asset_height?: number | null
     storage_count?: number | null
     special_function?: AssetFunction | null
+    pet_name?: string | null
+    recipe_name?: string | null
+    recipe_binder?: string | null
     bonus_effects?: {
       effect_name: string
       values: { value: number; value_unit: string; label?: string }[]
@@ -144,6 +147,9 @@ export const itemsApi = {
     asset_height?: number | null
     storage_count?: number | null
     special_function?: AssetFunction | null
+    pet_name?: string | null
+    recipe_name?: string | null
+    recipe_binder?: string | null
     is_equipment_set?: boolean
     set_piece_category_ids?: number[]
     bonus_effects?: {

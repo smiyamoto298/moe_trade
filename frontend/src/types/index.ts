@@ -80,6 +80,10 @@ export interface Item {
   asset_height?: number | null           // サイズ: 縦
   storage_count?: number | null          // ストレージ数
   special_function?: AssetFunction | null // 特殊機能（単一）
+  // ---- 「その他」種別固有（該当種別以外では null） ----
+  pet_name?: string | null               // 未開封ペット: ペット名
+  recipe_name?: string | null            // レシピ: レシピ名
+  recipe_binder?: string | null          // レシピ: バインダー（項目名管理）
   verified_status: VerifiedStatus
   submitted_by: number | null
   // editor/admin が編集・確認すると true。true の間は登録者(user)が上書き編集できない（排他制御）。
@@ -95,7 +99,7 @@ export type AssetPlacement = '床' | '壁' | '天井'
 export type AssetFunction = '販売員' | '銀行' | 'タイプカプセル' | '栽培' | '生産施設' | 'カタログ'
 
 // ---- 種別（一覧タブ） ----
-export type ItemType = 'equipment' | 'technique' | 'asset'
+export type ItemType = 'equipment' | 'technique' | 'asset' | 'other'
 
 // ---- 出品 ----
 export type TradeType = 'fixed' | 'negotiable'

@@ -8,6 +8,8 @@ import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm,
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
+import { useBinderLabels } from '../hooks/useBinderLabels'
+import { OTHER_PET, OTHER_RECIPE } from '../utils/itemType'
 
 interface BonusValueForm {
   value: string
@@ -34,6 +36,10 @@ const isEquipmentSetCategory = (cat: ItemCategory) =>
 const isAssetCategory = (cat: ItemCategory) =>
   cat.parent_id === null && cat.name === 'アセット'
 
+// 「その他」配下の子カテゴリ判定（未開封ペット / レシピ）
+const isPetCategory = (cat: ItemCategory) => cat.name === OTHER_PET
+const isRecipeCategory = (cat: ItemCategory) => cat.name === OTHER_RECIPE
+
 interface Props {
   onRegistered: (item: Item) => void
   onCancel: () => void
@@ -46,6 +52,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   // editor/admin は構成部位の入力を必須とする。一般ユーザーは未入力でも登録でき、運営に任せられる。
   const isStaff = user?.role === 'editor' || user?.role === 'admin'
   const bonusValueLabelOptions = useBonusValueLabels()
+  const binderLabelOptions = useBinderLabels()
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -65,6 +72,9 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     asset_height: '',
     storage_count: '',
     special_function: '' as '' | AssetFunction,
+    pet_name: '',
+    recipe_name: '',
+    recipe_binder: '',
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
   // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
@@ -82,6 +92,10 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const selectedCategory = allCategories.find((c) => String(c.id) === form.category_id)
   const isEquipSet = selectedCategory ? isEquipmentSetCategory(selectedCategory) : false
   const isAsset = selectedCategory ? isAssetCategory(selectedCategory) : false
+  // 「その他」種別（未開封ペット / レシピ）
+  const isPet = selectedCategory ? isPetCategory(selectedCategory) : false
+  const isRecipe = selectedCategory ? isRecipeCategory(selectedCategory) : false
+  const isOther = isPet || isRecipe
   // 親カテゴリが「テクニック」かどうか
   const isSkill = (() => {
     if (!selectedCategory) return false
@@ -91,7 +105,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     return parent?.name === 'テクニック'
   })()
   // 装備品（効果系の入力欄を出す通常アイテム）。装備セット本体は効果を持たない（部位側で設定）。
-  const isPlain = !isSkill && !isAsset && !isEquipSet
+  const isPlain = !isSkill && !isAsset && !isEquipSet && !isOther
 
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -182,6 +196,10 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         asset_height: isAsset && form.asset_height !== '' ? Number(form.asset_height) : null,
         storage_count: isAsset && form.storage_count !== '' ? Number(form.storage_count) : null,
         special_function: isAsset ? (form.special_function || null) : null,
+        // 「その他」種別固有
+        pet_name: isPet ? (form.pet_name.trim() || null) : null,
+        recipe_name: isRecipe ? (form.recipe_name.trim() || null) : null,
+        recipe_binder: isRecipe ? (form.recipe_binder.trim() || null) : null,
         bonus_effects: isPlain ? bonusEffects
           .filter((e) => e.effect_name.trim())
           .map((e) => ({
@@ -279,6 +297,60 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
           placeholder="アイテムの説明（任意）"
         />
       </div>
+
+      {/* 「その他」種別：適切な種別がない場合の案内 */}
+      {isOther && (
+        <div className="bg-amber-900/20 border border-amber-700/40 rounded px-3 py-2 text-sm text-amber-200 leading-relaxed">
+          適切な種別がない場合、運営掲示板でご連絡おねがいします！
+        </div>
+      )}
+
+      {/* 未開封ペット：ペット名 */}
+      {isPet && (
+        <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-primary-400">未開封ペット情報</p>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">ペット名</label>
+            <input
+              type="text"
+              value={form.pet_name}
+              onChange={(e) => setField('pet_name', e.target.value)}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              placeholder="ペットの名前"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* レシピ：バインダー（項目名管理）・レシピ名 */}
+      {isRecipe && (
+        <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-primary-400">レシピ情報</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">バインダー</label>
+              <ComboInput
+                id="new-recipe-binder"
+                value={form.recipe_binder}
+                onChange={(val) => setField('recipe_binder', val)}
+                options={binderLabelOptions}
+                placeholder="バインダー名"
+                className="bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">レシピ名</label>
+              <input
+                type="text"
+                value={form.recipe_name}
+                onChange={(e) => setField('recipe_name', e.target.value)}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+                placeholder="レシピ名"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 装備セット：構成部位（設定グループ単位で編集） */}
       {isEquipSet && (

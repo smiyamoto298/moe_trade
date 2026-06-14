@@ -30,8 +30,9 @@ class ListingController extends Controller
             [$names, $include] = match ($itemType) {
                 'technique' => [['テクニック'], true],
                 'asset'     => [['アセット'], true],
-                // equipment: テクニックでもアセットでもないもの
-                default     => [['テクニック', 'アセット'], false],
+                'other'     => [['その他'], true],
+                // equipment: テクニック・アセット・その他のいずれでもないもの
+                default     => [['テクニック', 'アセット', 'その他'], false],
             };
 
             // アイテムのトップカテゴリ名（子カテゴリは親名、トップ自身はその名前）で判定

@@ -13,7 +13,7 @@ import Spinner from '../components/Spinner'
 import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
-import { BaseStatBadges, BonusEffectList, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../components/equipmentCells'
+import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../components/equipmentCells'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -65,14 +65,15 @@ function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
   )
 }
 
-interface Props { mode?: 'equipment' | 'skill' | 'asset' }
+interface Props { mode?: 'equipment' | 'skill' | 'asset' | 'other' }
 
 export default function ListingsPage({ mode = 'equipment' }: Props) {
   const isSkillMode = mode === 'skill'
   const isAssetMode = mode === 'asset'
-  const isEquipmentMode = !isSkillMode && !isAssetMode
+  const isOtherMode = mode === 'other'
+  const isEquipmentMode = !isSkillMode && !isAssetMode && !isOtherMode
   usePageMeta(
-    isSkillMode ? 'スキル・テクニックの出品一覧' : isAssetMode ? 'アセットの出品一覧' : '装備品の出品一覧',
+    isSkillMode ? 'スキル・テクニックの出品一覧' : isAssetMode ? 'アセットの出品一覧' : isOtherMode ? 'その他アイテムの出品一覧' : '装備品の出品一覧',
     'Master of Epic のアイテム取引所。出品中のアイテムを検索して取引チャットで購入できます。'
   )
   const { user } = useAuth()
@@ -99,7 +100,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
   const [params, setParams] = useState<ListingSearchParams>({
     sort: 'newest', page: 1,
-    item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : 'equipment',
+    item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : mode === 'other' ? 'other' : 'equipment',
     // スキルタブの検索モード（通常検索 / 構成検索）。既定は通常検索。
     ...(mode === 'skill' ? { skill_match: 'normal' as const } : {}),
   })
@@ -284,6 +285,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               <Link to="/listings" className={`px-3 sm:px-4 py-1.5 transition-colors ${isEquipmentMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>装備品</Link>
               <Link to="/skills" className={`px-3 sm:px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>テクニック</Link>
               <Link to="/assets" className={`px-3 sm:px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>アセット</Link>
+              <Link to="/others" className={`px-3 sm:px-4 py-1.5 transition-colors ${isOtherMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}>その他</Link>
             </div>
           </div>
         {user && (
@@ -376,7 +378,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               <FilterPopup
                 title="種別を選択"
                 options={categoriesToOptions(
-                  categories.filter((c) => (isSkillMode ? c.name === 'テクニック' : c.name !== 'テクニック' && c.name !== 'アセット'))
+                  categories.filter((c) =>
+                    isSkillMode ? c.name === 'テクニック'
+                    : isOtherMode ? c.name === 'その他'
+                    : c.name !== 'テクニック' && c.name !== 'アセット' && c.name !== 'その他')
                 )}
                 selected={(params.category_ids ?? []).map(String)}
                 onChange={(vals) => {
@@ -391,8 +396,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                   }))
                 }}
               />
-              {/* 装備セットを含める（通常カテゴリが1つ以上選択されているときのみ表示） */}
-              {!isSkillMode && hasNonEquipSetCategory((params.category_ids ?? []).map(String), categories) && (
+              {/* 装備セットを含める（装備品モードで通常カテゴリが1つ以上選択されているときのみ表示） */}
+              {isEquipmentMode && hasNonEquipSetCategory((params.category_ids ?? []).map(String), categories) && (
                 <label className="flex items-center gap-2 mt-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
                   <input
                     type="checkbox"
@@ -729,6 +734,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">ストレージ・特殊機能</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">特殊条件</th>
                     </>
+                  ) : isOtherMode ? (
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide" colSpan={3}>情報</th>
                   ) : (
                     <>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">追加効果</th>
@@ -877,6 +884,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                             </div>
                           </td>
                           </>
+                        ) : isOtherMode ? (
+                          <td className="listing-col-wide px-4 py-3" colSpan={3}>
+                            <OtherInfoCell item={l.item} />
+                          </td>
                         ) : (
                           <>
                           {/* 追加効果 */}

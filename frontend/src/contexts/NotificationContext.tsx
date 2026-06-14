@@ -35,6 +35,7 @@ interface UnverifiedItems {
   equipment: number
   technique: number
   asset: number
+  other: number
   total: number
 }
 
@@ -67,6 +68,7 @@ interface NotificationContextValue {
   unverifiedEquipmentCount: number
   unverifiedTechniqueCount: number
   unverifiedAssetCount: number
+  unverifiedOtherCount: number
   unverifiedItemCount: number
   // お知らせ（管理者がDBで設定。通知と同じ5秒間隔で更新）
   announcements: Announcement[]
@@ -251,6 +253,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       unverifiedEquipmentCount: unverifiedItems?.equipment ?? 0,
       unverifiedTechniqueCount: unverifiedItems?.technique ?? 0,
       unverifiedAssetCount: unverifiedItems?.asset ?? 0,
+      unverifiedOtherCount: unverifiedItems?.other ?? 0,
       unverifiedItemCount: unverifiedItems?.total ?? 0,
       announcements,
     }}>

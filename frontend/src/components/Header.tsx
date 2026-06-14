@@ -198,13 +198,22 @@ export default function Header() {
                   )}
                 </Link>
                 {(user?.role === 'editor' || user?.role === 'admin') && (
-                  <Link
-                    to="/admin/bonus-value-labels"
-                    onClick={() => setAdminOpen(false)}
-                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                  >
-                    項目名の管理
-                  </Link>
+                  <>
+                    <Link
+                      to="/admin/bonus-value-labels"
+                      onClick={() => setAdminOpen(false)}
+                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                    >
+                      項目名の管理
+                    </Link>
+                    <Link
+                      to="/admin/binder-labels"
+                      onClick={() => setAdminOpen(false)}
+                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                    >
+                      バインダーの管理
+                    </Link>
+                  </>
                 )}
                 {user?.role === 'admin' && (
                   <>
@@ -339,13 +348,22 @@ export default function Header() {
                 )}
               </Link>
               {(user?.role === 'editor' || user?.role === 'admin') && (
-                <Link
-                  to="/admin/bonus-value-labels"
-                  onClick={closeMobile}
-                  className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
-                >
-                  項目名の管理
-                </Link>
+                <>
+                  <Link
+                    to="/admin/bonus-value-labels"
+                    onClick={closeMobile}
+                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                  >
+                    項目名の管理
+                  </Link>
+                  <Link
+                    to="/admin/binder-labels"
+                    onClick={closeMobile}
+                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                  >
+                    バインダーの管理
+                  </Link>
+                </>
               )}
               {user?.role === 'admin' && (
                 <>
