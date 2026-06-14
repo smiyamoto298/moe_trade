@@ -1,0 +1,15 @@
+# .claude/shared_paths.txt
+# 複数タスクが同時に触りうる「共有ファイル」を1行1パターンで列挙する(部分一致)。
+# ここに載るファイルだけが編集前ロック(順番待ち)の対象になる。
+# architect が作業計画で [shared] とした実ファイルに合わせて随時メンテナンスする。
+#
+# 行頭 # はコメント。空行は無視。
+#
+# --- moe_trade で衝突しやすい代表例(実在に合わせて調整) ---
+backend/routes/api.php
+backend/routes/web.php
+frontend/src/App.tsx
+design.md
+# 共通ユーティリティ/型は同時編集が起きやすい
+frontend/src/utils/itemType.ts
+backend/app/Support/
