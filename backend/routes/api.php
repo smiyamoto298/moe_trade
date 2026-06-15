@@ -176,6 +176,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('mypage/inventory', [InventoryController::class, 'replace']);
     // 保存先モード（local / db）をユーザー単位で記憶する
     Route::put('mypage/inventory/storage-mode', [InventoryController::class, 'setStorageMode']);
+    // 端末保存ユーザーが除外したアイテム名を匿名で報告（共通除外の昇格候補に合流）
+    Route::post('excluded-items/report', [ExcludedItemController::class, 'report']);
 
     // 自分の買取一覧
     Route::get('mypage/buy-requests', function (\Illuminate\Http\Request $request) {

@@ -387,10 +387,12 @@ export interface ExcludedItem {
   created_at: string
 }
 
-// ユーザー個別除外（DB保存分）を名前で集計した、共通除外への昇格候補
+// ユーザー個別除外を集計した、共通除外への昇格候補。
+// DB保存分は user_count（除外人数）、端末保存ユーザーの匿名報告分は from_device=true で合流する。
 export interface UserExclusionSuggestion {
   name: string
   user_count: number
+  from_device: boolean
 }
 
 // 他ユーザーが買取中の価格（item_id ごと）。複数あるときは最高額と件数を返す。

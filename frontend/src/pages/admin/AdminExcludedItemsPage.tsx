@@ -178,8 +178,8 @@ export default function AdminExcludedItemsPage() {
             <div>
               <h2 className="text-sm font-semibold text-sky-200">ユーザーが個別に除外しているアイテム</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                利用者が自分の除外リストに登録した名前を集計したものです（多い順）。共通除外へ追加できます。
-                <span className="text-gray-500">（DB保存のユーザー分のみ集計。共通除外に登録済みの名前は表示されません）</span>
+                利用者が自分の除外リストに登録した名前です（多い順）。共通除外へ追加できます。
+                <span className="text-gray-500">（DB保存のユーザーは除外人数を集計。端末保存のユーザー分は匿名で名前のみ＝「端末」表示。共通除外に登録済みの名前は表示されません）</span>
               </p>
             </div>
             <button
@@ -194,7 +194,12 @@ export default function AdminExcludedItemsPage() {
             {suggestions.map((s) => (
               <div key={s.name} className="flex items-center gap-2 bg-surface border border-surface-border rounded px-3 py-2">
                 <span className="flex-1 text-sm text-white truncate">{s.name}</span>
-                <span className="text-xs text-gray-400 shrink-0" title="このアイテムを個別除外しているユーザー数">{s.user_count}人</span>
+                {s.user_count > 0 && (
+                  <span className="text-xs text-gray-400 shrink-0" title="このアイテムを個別除外しているDB保存ユーザー数">{s.user_count}人</span>
+                )}
+                {s.from_device && (
+                  <span className="text-[10px] text-gray-300 bg-surface border border-surface-border rounded px-1.5 py-0.5 shrink-0" title="端末（ローカル）保存ユーザーが除外（匿名・人数は不明）">端末</span>
+                )}
                 <button
                   onClick={() => promote([s.name])}
                   disabled={promotingName !== null || dismissingName !== null}

@@ -5,6 +5,10 @@ export const excludedItemsApi = {
   // 公開: 共通除外アイテム名の配列（貼り付け除外に使用）
   list: (): Promise<{ data: string[] }> => client.get<string[]>('/excluded-items'),
 
+  // 端末保存ユーザーが除外した名前を匿名で報告（共通除外の昇格候補に合流）。失敗は致命でない。
+  report: (names: string[]): Promise<void> =>
+    client.post('/excluded-items/report', { names }).then(() => undefined),
+
   // 管理: 全件（id 付き）
   adminList: (): Promise<{ data: ExcludedItem[] }> => client.get<ExcludedItem[]>('/admin/excluded-items'),
 

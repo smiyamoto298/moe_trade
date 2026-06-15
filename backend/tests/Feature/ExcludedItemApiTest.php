@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ExcludedItem;
+use App\Models\ReportedExcludedName;
 use App\Models\UserExcludedItem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -77,6 +78,74 @@ class ExcludedItemApiTest extends TestCase
 
         $names = collect($res->json())->pluck('name');
         $this->assertFalse($names->contains('木の枝'));
+    }
+
+    public function test_端末保存ユーザーは除外名を匿名で報告でき重複は無視される(): void
+    {
+        $user = $this->makeUser();
+
+        // ログインユーザーが names[] で報告（リクエスト内の重複・前後空白は整理）
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/excluded-items/report', ['names' => ['ゴミ', '木の枝', 'ゴミ', '  小石  ']])
+            ->assertNoContent();
+
+        $this->assertSame(3, ReportedExcludedName::count());
+        $this->assertDatabaseHas('reported_excluded_names', ['name' => 'ゴミ']);
+        $this->assertDatabaseHas('reported_excluded_names', ['name' => '小石']);
+        // user_id 等は持たない（匿名・名前のみ）
+        $this->assertSame(['name'], array_values(array_diff(
+            array_keys(ReportedExcludedName::first()->getAttributes()),
+            ['id', 'created_at', 'updated_at']
+        )));
+
+        // 既存の名前は firstOrCreate で黙って無視（件数は増えない）
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/excluded-items/report', ['names' => ['ゴミ']])
+            ->assertNoContent();
+        $this->assertSame(1, ReportedExcludedName::where('name', 'ゴミ')->count());
+    }
+
+    public function test_除外名の報告はログイン必須でnamesは必須(): void
+    {
+        $this->postJson('/api/excluded-items/report', ['names' => ['x']])->assertUnauthorized();
+
+        $this->actingAs($this->makeUser(), 'sanctum')
+            ->postJson('/api/excluded-items/report', [])
+            ->assertStatus(422)->assertJsonValidationErrors('names');
+    }
+
+    public function test_userSuggestionsは端末報告分をfrom_deviceで合流する(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+
+        // DB保存ユーザーは「ゴミ」を除外（人数集計対象）
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ']);
+        // 端末保存ユーザーの匿名報告: 「ゴミ」(DB分と重複) と「小石」(端末のみ)
+        ReportedExcludedName::create(['name' => 'ゴミ']);
+        ReportedExcludedName::create(['name' => '小石']);
+        // 共通除外済み・却下済みの名前は報告があっても候補から除外される
+        ExcludedItem::create(['name' => '木の枝']);
+        ReportedExcludedName::create(['name' => '木の枝']);
+        \App\Models\DismissedExcludedSuggestion::create(['name' => 'ボツ', 'dismissed_by' => $admin->id]);
+        ReportedExcludedName::create(['name' => 'ボツ']);
+
+        $res = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')
+            ->assertOk();
+
+        // user_count 降順 → 「ゴミ」(DB1人かつ端末) が先、「小石」(端末のみ・人数0) が後。木の枝・ボツは出ない
+        $res->assertJsonCount(2)
+            ->assertJsonPath('0.name', 'ゴミ')
+            ->assertJsonPath('0.user_count', 1)
+            ->assertJsonPath('0.from_device', true)
+            ->assertJsonPath('1.name', '小石')
+            ->assertJsonPath('1.user_count', 0)
+            ->assertJsonPath('1.from_device', true);
+
+        $names = collect($res->json())->pluck('name');
+        $this->assertFalse($names->contains('木の枝'));
+        $this->assertFalse($names->contains('ボツ'));
     }
 
     public function test_ユーザー個別除外の集計はadminのみ取得できる(): void

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DismissedExcludedSuggestion;
 use App\Models\ExcludedItem;
+use App\Models\ReportedExcludedName;
 use App\Models\UserExcludedItem;
 use Illuminate\Http\Request;
 
@@ -26,12 +27,15 @@ class ExcludedItemController extends Controller
     }
 
     /**
-     * 管理: ユーザーが個別に登録した除外アイテム（DB保存分）を名前で集計して返す。
-     * 共通除外（excluded_items）に既に登録済みの名前、および管理者が「共通にしない」と
-     * 却下した名前（dismissed_excluded_suggestions）は除く。多くのユーザーが除外している
-     * アイテムを共通除外へ昇格させる候補として使う。
-     * 戻り値: [{ name, user_count }]（user_count 降順 → name 昇順）
-     * ※ ローカルストレージ保存のユーザー分は DB に無いため集計対象外。
+     * 管理: ユーザーが個別に登録した除外アイテムを名前で集計して、共通除外への昇格候補を返す。
+     *
+     * DB保存ユーザー分（user_excluded_items）は除外している人数を集計し、端末（ローカルストレージ）
+     * 保存ユーザー分（reported_excluded_names・匿名報告）はその名前を `from_device` 付きで合流させる。
+     * 端末分は誰が・何人除外したかを持たないため `user_count` には数えない（presence のみ）。
+     * 共通除外（excluded_items）に既に登録済みの名前、および管理者が「共通にしない」と却下した
+     * 名前（dismissed_excluded_suggestions）は両方から除く。
+     *
+     * 戻り値: [{ name, user_count, from_device }]（user_count 降順 → name 昇順）。
      */
     public function userSuggestions()
     {
@@ -40,15 +44,58 @@ class ExcludedItemController extends Controller
             ->unique()
             ->all();
 
-        $rows = UserExcludedItem::query()
+        // DB保存ユーザーの個別除外を人数集計（name => user_count）
+        $dbCounts = UserExcludedItem::query()
             ->selectRaw('name, COUNT(DISTINCT user_id) as user_count')
             ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
             ->groupBy('name')
-            ->orderByDesc('user_count')
-            ->orderBy('name')
-            ->get();
+            ->pluck('user_count', 'name');
+
+        // 端末保存ユーザーの匿名報告（名前のみ）
+        $deviceNames = ReportedExcludedName::query()
+            ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
+            ->pluck('name');
+
+        $names = $dbCounts->keys()->merge($deviceNames)->unique();
+        $deviceSet = $deviceNames->flip();
+
+        $rows = $names
+            ->map(fn($name) => [
+                'name'        => $name,
+                'user_count'  => (int) ($dbCounts[$name] ?? 0),
+                'from_device' => $deviceSet->has($name),
+            ])
+            // user_count 降順 → name 昇順
+            ->sortBy([['user_count', 'desc'], ['name', 'asc']])
+            ->values();
 
         return response()->json($rows);
+    }
+
+    /**
+     * 端末（ローカルストレージ）保存ユーザーが除外したアイテム名を匿名で報告する（要ログイン）。
+     *
+     * ローカル保存の個別除外はサーバーに残らないため、共通除外への昇格を検討できるよう
+     * 「名前」だけを匿名で集める（誰が・何人かは記録しない）。`names[]` でまとめて送れ、
+     * 既存の名前は黙って無視する（firstOrCreate）。共通除外候補での扱いは userSuggestions 側で行う。
+     */
+    public function report(Request $request)
+    {
+        $data = $request->validate([
+            'names'   => 'required|array|min:1',
+            'names.*' => 'required|string|max:200',
+        ]);
+
+        $names = collect($data['names'])
+            ->map(fn($n) => trim($n))
+            ->filter(fn($n) => $n !== '')
+            ->unique();
+
+        foreach ($names as $name) {
+            ReportedExcludedName::firstOrCreate(['name' => $name]);
+        }
+
+        return response()->json(null, 204);
     }
 
     /**

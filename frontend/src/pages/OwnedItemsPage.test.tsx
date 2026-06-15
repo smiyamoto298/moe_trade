@@ -13,7 +13,7 @@ import type { Item, InventoryData } from '../types'
 
 vi.mock('../api/items', () => ({ itemsApi: { matchNames: vi.fn() } }))
 vi.mock('../api/buyRequests', () => ({ buyRequestsApi: { prices: vi.fn(() => Promise.resolve({ data: {} })) } }))
-vi.mock('../api/excludedItems', () => ({ excludedItemsApi: { list: vi.fn(() => Promise.resolve({ data: [] })) } }))
+vi.mock('../api/excludedItems', () => ({ excludedItemsApi: { list: vi.fn(() => Promise.resolve({ data: [] })), report: vi.fn(() => Promise.resolve()) } }))
 vi.mock('../api/client', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: {} })) } }))
 vi.mock('../utils/inventoryStore', () => ({
   getStorageMode: vi.fn(() => 'local'),

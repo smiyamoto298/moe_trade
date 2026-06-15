@@ -455,12 +455,18 @@ export default function OwnedItemsPage() {
 
   // 個別除外に追加（その行のアイテムを除外し、台帳からも取り除く）
   const addPersonalExclusion = async (name: string) => {
-    const doAdd = () =>
+    const doAdd = () => {
       commit((p) => ({
         ...p,
         exclusions: p.exclusions.includes(name) ? p.exclusions : [...p.exclusions, name],
         items: p.items.filter((i) => i.name !== name),
       }))
+      // 端末保存の場合は除外名がサーバーに残らないため、共通除外の検討用に匿名で報告する
+      // （誰が除外したかは記録されない）。DB保存時は自動保存で user_excluded_items に入るため不要。
+      if (modeRef.current === 'local') {
+        excludedItemsApi.report([name]).catch(() => {})
+      }
+    }
 
     // 「今後表示しない」が設定済みなら確認を省略して追加
     if (hideExcludeConfirm) { doAdd(); return }
