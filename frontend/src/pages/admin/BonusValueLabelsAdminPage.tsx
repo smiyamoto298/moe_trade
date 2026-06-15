@@ -263,7 +263,7 @@ export default function BonusValueLabelsAdminPage() {
               data-testid="organized-dropzone"
               onDragOver={onLeftContainerDragOver}
               onDrop={onLeftDrop}
-              className={`min-h-[8rem] rounded-lg border border-dashed p-2 transition-colors ${
+              className={`h-[calc(100vh-19rem)] min-h-[8rem] overflow-y-auto rounded-lg border border-dashed p-2 transition-colors ${
                 dragId !== null && !overRight ? 'border-primary-500/60 bg-primary-500/5' : 'border-surface-border'
               }`}
             >
@@ -297,7 +297,7 @@ export default function BonusValueLabelsAdminPage() {
               data-testid="unorganized-dropzone"
               onDragOver={onRightDragOver}
               onDrop={onRightDrop}
-              className={`min-h-[8rem] rounded-lg border border-dashed p-2 transition-colors ${
+              className={`h-[calc(100vh-19rem)] min-h-[8rem] overflow-y-auto rounded-lg border border-dashed p-2 transition-colors ${
                 dragId !== null && overRight ? 'border-primary-500/60 bg-primary-500/5' : 'border-surface-border'
               }`}
             >
