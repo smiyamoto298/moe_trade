@@ -12,7 +12,7 @@ class OwnedItem extends Model
 {
     protected $fillable = [
         'user_id', 'moe_account_id', 'item_id',
-        'no', 'name', 'category', 'count', 'price',
+        'no', 'name', 'category', 'count', 'price', 'note',
         'is_worn', 'is_dyed', 'is_marked', 'sort_order',
     ];
 

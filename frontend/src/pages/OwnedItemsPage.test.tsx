@@ -75,6 +75,7 @@ const unlinkedRow = (over: Partial<InventoryData['items'][number]> = {}): Invent
   worn: false,
   dyed: false,
   marked: false,
+  note: '',
   ...over,
 })
 

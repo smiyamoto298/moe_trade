@@ -134,6 +134,40 @@ class InventoryApiTest extends TestCase
         $this->assertSame(2, UserExcludedItem::where('user_id', $user->id)->count());
     }
 
+    public function test_アイテムごとのメモを保存しスナップショットに含まれる(): void
+    {
+        $user = $this->makeUser();
+
+        $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'   => [['key' => 'a1', 'name' => 'メイン']],
+            'items'      => [
+                ['account_key' => 'a1', 'name' => '炎の剣', 'count' => 1, 'note' => '次回まとめて出品予定'],
+                ['account_key' => 'a1', 'name' => 'メモ無し', 'count' => 1],
+            ],
+            'exclusions' => [],
+        ])->assertOk();
+
+        // 永続化される
+        $this->assertDatabaseHas('owned_items', ['user_id' => $user->id, 'name' => '炎の剣', 'note' => '次回まとめて出品予定']);
+        // 未入力は null
+        $this->assertDatabaseHas('owned_items', ['user_id' => $user->id, 'name' => 'メモ無し', 'note' => null]);
+
+        // スナップショットに note が含まれる（再読み込み後も残る）
+        $items = collect($res->json('items'));
+        $this->assertSame('次回まとめて出品予定', $items->firstWhere('name', '炎の剣')['note']);
+        $this->assertNull($items->firstWhere('name', 'メモ無し')['note']);
+    }
+
+    public function test_メモが長すぎるとバリデーションエラーになる(): void
+    {
+        $user = $this->makeUser();
+        $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'   => [],
+            'items'      => [['name' => '剣', 'count' => 1, 'note' => str_repeat('あ', 501)]],
+            'exclusions' => [],
+        ])->assertStatus(422)->assertJsonValidationErrors('items.0.note');
+    }
+
     public function test_全置換は既存を入れ替え他ユーザーのデータに影響しない(): void
     {
         $me    = $this->makeUser();

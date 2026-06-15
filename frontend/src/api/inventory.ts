@@ -20,6 +20,7 @@ export interface InventoryServerItem {
   is_worn: boolean
   is_dyed: boolean
   is_marked: boolean
+  note: string | null
   sort_order: number
   item: Item | null
 }
@@ -45,6 +46,7 @@ export interface InventoryPutPayload {
     is_worn: boolean
     is_dyed: boolean
     is_marked: boolean
+    note: string
     sort_order: number
   }[]
   exclusions: string[]

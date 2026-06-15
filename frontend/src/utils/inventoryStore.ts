@@ -53,7 +53,8 @@ function loadLocal(): InventoryData {
     const parsed = JSON.parse(raw) as Partial<InventoryData>
     return {
       accounts: parsed.accounts ?? [],
-      items: parsed.items ?? [],
+      // 旧データには note が無いため空文字で補う
+      items: (parsed.items ?? []).map((it) => ({ ...it, note: it.note ?? '' })),
       exclusions: parsed.exclusions ?? [],
     }
   } catch {
@@ -86,6 +87,7 @@ export function snapshotToInventory(s: InventorySnapshot): InventoryData {
       worn: it.is_worn,
       dyed: it.is_dyed,
       marked: it.is_marked,
+      note: it.note ?? '',
     })),
     exclusions: s.exclusions,
   }
@@ -105,6 +107,7 @@ export function inventoryToPayload(d: InventoryData): InventoryPutPayload {
       is_worn: it.worn,
       is_dyed: it.dyed,
       is_marked: it.marked,
+      note: it.note ?? '',
       sort_order: i,
     })),
     exclusions: d.exclusions,

@@ -330,6 +330,7 @@ export default function OwnedItemsPage() {
         worn: prev?.worn ?? false,
         dyed: prev?.dyed ?? false,
         marked: prev?.marked ?? false,
+        note: prev?.note ?? '',
       }
     })
   }
@@ -675,13 +676,14 @@ export default function OwnedItemsPage() {
               <th className="px-3 py-3 text-right">個数</th>
               <th className="px-2 py-3 text-center">削れ</th>
               <th className="px-2 py-3 text-center">染色</th>
+              <th className="px-3 py-3 text-left">メモ</th>
               <th className="px-3 py-3 text-right whitespace-nowrap">買取中</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border">
             {visibleItems.length === 0 ? (
-              <tr><td colSpan={filterAccountId === 'all' ? 8 : 7} className="text-center py-12 text-gray-500">
+              <tr><td colSpan={filterAccountId === 'all' ? 9 : 8} className="text-center py-12 text-gray-500">
                 {inventory.items.length === 0 ? 'アイテムボックスを貼り付けて読み込んでください。' : '表示できるアイテムがありません。'}
               </td></tr>
             ) : (
@@ -760,6 +762,19 @@ export default function OwnedItemsPage() {
                     {/* 染色 */}
                     <td className="px-2 py-3 text-center">
                       <input type="checkbox" checked={row.dyed} onChange={(e) => patchRow(row.id, { dyed: e.target.checked })} title="染色済み" className="accent-fuchsia-500" />
+                    </td>
+
+                    {/* メモ（自由記入・自動保存） */}
+                    <td className="px-3 py-3">
+                      <input
+                        type="text"
+                        value={row.note}
+                        onChange={(e) => patchRow(row.id, { note: e.target.value })}
+                        placeholder="メモ"
+                        maxLength={500}
+                        title="このアイテムのメモ（自動保存されます）"
+                        className="w-36 bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                      />
                     </td>
 
                     {/* 買取中価格（複数あるときは最高値を表示・クリックで売却ページへ） */}

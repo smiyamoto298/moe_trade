@@ -367,6 +367,8 @@ export interface OwnedItem {
   worn: boolean    // 削れあり
   dyed: boolean    // 染色済み
   marked: boolean  // マーク
+  // ユーザーの自由記入メモ（未入力は空文字）
+  note: string
 }
 
 export interface InventoryData {
