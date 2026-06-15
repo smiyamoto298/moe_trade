@@ -13,7 +13,7 @@ import type { Item, InventoryData } from '../types'
 
 vi.mock('../api/items', () => ({ itemsApi: { matchNames: vi.fn() } }))
 vi.mock('../api/buyRequests', () => ({ buyRequestsApi: { prices: vi.fn(() => Promise.resolve({ data: {} })) } }))
-vi.mock('../api/excludedItems', () => ({ excludedItemsApi: { list: vi.fn(() => Promise.resolve({ data: [] })), report: vi.fn(() => Promise.resolve()) } }))
+vi.mock('../api/excludedItems', () => ({ excludedItemsApi: { list: vi.fn(() => Promise.resolve({ data: { types: [], items: [] } })), report: vi.fn(() => Promise.resolve()) } }))
 vi.mock('../api/client', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: {} })) } }))
 vi.mock('../utils/inventoryStore', () => ({
   getStorageMode: vi.fn(() => 'local'),
@@ -22,6 +22,10 @@ vi.mock('../utils/inventoryStore', () => ({
   persistStorageMode: vi.fn(() => Promise.resolve()),
   getSkipExcludeConfirm: vi.fn(() => false),
   setSkipExcludeConfirm: vi.fn(),
+  getAppliedExclusionTypeIds: vi.fn(() => null),
+  setAppliedExclusionTypeIds: vi.fn(),
+  getDisabledCommonNames: vi.fn(() => []),
+  setDisabledCommonNames: vi.fn(),
 }))
 vi.mock('../hooks/usePageMeta', () => ({ usePageMeta: vi.fn() }))
 vi.mock('../contexts/DialogContext', () => ({

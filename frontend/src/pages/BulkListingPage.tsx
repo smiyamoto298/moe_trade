@@ -14,8 +14,8 @@ import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL } from '../utils/constants'
 import { parseItemBox, isTransferNg } from '../utils/itemBoxPaste'
 import { excludedItemsApi } from '../api/excludedItems'
-import { getStorageMode, loadInventory } from '../utils/inventoryStore'
-import { buildExclusionSet, isExcluded, emptyInventory } from '../utils/inventory'
+import { getStorageMode, loadInventory, getAppliedExclusionTypeIds, getDisabledCommonNames } from '../utils/inventoryStore'
+import { buildExclusionSet, isExcluded, emptyInventory, selectedCommonNames } from '../utils/inventory'
 
 // API（axios）エラーから検証メッセージを取り出す。
 // Laravel の 422 は { message, errors: { field: [msg] } } 形式で返る。
@@ -137,9 +137,15 @@ export default function BulkListingPage() {
   useEffect(() => {
     if (!user) return
     Promise.all([
-      excludedItemsApi.list().then((r) => r.data).catch(() => [] as string[]),
+      excludedItemsApi.list().then((r) => r.data).catch(() => ({ types: [], items: [] })),
       loadInventory(getStorageMode()).catch(() => emptyInventory()),
-    ]).then(([common, inv]) => setExclusionSet(buildExclusionSet(common, inv.exclusions)))
+    ]).then(([common, inv]) => {
+      // 「適用する種別」（端末ローカル設定・所有アイテム管理と共通）で共通除外を絞る。
+      // その他はアイテム単位（disabledCommonNames でOFF）で絞る。
+      const defaultTypeId = common.types.find((t) => t.is_default)?.id ?? null
+      const names = selectedCommonNames(common.items, getAppliedExclusionTypeIds(), defaultTypeId, getDisabledCommonNames())
+      setExclusionSet(buildExclusionSet(names, inv.exclusions))
+    })
   }, [user])
 
   const modalRow = rows.find((r) => r.key === modalRowKey) ?? null

@@ -9,6 +9,12 @@ export const STORAGE_MODE_KEY = 'moe_inventory_mode'
 export const LOCAL_DATA_KEY = 'moe_inventory:v1'
 // 「除外リストに追加」時の確認ダイアログを今後表示しないかどうか（端末ごとの設定）
 export const SKIP_EXCLUDE_CONFIRM_KEY = 'moe_inventory_skip_exclude_confirm'
+// ユーザーが「適用する共通除外の種別」として選んだ種別ID（端末ごとの設定）。
+// 未設定（null）は「全種別を適用」（既定）。
+export const APPLIED_EXCLUSION_TYPES_KEY = 'moe_inventory_applied_exclusion_types'
+// 既定種別「その他」のうち、ユーザーが個別にOFFにした共通除外アイテム名（端末ごとの設定）。
+// 既定は空＝その他のアイテムは全適用（オプトアウト方式）。
+export const DISABLED_COMMON_NAMES_KEY = 'moe_inventory_disabled_common_names'
 
 export function getSkipExcludeConfirm(): boolean {
   try {
@@ -22,6 +28,50 @@ export function setSkipExcludeConfirm(skip: boolean): void {
   try {
     if (skip) localStorage.setItem(SKIP_EXCLUDE_CONFIRM_KEY, '1')
     else localStorage.removeItem(SKIP_EXCLUDE_CONFIRM_KEY)
+  } catch {
+    /* noop */
+  }
+}
+
+/** 適用する共通除外の種別ID。未設定（null）は「全種別を適用」（既定）。 */
+export function getAppliedExclusionTypeIds(): number[] | null {
+  try {
+    const raw = localStorage.getItem(APPLIED_EXCLUSION_TYPES_KEY)
+    if (raw == null) return null
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v): v is number => typeof v === 'number') : null
+  } catch {
+    return null
+  }
+}
+
+/** 適用する種別IDを保存する。null を渡すと「全種別を適用」（既定）に戻す。 */
+export function setAppliedExclusionTypeIds(ids: number[] | null): void {
+  try {
+    if (ids == null) localStorage.removeItem(APPLIED_EXCLUSION_TYPES_KEY)
+    else localStorage.setItem(APPLIED_EXCLUSION_TYPES_KEY, JSON.stringify(ids))
+  } catch {
+    /* noop */
+  }
+}
+
+/** その他（既定種別）のうち個別にOFFにした共通除外アイテム名。既定は空（全適用）。 */
+export function getDisabledCommonNames(): string[] {
+  try {
+    const raw = localStorage.getItem(DISABLED_COMMON_NAMES_KEY)
+    if (raw == null) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** その他で個別OFFにした共通除外アイテム名を保存する。 */
+export function setDisabledCommonNames(names: string[]): void {
+  try {
+    if (names.length === 0) localStorage.removeItem(DISABLED_COMMON_NAMES_KEY)
+    else localStorage.setItem(DISABLED_COMMON_NAMES_KEY, JSON.stringify(names))
   } catch {
     /* noop */
   }

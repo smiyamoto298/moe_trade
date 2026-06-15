@@ -12,13 +12,58 @@ class ExcludedItemApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_共通除外アイテム名は未ログインでも取得できる(): void
+    public function test_共通除外アイテムと種別は未ログインでも取得できる(): void
     {
-        ExcludedItem::create(['name' => 'ゴミ']);
-        ExcludedItem::create(['name' => '木の枝']);
+        $default = \App\Models\ExclusionType::default();
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント', 'sort_order' => 1]);
 
-        $this->getJson('/api/excluded-items')->assertOk()
-            ->assertJson(['ゴミ', '木の枝']);
+        ExcludedItem::create(['name' => 'ゴミ', 'exclusion_type_id' => $default->id]);
+        ExcludedItem::create(['name' => '木の枝', 'exclusion_type_id' => $event->id]);
+
+        $res = $this->getJson('/api/excluded-items')->assertOk();
+
+        // 種別一覧（既定の「その他」＋「イベント」）と、各アイテムの種別ID付き
+        $res->assertJsonPath('items.0.name', 'ゴミ')
+            ->assertJsonPath('items.0.type_id', $default->id)
+            ->assertJsonPath('items.1.name', '木の枝')
+            ->assertJsonPath('items.1.type_id', $event->id);
+
+        $typeNames = collect($res->json('types'))->pluck('name');
+        $this->assertTrue($typeNames->contains('その他'));
+        $this->assertTrue($typeNames->contains('イベント'));
+    }
+
+    public function test_除外アイテムは種別を指定して登録でき省略時は既定種別になる(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $default = \App\Models\ExclusionType::default();
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+
+        // 種別を指定して登録
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/excluded-items', [
+            'names' => ['花火'],
+            'exclusion_type_id' => $event->id,
+        ])->assertCreated();
+        $this->assertDatabaseHas('excluded_items', ['name' => '花火', 'exclusion_type_id' => $event->id]);
+
+        // 種別を省略 → 既定種別「その他」になる
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/excluded-items', [
+            'names' => ['ゴミ'],
+        ])->assertCreated();
+        $this->assertDatabaseHas('excluded_items', ['name' => 'ゴミ', 'exclusion_type_id' => $default->id]);
+    }
+
+    public function test_adminは除外アイテムの種別を変更できる(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+        $row = ExcludedItem::create(['name' => 'ゴミ', 'exclusion_type_id' => \App\Models\ExclusionType::default()->id]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/admin/excluded-items/{$row->id}", ['exclusion_type_id' => $event->id])
+            ->assertOk()->assertJsonPath('exclusion_type_id', $event->id);
+
+        $this->assertDatabaseHas('excluded_items', ['id' => $row->id, 'exclusion_type_id' => $event->id]);
     }
 
     public function test_adminは除外アイテムをまとめて登録でき重複は無視される(): void

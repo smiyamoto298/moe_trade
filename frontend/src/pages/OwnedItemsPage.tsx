@@ -11,11 +11,11 @@ import CandidateSelectModal from '../components/CandidateSelectModal'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
 import { BaseStatBadges } from '../components/equipmentCells'
-import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts } from '../types'
+import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts, ExclusionType } from '../types'
 import { parseItemBox, isTransferNg, isTruncatedName, truncatedBase } from '../utils/itemBoxPaste'
-import { newLocalId, emptyInventory, buildExclusionSet, isExcluded } from '../utils/inventory'
+import { newLocalId, emptyInventory, buildExclusionSet, isExcluded, selectedCommonNames } from '../utils/inventory'
 import { compareJa } from '../utils/collator'
-import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getSkipExcludeConfirm, setSkipExcludeConfirm } from '../utils/inventoryStore'
+import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getSkipExcludeConfirm, setSkipExcludeConfirm, getAppliedExclusionTypeIds, setAppliedExclusionTypeIds, getDisabledCommonNames, setDisabledCommonNames } from '../utils/inventoryStore'
 
 const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 1\tアイネの抱っこぬいぐるみ\t中級者レア\t○\t1
@@ -34,7 +34,13 @@ export default function OwnedItemsPage() {
   const [loading, setLoading] = useState(true)
 
   // ---- 除外（共通＋個別） ----
-  const [commonExclusions, setCommonExclusions] = useState<string[]>([])
+  // 共通除外（管理者）はアイテム名＋種別IDで保持し、「適用する種別」で絞り込む。
+  const [commonItems, setCommonItems] = useState<{ name: string; type_id: number }[]>([])
+  const [exclusionTypes, setExclusionTypes] = useState<ExclusionType[]>([])
+  // ユーザーが適用する種別ID（端末ローカル設定）。null は全種別を適用（既定）。
+  const [appliedTypeIds, setAppliedTypeIds] = useState<number[] | null>(() => getAppliedExclusionTypeIds())
+  // 既定種別「その他」のうち個別にOFFにした共通除外アイテム名（端末ローカル設定）。
+  const [disabledOtherNames, setDisabledOtherNames] = useState<string[]>(() => getDisabledCommonNames())
 
   // ---- 貼り付け ----
   const [raw, setRaw] = useState('')
@@ -62,6 +68,8 @@ export default function OwnedItemsPage() {
   const [analyticsItem, setAnalyticsItem] = useState<{ id: number; name: string } | null>(null)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [exclusionModalOpen, setExclusionModalOpen] = useState(false)
+  // 共通除外の「適用する種別」設定モーダル（個別除外リストとは別）
+  const [commonExclusionModalOpen, setCommonExclusionModalOpen] = useState(false)
 
   // ---- 保存状態・離脱ガード ----
   const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -80,13 +88,14 @@ export default function OwnedItemsPage() {
       // 保存先モードはサーバー（ユーザー単位）を正として取得する。
       // これにより、ある端末で「サーバー」を選べば別端末でも同じ保存先が適用される。
       loadInitialInventory().catch(() => ({ mode: getStorageMode(), data: emptyInventory() })),
-      excludedItemsApi.list().then((r) => r.data).catch(() => [] as string[]),
+      excludedItemsApi.list().then((r) => r.data).catch(() => ({ types: [], items: [] })),
     ]).then(([{ mode: loadedMode, data: inv }, common]) => {
       if (!active) return
       setMode(loadedMode)
       modeRef.current = loadedMode
       setInventory(inv)
-      setCommonExclusions(common)
+      setCommonItems(common.items)
+      setExclusionTypes(common.types)
       // 既定の貼り付け先は先頭アカウント
       setPasteAccountId(inv.accounts[0]?.id ?? null)
       setLoading(false)
@@ -282,10 +291,47 @@ export default function OwnedItemsPage() {
     Promise.resolve(window.prompt(label, initial))
 
   // ---- 貼り付け読込 ----
+  // 既定種別「その他」（アイテム単位で適用）の id
+  const defaultTypeId = useMemo(() => exclusionTypes.find((t) => t.is_default)?.id ?? null, [exclusionTypes])
+
+  // 適用する種別（appliedTypeIds が null なら全種別）で共通除外を絞り、個別除外とマージする。
+  // その他はアイテム単位（disabledOtherNames でOFF）で絞る。
   const exclusionSet = useMemo(
-    () => buildExclusionSet(commonExclusions, inventory.exclusions),
-    [commonExclusions, inventory.exclusions]
+    () => buildExclusionSet(selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames), inventory.exclusions),
+    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, inventory.exclusions]
   )
+  // 適用中の共通除外件数
+  const appliedCommonCount = useMemo(
+    () => selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames).length,
+    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames]
+  )
+
+  // 種別の適用ON/OFFを切り替える（端末ローカルに保存）。その他以外の種別単位の制御。
+  // appliedTypeIds が null（全適用）のときは、全種別IDから当該種別を外した集合を新しい選択として確定する。
+  const toggleAppliedType = (typeId: number) => {
+    const allIds = exclusionTypes.map((t) => t.id)
+    const current = appliedTypeIds ?? allIds
+    const next = current.includes(typeId)
+      ? current.filter((id) => id !== typeId)
+      : [...current, typeId]
+    setAppliedTypeIds(next)
+    setAppliedExclusionTypeIds(next)
+  }
+  const isTypeApplied = (typeId: number) => (appliedTypeIds == null ? true : appliedTypeIds.includes(typeId))
+
+  // その他（既定種別）のアイテム単位ON/OFF。OFF（disabled）に入っていなければ適用。
+  const persistDisabledOther = (next: string[]) => {
+    setDisabledOtherNames(next)
+    setDisabledCommonNames(next)
+  }
+  const isOtherItemApplied = (name: string) => !disabledOtherNames.includes(name)
+  const toggleOtherItem = (name: string) => {
+    persistDisabledOther(
+      disabledOtherNames.includes(name)
+        ? disabledOtherNames.filter((n) => n !== name)
+        : [...disabledOtherNames, name]
+    )
+  }
 
   // 同名アイテムが減ったとき、残すアイテム（ステータス）を確認するための保留状態
   const [pendingReduction, setPendingReduction] = useState<{
@@ -663,6 +709,15 @@ export default function OwnedItemsPage() {
         >
           除外リスト ({inventory.exclusions.length})
         </button>
+        {exclusionTypes.length > 0 && (
+          <button
+            onClick={() => setCommonExclusionModalOpen(true)}
+            className="text-xs px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 text-gray-300 transition-colors"
+            title="貼り付け時に適用する共通除外の種別を選ぶ"
+          >
+            共通除外の設定 ({appliedCommonCount})
+          </button>
+        )}
       </div>
 
       {/* 一覧 */}
@@ -915,7 +970,7 @@ export default function OwnedItemsPage() {
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div>
               <h3 className="text-base font-bold text-white">自分の除外リスト</h3>
-              <p className="text-xs text-gray-400 mt-1">ここに登録した名前は貼り付け時に除外されます（管理者の共通除外 {commonExclusions.length} 件とマージして適用）。</p>
+              <p className="text-xs text-gray-400 mt-1">ここに登録した名前は貼り付け時に除外されます（管理者の共通除外 {appliedCommonCount} 件とマージして適用）。共通除外の適用範囲は「共通除外の設定」から変更できます。</p>
             </div>
             {inventory.exclusions.length === 0 ? (
               <p className="text-sm text-gray-500 py-4 text-center">個別の除外アイテムはありません。一覧の「除外」ボタンから追加できます。</p>
@@ -940,6 +995,109 @@ export default function OwnedItemsPage() {
             </label>
             <div className="flex justify-end">
               <button onClick={() => setExclusionModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 共通除外の設定（適用する種別を選ぶ・個別除外リストとは別） */}
+      {commonExclusionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto" onClick={() => setCommonExclusionModalOpen(false)}>
+          <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="text-base font-bold text-white">共通除外の設定</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                チェックした種類のアイテムは読み込み時に除外されます。<br />
+                ※管理者が手動で設定しているので、除外されないアイテムも多いですがご了承ください。
+              </p>
+            </div>
+            {exclusionTypes.length === 0 ? (
+              <p className="text-sm text-gray-500 py-4 text-center">共通除外の種別はありません。</p>
+            ) : (
+              <div className="space-y-3">
+                {/* その他以外の種別は種別単位でON/OFF */}
+                <div className="flex flex-wrap gap-2">
+                  {exclusionTypes.filter((t) => !t.is_default).map((t) => {
+                    const cnt = commonItems.filter((i) => i.type_id === t.id).length
+                    const on = isTypeApplied(t.id)
+                    return (
+                      <label
+                        key={t.id}
+                        className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border cursor-pointer transition-colors ${
+                          on ? 'border-primary-500/60 bg-primary-500/10 text-white' : 'border-surface-border text-gray-400 hover:border-gray-500'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => toggleAppliedType(t.id)}
+                          className="accent-primary-500"
+                        />
+                        {t.name} <span className="text-gray-500">({cnt})</span>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                {/* その他（既定種別）は最後に表示し、アイテム単位で選択する */}
+                {(() => {
+                  const other = exclusionTypes.find((t) => t.is_default)
+                  if (!other) return null
+                  const otherItems = commonItems
+                    .filter((i) => i.type_id === other.id)
+                    .slice()
+                    .sort((a, b) => compareJa(a.name, b.name))
+                  const allOn = otherItems.length > 0 && otherItems.every((i) => isOtherItemApplied(i.name))
+                  const toggleAll = () => {
+                    const names = otherItems.map((i) => i.name)
+                    persistDisabledOther(
+                      allOn
+                        ? Array.from(new Set([...disabledOtherNames, ...names]))
+                        : disabledOtherNames.filter((n) => !names.includes(n))
+                    )
+                  }
+                  return (
+                    <div className="border-t border-surface-border pt-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <h4 className="text-sm font-semibold text-gray-300">{other.name}（アイテムごとに選択）</h4>
+                        {otherItems.length > 0 && (
+                          <button onClick={toggleAll} className="text-xs text-primary-400 hover:text-primary-300">
+                            {allOn ? 'すべて外す' : 'すべて選択'}
+                          </button>
+                        )}
+                      </div>
+                      {otherItems.length === 0 ? (
+                        <p className="text-xs text-gray-500">アイテムはありません。</p>
+                      ) : (
+                        <div className="space-y-1 max-h-60 overflow-y-auto">
+                          {otherItems.map((i) => {
+                            const on = isOtherItemApplied(i.name)
+                            return (
+                              <label
+                                key={i.name}
+                                className={`flex items-center gap-2 text-xs px-2.5 py-1.5 rounded border cursor-pointer transition-colors ${
+                                  on ? 'border-primary-500/60 bg-primary-500/10 text-white' : 'border-surface-border text-gray-400 hover:border-gray-500'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  onChange={() => toggleOtherItem(i.name)}
+                                  className="accent-primary-500 shrink-0"
+                                />
+                                <span className="truncate">{i.name}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button onClick={() => setCommonExclusionModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DismissedExcludedSuggestion;
 use App\Models\ExcludedItem;
+use App\Models\ExclusionType;
 use App\Models\ReportedExcludedName;
 use App\Models\UserExcludedItem;
 use Illuminate\Http\Request;
@@ -14,10 +15,28 @@ use Illuminate\Http\Request;
  */
 class ExcludedItemController extends Controller
 {
-    /** 公開: 除外アイテム名の配列。貼り付け除外に使用（ローカル保存ユーザーも取得する）。 */
+    /**
+     * 公開: 共通除外アイテムと種別。貼り付け除外に使用（ローカル保存ユーザーも取得する）。
+     *
+     * 戻り値: { types: [{ id, name, is_default, sort_order }], items: [{ name, type_id }] }。
+     * クライアントは「適用する種別」（端末ローカル設定）で items を絞り込んで除外セットを作る。
+     * type_id が null の行は既定種別 id に正規化する。
+     */
     public function index()
     {
-        return response()->json(ExcludedItem::orderBy('name')->pluck('name'));
+        $types = ExclusionType::orderBy('sort_order')->orderBy('name')
+            ->get(['id', 'name', 'is_default', 'sort_order']);
+        $defaultId = $types->firstWhere('is_default', true)?->id;
+
+        $items = ExcludedItem::orderBy('name')
+            ->get(['name', 'exclusion_type_id'])
+            ->map(fn ($i) => [
+                'name'    => $i->name,
+                'type_id' => $i->exclusion_type_id ?? $defaultId,
+            ])
+            ->values();
+
+        return response()->json(['types' => $types, 'items' => $items]);
     }
 
     /** 管理: 全件（id 付き）。管理画面用。 */
@@ -128,11 +147,14 @@ class ExcludedItemController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'names'   => 'required|array|min:1',
-            'names.*' => 'required|string|max:200',
+            'names'             => 'required|array|min:1',
+            'names.*'           => 'required|string|max:200',
+            'exclusion_type_id' => 'nullable|integer|exists:exclusion_types,id',
         ]);
 
         $userId = $request->user()->id;
+        // 種別未指定なら既定種別「その他」に入れる
+        $typeId = $data['exclusion_type_id'] ?? ExclusionType::default()?->id;
         // 入力内の重複・空白を整理
         $names = collect($data['names'])
             ->map(fn($n) => trim($n))
@@ -146,7 +168,11 @@ class ExcludedItemController extends Controller
             if (in_array($name, $existing, true)) {
                 continue;
             }
-            $created[] = ExcludedItem::create(['name' => $name, 'created_by' => $userId]);
+            $created[] = ExcludedItem::create([
+                'name'              => $name,
+                'created_by'        => $userId,
+                'exclusion_type_id' => $typeId,
+            ]);
         }
 
         return response()->json([
@@ -160,7 +186,8 @@ class ExcludedItemController extends Controller
     {
         $excluded = ExcludedItem::findOrFail($id);
         $data = $request->validate([
-            'name' => 'required|string|max:200|unique:excluded_items,name,' . $excluded->id,
+            'name'              => 'sometimes|required|string|max:200|unique:excluded_items,name,' . $excluded->id,
+            'exclusion_type_id' => 'sometimes|nullable|integer|exists:exclusion_types,id',
         ]);
         $excluded->update($data);
         return response()->json($excluded->fresh());

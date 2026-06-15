@@ -18,6 +18,31 @@ export function normalizeExcludeName(name: string): string {
   return name.trim()
 }
 
+/**
+ * 共通除外アイテムを「適用する種別」で絞り込んだ名前の配列を返す。
+ *
+ * - 既定種別「その他」（defaultTypeId）のアイテムは **アイテム単位** で適用する。
+ *   disabledOtherNames に入っている名前だけ除外する（既定は空＝全適用＝オプトアウト方式）。
+ * - それ以外の種別は **種別単位** で適用する。selectedTypeIds が null（未設定）なら全種別を適用する。
+ */
+export function selectedCommonNames(
+  items: { name: string; type_id: number }[],
+  selectedTypeIds: number[] | null,
+  defaultTypeId: number | null = null,
+  disabledOtherNames: string[] = []
+): string[] {
+  const typeSet = selectedTypeIds == null ? null : new Set(selectedTypeIds)
+  const disabled = new Set(disabledOtherNames)
+  return items
+    .filter((i) => {
+      if (defaultTypeId != null && i.type_id === defaultTypeId) {
+        return !disabled.has(i.name)
+      }
+      return typeSet == null ? true : typeSet.has(i.type_id)
+    })
+    .map((i) => i.name)
+}
+
 /** 共通除外（管理者）と個別除外（ユーザー）をマージした除外名セットを作る。 */
 export function buildExclusionSet(common: string[], personal: string[]): Set<string> {
   const set = new Set<string>()

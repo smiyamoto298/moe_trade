@@ -9,10 +9,15 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ExcludedItem extends Model
 {
-    protected $fillable = ['name', 'created_by'];
+    protected $fillable = ['name', 'created_by', 'exclusion_type_id'];
 
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function type()
+    {
+        return $this->belongsTo(ExclusionType::class, 'exclusion_type_id');
     }
 }

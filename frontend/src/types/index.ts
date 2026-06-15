@@ -381,12 +381,29 @@ export interface InventoryData {
 // 保存先（デフォルトはローカルストレージ）
 export type InventoryStorageMode = 'local' | 'db'
 
+// 共通除外アイテムの種別（カテゴリ）。管理者が任意で追加。既定は「その他」（is_default=true）。
+export interface ExclusionType {
+  id: number
+  name: string
+  is_default: boolean
+  sort_order: number
+}
+
 // 管理者が管理する共通の除外アイテム
 export interface ExcludedItem {
   id: number
   name: string
   created_by: number | null
+  // 所属する種別（既定種別なら「その他」の id）。古いレスポンスでは未定義
+  exclusion_type_id: number | null
   created_at: string
+}
+
+// 公開: 共通除外アイテムと種別（貼り付け除外に使用）。
+// items は種別IDを伴い、クライアントは「適用する種別」（端末ローカル設定）で絞り込む。
+export interface ExcludedItemsPublic {
+  types: ExclusionType[]
+  items: { name: string; type_id: number }[]
 }
 
 // ユーザー個別除外を集計した、共通除外への昇格候補。

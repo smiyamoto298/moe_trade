@@ -329,6 +329,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('admin/excluded-items/{id}',    [ExcludedItemController::class, 'update']);
         Route::delete('admin/excluded-items/{id}', [ExcludedItemController::class, 'destroy']);
 
+        // 共通除外アイテムの種別（カテゴリ）管理
+        Route::get('admin/exclusion-types',           [\App\Http\Controllers\ExclusionTypeController::class, 'index']);
+        Route::post('admin/exclusion-types',          [\App\Http\Controllers\ExclusionTypeController::class, 'store']);
+        Route::put('admin/exclusion-types/{id}',      [\App\Http\Controllers\ExclusionTypeController::class, 'update']);
+        Route::delete('admin/exclusion-types/{id}',   [\App\Http\Controllers\ExclusionTypeController::class, 'destroy']);
+
         // お知らせ管理
         Route::get('admin/announcements',          [AnnouncementController::class, 'adminIndex']);
         Route::post('admin/announcements/reorder', [AnnouncementController::class, 'reorder']);
