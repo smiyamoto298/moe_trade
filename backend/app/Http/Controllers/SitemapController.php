@@ -25,6 +25,7 @@ class SitemapController extends Controller
         $base = rtrim(config('app.frontend_url'), '/');
 
         $urls = [
+            ['loc' => $base . '/'],
             ['loc' => $base . '/listings'],
             ['loc' => $base . '/skills'],
             ['loc' => $base . '/assets'],
