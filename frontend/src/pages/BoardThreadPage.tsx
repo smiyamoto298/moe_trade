@@ -5,11 +5,18 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { useDialog } from '../contexts/DialogContext'
 import Spinner from '../components/Spinner'
-import type { BoardThread, BoardPost } from '../types'
+import type { BoardThread, BoardPost, BoardThreadCategory } from '../types'
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   open:     { label: '対応中',   className: 'bg-emerald-900/30 border border-emerald-700/40 text-emerald-300' },
   resolved: { label: '解決済み', className: 'bg-gray-800 border border-gray-700 text-gray-400' },
+}
+
+const CATEGORY_BADGE: Record<BoardThreadCategory, { label: string; className: string }> = {
+  item_correction: { label: 'アイテム情報修正依頼', className: 'bg-blue-900/30 border border-blue-700/40 text-blue-300' },
+  request:         { label: '要望',                 className: 'bg-teal-900/30 border border-teal-700/40 text-teal-300' },
+  bug:             { label: '不具合',               className: 'bg-rose-900/30 border border-rose-700/40 text-rose-300' },
+  other:           { label: 'その他',               className: 'bg-gray-800 border border-gray-700 text-gray-400' },
 }
 
 export default function BoardThreadPage() {
@@ -186,6 +193,7 @@ export default function BoardThreadPage() {
 
   const isMine = (userId: number) => user?.id === userId
   const badge = STATUS_BADGE[thread.status] ?? STATUS_BADGE.open
+  const catBadge = CATEGORY_BADGE[thread.category] ?? CATEGORY_BADGE.other
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
@@ -196,6 +204,7 @@ export default function BoardThreadPage() {
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs rounded px-1.5 py-0.5 shrink-0 ${badge.className}`}>{badge.label}</span>
+            <span className={`text-xs rounded px-1.5 py-0.5 shrink-0 ${catBadge.className}`}>{catBadge.label}</span>
             {thread.admin_only && (
               <span className="text-xs rounded px-1.5 py-0.5 shrink-0 bg-purple-900/40 border border-purple-600/50 text-purple-200" title="管理者のみ閲覧可能">🔒 管理者限定</span>
             )}

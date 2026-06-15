@@ -299,10 +299,13 @@ export interface TradeChat {
 // ---- 運営掲示板 ----
 export type BoardThreadStatus = 'open' | 'resolved'
 
+export type BoardThreadCategory = 'item_correction' | 'request' | 'bug' | 'other'
+
 export interface BoardThreadSummary {
   id: number
   title: string
   status: BoardThreadStatus
+  category: BoardThreadCategory
   admin_only: boolean
   user_id: number
   author_name: string
@@ -325,6 +328,7 @@ export interface BoardThread {
   id: number
   title: string
   status: BoardThreadStatus
+  category: BoardThreadCategory
   admin_only: boolean
   user_id: number
   author_name: string

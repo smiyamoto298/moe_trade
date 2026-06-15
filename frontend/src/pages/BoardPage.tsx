@@ -5,11 +5,40 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { useAsync } from '../hooks/useAsync'
 import Spinner from '../components/Spinner'
-import type { BoardThreadSummary } from '../types'
+import type { BoardThreadSummary, BoardThreadCategory } from '../types'
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   open:     { label: '対応中',   className: 'bg-emerald-900/30 border border-emerald-700/40 text-emerald-300' },
   resolved: { label: '解決済み', className: 'bg-gray-800 border border-gray-700 text-gray-400' },
+}
+
+// スレッド種別（表示順はこの定義順）
+const CATEGORY_BADGE: Record<BoardThreadCategory, { label: string; className: string }> = {
+  item_correction: { label: 'アイテム情報修正依頼', className: 'bg-blue-900/30 border border-blue-700/40 text-blue-300' },
+  request:         { label: '要望',                 className: 'bg-teal-900/30 border border-teal-700/40 text-teal-300' },
+  bug:             { label: '不具合',               className: 'bg-rose-900/30 border border-rose-700/40 text-rose-300' },
+  other:           { label: 'その他',               className: 'bg-gray-800 border border-gray-700 text-gray-400' },
+}
+const CATEGORY_KEYS = Object.keys(CATEGORY_BADGE) as BoardThreadCategory[]
+
+// 種別ごとの入力プレースホルダ
+const CATEGORY_PLACEHOLDER: Record<BoardThreadCategory, { title: string; message: string }> = {
+  item_correction: {
+    title:   'アイテム名を入力してください',
+    message: '誤っている内容・正しい情報を記載してください（参考画像はCtrl+Vで貼り付け可）',
+  },
+  request: {
+    title:   '例）出品一覧に絞り込み機能がほしい',
+    message: '要望の内容と、それがあると嬉しい理由を記載してください（画像はCtrl+Vで貼り付け可）',
+  },
+  bug: {
+    title:   '例）出品ボタンを押すとエラーになる',
+    message: '不具合の内容・再現手順・発生した状況を記載してください（画像はCtrl+Vで貼り付け可）',
+  },
+  other: {
+    title:   '件名を入力してください',
+    message: 'お問い合わせ内容を記載してください（画像はCtrl+Vで貼り付け可）',
+  },
 }
 
 export default function BoardPage() {
@@ -18,10 +47,12 @@ export default function BoardPage() {
   const [threads, setThreads] = useState<BoardThreadSummary[]>([])
   const [onlyMine, setOnlyMine] = useState(false)
   const [hideResolved, setHideResolved] = useState(false)
+  const [filterCategory, setFilterCategory] = useState<BoardThreadCategory | ''>('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
+  const [category, setCategory] = useState<BoardThreadCategory>('bug')
   const [adminOnly, setAdminOnly] = useState(false)
   const [image, setImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -65,12 +96,13 @@ export default function BoardPage() {
 
   const load = () => {
     setLoading(true)
-    boardApi.listThreads()
+    boardApi.listThreads(1, filterCategory || undefined)
       .then((r) => setThreads(r.data.data))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load(); markBoardSeen() }, [])
+  useEffect(() => { load() }, [filterCategory])
+  useEffect(() => { markBoardSeen() }, [])
 
   const handleCreate = () => runCreate(async () => {
     setError('')
@@ -79,9 +111,10 @@ export default function BoardPage() {
       return
     }
     try {
-      await boardApi.createThread(title.trim(), message.trim(), image, isAdmin && adminOnly)
+      await boardApi.createThread(title.trim(), message.trim(), category, image, isAdmin && adminOnly)
       setTitle('')
       setMessage('')
+      setCategory('bug')
       setAdminOnly(false)
       clearImage()
       setShowForm(false)
@@ -118,13 +151,25 @@ export default function BoardPage() {
       {showForm && (
         <div className="mb-6 bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
           <div>
+            <label className="block text-xs text-gray-400 mb-1">種別 <span className="text-red-400">*</span></label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as BoardThreadCategory)}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+            >
+              {CATEGORY_KEYS.map((key) => (
+                <option key={key} value={key}>{CATEGORY_BADGE[key].label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-xs text-gray-400 mb-1">タイトル <span className="text-red-400">*</span></label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={200}
-              placeholder="不具合の概要など"
+              placeholder={CATEGORY_PLACEHOLDER[category].title}
               className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
             />
           </div>
@@ -136,7 +181,7 @@ export default function BoardPage() {
               onChange={(e) => setMessage(e.target.value)}
               onPaste={handlePaste}
               maxLength={5000}
-              placeholder="不具合の内容、再現手順、要望などを記載してください（画像はCtrl+Vで貼り付け可）"
+              placeholder={CATEGORY_PLACEHOLDER[category].message}
               className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 resize-none"
             />
           </div>
@@ -187,6 +232,19 @@ export default function BoardPage() {
 
       {/* フィルター */}
       <div className="mb-3 flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-1.5 text-xs text-gray-400">
+          種別
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value as BoardThreadCategory | '')}
+            className="bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-primary-500"
+          >
+            <option value="">すべて</option>
+            {CATEGORY_KEYS.map((key) => (
+              <option key={key} value={key}>{CATEGORY_BADGE[key].label}</option>
+            ))}
+          </select>
+        </label>
         <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 hover:text-gray-200 transition-colors">
           <input
             type="checkbox"
@@ -220,6 +278,7 @@ export default function BoardPage() {
         <div className="space-y-2">
           {filteredThreads.map((t) => {
             const badge = STATUS_BADGE[t.status] ?? STATUS_BADGE.open
+            const catBadge = CATEGORY_BADGE[t.category] ?? CATEGORY_BADGE.other
             const isUnread = unreadBoardThreadIds.has(t.id)
             return (
               <Link
@@ -232,6 +291,7 @@ export default function BoardPage() {
                     <div className="flex items-center gap-2">
                       {isUnread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="未読の投稿があります" />}
                       <span className={`text-xs rounded px-1.5 py-0.5 shrink-0 ${badge.className}`}>{badge.label}</span>
+                      <span className={`text-xs rounded px-1.5 py-0.5 shrink-0 ${catBadge.className}`}>{catBadge.label}</span>
                       {t.admin_only && (
                         <span className="text-xs rounded px-1.5 py-0.5 shrink-0 bg-purple-900/40 border border-purple-600/50 text-purple-200" title="管理者のみ閲覧可能">🔒 管理者限定</span>
                       )}

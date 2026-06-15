@@ -71,6 +71,54 @@ class BoardApiTest extends TestCase
         $res->assertJsonPath('author_name', "ユーザー#{$user->id}");
     }
 
+    public function test_種別を指定してスレッドを作成できる(): void
+    {
+        $user = $this->makeUser();
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/board/threads', [
+            'title'    => 'このアイテムの効果が違います',
+            'message'  => '修正をお願いします。',
+            'category' => 'item_correction',
+        ]);
+
+        $res->assertStatus(201)->assertJsonPath('category', 'item_correction');
+        $this->assertDatabaseHas('board_threads', ['category' => 'item_correction']);
+    }
+
+    public function test_種別未指定はotherになる(): void
+    {
+        $user = $this->makeUser();
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/board/threads', [
+            'title' => 'タイトル', 'message' => '本文',
+        ])->assertStatus(201)->assertJsonPath('category', 'other');
+    }
+
+    public function test_不正な種別は422になる(): void
+    {
+        $user = $this->makeUser();
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/board/threads', [
+            'title' => 'タイトル', 'message' => '本文', 'category' => 'invalid',
+        ])->assertStatus(422);
+    }
+
+    public function test_種別で一覧を絞り込める(): void
+    {
+        $user = $this->makeUser();
+        $this->actingAs($user, 'sanctum')->postJson('/api/board/threads', [
+            'title' => '要望スレ', 'message' => '本文', 'category' => 'request',
+        ]);
+        $this->actingAs($user, 'sanctum')->postJson('/api/board/threads', [
+            'title' => '不具合スレ', 'message' => '本文', 'category' => 'bug',
+        ]);
+
+        $list = $this->actingAs($user, 'sanctum')->getJson('/api/board/threads?category=bug');
+        $list->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.title', '不具合スレ');
+    }
+
     public function test_スレッドに投稿を追加できる(): void
     {
         $author = $this->makeUser();

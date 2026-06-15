@@ -61,6 +61,7 @@ class BoardController extends Controller
             'id'             => $thread->id,
             'title'          => $thread->title,
             'status'         => $thread->status,
+            'category'       => $thread->category,
             'admin_only'     => (bool) $thread->admin_only,
             'user_id'        => $thread->user_id,
             'author_name'    => $this->authorName($thread->user),
@@ -72,10 +73,17 @@ class BoardController extends Controller
 
     public function index(Request $request)
     {
+        // 種別フィルタ（ホワイトリスト外は無視）
+        $category = $request->query('category');
+        if (!array_key_exists($category, BoardThread::CATEGORIES)) {
+            $category = null;
+        }
+
         $threads = BoardThread::with('user.characters')
             ->withCount('posts')
             // 管理者限定スレッドは管理者以外には表示しない
             ->when(!$request->user()->isAdmin(), fn ($q) => $q->where('admin_only', false))
+            ->when($category, fn ($q) => $q->where('category', $category))
             // 対応中（open）を先に表示し、各グループ内は最終更新が新しい順
             ->orderByRaw("status = 'resolved' ASC")
             ->orderByDesc('updated_at')
@@ -99,6 +107,7 @@ class BoardController extends Controller
             'id'          => $thread->id,
             'title'       => $thread->title,
             'status'      => $thread->status,
+            'category'    => $thread->category,
             'admin_only'  => (bool) $thread->admin_only,
             'user_id'     => $thread->user_id,
             'author_name' => $this->authorName($thread->user),
@@ -112,6 +121,7 @@ class BoardController extends Controller
         $data = $request->validate([
             'title'      => 'required|string|max:200',
             'message'    => 'required|string|max:5000',
+            'category'   => ['nullable', 'string', 'in:' . implode(',', array_keys(BoardThread::CATEGORIES))],
             'image'      => 'nullable|image|mimes:jpeg,png,gif,webp|max:5120',
             'admin_only' => 'nullable|boolean',
         ]);
@@ -122,6 +132,7 @@ class BoardController extends Controller
             'user_id'    => $user->id,
             'title'      => $data['title'],
             'status'     => 'open',
+            'category'   => $data['category'] ?? 'other',
             // 管理者限定スレッドは管理者のみ作成可能
             'admin_only' => $user->isAdmin() ? $request->boolean('admin_only') : false,
         ]);

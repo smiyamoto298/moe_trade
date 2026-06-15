@@ -1,20 +1,21 @@
 import client from './client'
-import type { BoardThread, BoardThreadSummary, BoardPost, BoardThreadStatus, Paginated } from '../types'
+import type { BoardThread, BoardThreadSummary, BoardPost, BoardThreadStatus, BoardThreadCategory, Paginated } from '../types'
 
 // multipart/form-data 用のヘッダー（axios が boundary を自動付与する）
 const MULTIPART = { headers: { 'Content-Type': 'multipart/form-data' } }
 
 export const boardApi = {
-  listThreads: (page = 1): Promise<{ data: Paginated<BoardThreadSummary> }> =>
-    client.get<Paginated<BoardThreadSummary>>('/board/threads', { params: { page } }),
+  listThreads: (page = 1, category?: BoardThreadCategory): Promise<{ data: Paginated<BoardThreadSummary> }> =>
+    client.get<Paginated<BoardThreadSummary>>('/board/threads', { params: { page, category } }),
 
   getThread: (id: number): Promise<{ data: BoardThread }> =>
     client.get<BoardThread>(`/board/threads/${id}`),
 
-  createThread: (title: string, message: string, image?: File | null, adminOnly = false): Promise<{ data: BoardThreadSummary }> => {
+  createThread: (title: string, message: string, category: BoardThreadCategory, image?: File | null, adminOnly = false): Promise<{ data: BoardThreadSummary }> => {
     const fd = new FormData()
     fd.append('title', title)
     fd.append('message', message)
+    fd.append('category', category)
     if (image) fd.append('image', image)
     if (adminOnly) fd.append('admin_only', '1')
     return client.post<BoardThreadSummary>('/board/threads', fd, MULTIPART)
