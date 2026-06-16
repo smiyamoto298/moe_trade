@@ -10,6 +10,9 @@ import {
   ASSET_PLACEMENTS,
   ASSET_FUNCTIONS,
   formatSignedValue,
+  unitSuffix,
+  formatBonusValueDisplay,
+  bonusValueForSave,
 } from './constants'
 
 // design.md のマスタ定義（追加効果キー・特殊条件・スキル・マスタリ・アセット選択肢）と
@@ -104,6 +107,53 @@ describe('formatSignedValue', () => {
     // 倍率以外の単位は + を付ける
     expect(formatSignedValue(15, '%')).toBe('+15')
     expect(formatSignedValue(41.25, 'per_min')).toBe('+41.25')
+  })
+})
+
+describe('unitSuffix', () => {
+  it('単位ごとのサフィックスを返す', () => {
+    expect(unitSuffix('%')).toBe('%')
+    expect(unitSuffix('x')).toBe('倍')
+    expect(unitSuffix('per_min')).toBe('/min')
+    expect(unitSuffix('fixed')).toBe('')
+    expect(unitSuffix('text')).toBe('')
+    expect(unitSuffix('checking')).toBe('')
+    expect(unitSuffix(undefined)).toBe('')
+  })
+})
+
+describe('formatBonusValueDisplay', () => {
+  it('数値系の単位は符号付き数値＋サフィックスで表示する', () => {
+    expect(formatBonusValueDisplay(15, '%')).toBe('+15%')
+    expect(formatBonusValueDisplay(-5, '%')).toBe('-5%')
+    expect(formatBonusValueDisplay(1.5, 'x')).toBe('1.5倍')
+    expect(formatBonusValueDisplay(10, 'fixed')).toBe('+10')
+    expect(formatBonusValueDisplay(3, 'per_min')).toBe('+3/min')
+  })
+
+  it('text はテキストをそのまま（符号・単位なし）表示する', () => {
+    expect(formatBonusValueDisplay('特殊効果あり', 'text')).toBe('特殊効果あり')
+    expect(formatBonusValueDisplay('5〜10', 'text')).toBe('5〜10')
+  })
+
+  it('checking は値に関わらず「確認中」と表示する', () => {
+    expect(formatBonusValueDisplay('', 'checking')).toBe('確認中')
+    expect(formatBonusValueDisplay(15, 'checking')).toBe('確認中')
+  })
+})
+
+describe('bonusValueForSave', () => {
+  it('数値系の単位は数値化する', () => {
+    expect(bonusValueForSave({ value: '15', value_unit: '%' })).toBe(15)
+    expect(bonusValueForSave({ value: '1.5', value_unit: 'x' })).toBe(1.5)
+  })
+
+  it('text はテキストのまま保存する', () => {
+    expect(bonusValueForSave({ value: '特殊効果', value_unit: 'text' })).toBe('特殊効果')
+  })
+
+  it('checking は値を持たない（空文字）', () => {
+    expect(bonusValueForSave({ value: '999', value_unit: 'checking' })).toBe('')
   })
 })
 

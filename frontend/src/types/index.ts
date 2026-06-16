@@ -42,8 +42,9 @@ export interface BonusEffectType {
 }
 
 export interface BonusEffectValue {
-  value: number
-  value_unit: string  // '%' | 'fixed' | 'x' | 'per_min'
+  // 'text' のときは文字列、'checking' のときは値なし('')。それ以外は数値。
+  value: number | string
+  value_unit: string  // '%' | 'fixed' | 'x' | 'per_min' | 'text'（テキスト） | 'checking'（確認中）
   label?: string      // 何の数値か（例: "物理ダメージ", "命中"）
 }
 

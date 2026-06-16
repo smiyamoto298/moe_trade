@@ -13,7 +13,7 @@ export interface EquipmentSetPieceInput {
   mithril?: boolean
   bonus_effects: {
     effect_name: string
-    values: { value: number; value_unit: string; label?: string }[]
+    values: { value: number | string; value_unit: string; label?: string }[]
     description: string
     is_exclusive?: boolean
   }[]
@@ -95,7 +95,7 @@ export const itemsApi = {
     recipe_binder?: string | null
     bonus_effects?: {
       effect_name: string
-      values: { value: number; value_unit: string; label?: string }[]
+      values: { value: number | string; value_unit: string; label?: string }[]
       description: string
       is_exclusive?: boolean
     }[]
@@ -160,7 +160,7 @@ export const itemsApi = {
     set_piece_category_ids?: number[]
     bonus_effects?: {
       effect_name: string
-      values: { value: number; value_unit: string; label?: string }[]
+      values: { value: number | string; value_unit: string; label?: string }[]
       description: string
       is_exclusive?: boolean
     }[]

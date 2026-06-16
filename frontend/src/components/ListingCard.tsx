@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Listing } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
 import UnverifiedBadge from './UnverifiedBadge'
 
 interface Props {
@@ -61,7 +61,7 @@ export default function ListingCard({ listing }: Props) {
                   {e.values?.length > 0 && (
                     <span className="text-gray-400 ml-1">
                       {e.values.map((v, i) => (
-                        <span key={i}>{i > 0 && '/'}{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : ''}</span>
+                        <span key={i}>{i > 0 && '/'}{formatBonusValueDisplay(v.value, v.value_unit)}</span>
                       ))}
                     </span>
                   )}

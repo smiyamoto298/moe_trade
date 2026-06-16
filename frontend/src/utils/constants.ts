@@ -66,6 +66,29 @@ export function formatSignedValue(value: number | string, unit?: string): string
   return s.startsWith('-') ? s : `+${s}`
 }
 
+// 単位の表示サフィックス（% / 倍 / /min）。数値・テキスト・確認中以外は空。
+export function unitSuffix(unit?: string): string {
+  return unit === '%' ? '%' : unit === 'x' ? '倍' : unit === 'per_min' ? '/min' : ''
+}
+
+// 付加効果の値1件の表示文字列。
+// value_unit === 'text'   … 数値ではなくテキストをそのまま表示（符号・単位なし）
+// value_unit === 'checking' … 値を持たず「確認中」と表示する（項目名のみ設定）
+// それ以外 … 符号付き数値＋単位（formatSignedValue + unitSuffix）
+export function formatBonusValueDisplay(value: number | string, unit?: string): string {
+  if (unit === 'checking') return '確認中'
+  if (unit === 'text') return String(value)
+  return `${formatSignedValue(value, unit)}${unitSuffix(unit)}`
+}
+
+// 付加効果の値（フォーム入力 string）をAPI送信用に整形する。
+// text … テキストのまま、checking … 値を持たない('')、それ以外 … 数値化。
+export function bonusValueForSave(v: { value: string; value_unit: string }): number | string {
+  if (v.value_unit === 'text') return v.value
+  if (v.value_unit === 'checking') return ''
+  return Number(v.value)
+}
+
 // キーの定義順がセレクトボックス等の選択肢の表示順になる（STAT_INPUT_COLUMNS の1列目→2列目→3列目と同順）
 export const BASE_STAT_LABELS: Record<string, string> = {
   max_hp:     '最大HP',

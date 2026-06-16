@@ -105,6 +105,37 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手', 'is_exclusive' => true]);
     }
 
+    public function test_付加効果の値はテキスト_確認中の単位で保存できる(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'テキスト・確認中の剣',
+            'bonus_effects' => [
+                [
+                    'effect_name' => '謎の力',
+                    'values'      => [
+                        // text: 数値ではなく文字列をそのまま保持する
+                        ['value' => '状況により変動', 'value_unit' => 'text', 'label' => '特殊効果'],
+                        // checking: 項目名のみ。値は空でも除外されず確認中として保存される
+                        ['value' => '', 'value_unit' => 'checking', 'label' => '隠し効果'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('bonus_effects.0.values.0.value_unit', 'text')
+            ->assertJsonPath('bonus_effects.0.values.0.value', '状況により変動')
+            ->assertJsonPath('bonus_effects.0.values.1.value_unit', 'checking')
+            ->assertJsonPath('bonus_effects.0.values.1.label', '隠し効果');
+
+        // checking の項目名も候補テーブルに自動追加される
+        $this->assertDatabaseHas('bonus_value_labels', ['label' => '隠し効果']);
+    }
+
     public function test_未ログインではアイテム登録できない(): void
     {
         $this->postJson('/api/items', ['name' => 'x'])->assertStatus(401);

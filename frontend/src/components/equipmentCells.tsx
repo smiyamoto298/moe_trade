@@ -1,5 +1,5 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
 import { groupPiecesByBaseStats, groupPiecesByBonusEffects, groupPiecesBySpecialConditions, hasBaseStats, hasBonusEffects, hasSpecialConditions } from '../utils/equipmentSet'
 
 // 出品一覧・アイテム管理一覧で共通利用する、装備品/装備セットの効果表示セル群。
@@ -39,7 +39,7 @@ export function BonusEffectList({ item }: { item: Item }) {
           {e.values?.map((v, i) => (
             <p key={i} className="text-gray-400 whitespace-nowrap">
               {v.label && <span>{v.label}：</span>}
-              <span className="text-gray-200">{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
+              <span className="text-gray-200">{formatBonusValueDisplay(v.value, v.value_unit)}</span>
             </p>
           ))}
         </div>

@@ -1,9 +1,6 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
 import { groupPiecesByPerformance } from '../utils/equipmentSet'
-
-const unitSuffix = (unit: string) =>
-  unit === '%' ? '%' : unit === 'x' ? '倍' : unit === 'per_min' ? '/min' : ''
 
 // 装備セットの構成部位（set_members）を、部位ごとの名前・追加効果・付加効果・特殊条件つきで表示する。
 // 出品/買取の詳細ページで共通利用する。
@@ -61,7 +58,7 @@ export default function EquipmentSetBreakdown({ members }: { members?: Item[] })
                       {e.values.map((v, i) => (
                         <span key={i} className="text-gray-300 ml-1">
                           {v.label && <span className="text-gray-400">{v.label} </span>}
-                          {formatSignedValue(v.value, v.value_unit)}{unitSuffix(v.value_unit)}
+                          {formatBonusValueDisplay(v.value, v.value_unit)}
                         </span>
                       ))}
                       {e.description && <span className="text-gray-500 ml-1">— {e.description}</span>}

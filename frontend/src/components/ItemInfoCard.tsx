@@ -1,5 +1,5 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
 import { OTHER_RECIPE } from '../utils/itemType'
 import EquipmentSetBreakdown from './EquipmentSetBreakdown'
 
@@ -129,7 +129,7 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
                       <span key={i}>
                         {i > 0 && <span className="text-gray-600 mx-1">/</span>}
                         {v.label && <span className="text-gray-400">{v.label} </span>}
-                        <span>{formatSignedValue(v.value, v.value_unit)}{v.value_unit === '%' ? '%' : v.value_unit === 'x' ? '倍' : v.value_unit === 'per_min' ? '/min' : ''}</span>
+                        <span>{formatBonusValueDisplay(v.value, v.value_unit)}</span>
                       </span>
                     ))}
                   </span>
