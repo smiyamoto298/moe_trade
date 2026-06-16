@@ -176,7 +176,7 @@ export default function Header() {
               <span className="text-xs text-gray-500">{adminOpen ? '▲' : '▼'}</span>
               {unverifiedItemCount > 0 && (
                 <span
-                  title={`未確認アイテム ${unverifiedItemCount}件`}
+                  title={`確認中アイテム ${unverifiedItemCount}件`}
                   className="absolute -top-1.5 -right-3 bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none"
                 >
                   {unverifiedItemCount}

@@ -63,7 +63,7 @@ export const TOURS: Record<string, PageTour> = {
       {
         target: '[data-tour="listings-itemname"]',
         title: 'アイテム名',
-        body: '装備セット：カーソルをあてるとセット内容を確認できます。\n未確認 : アイテムの情報が不正確な場合があります。',
+        body: '装備セット：カーソルをあてるとセット内容を確認できます。\n確認中 : アイテムの情報が不正確な場合があります。',
         placement: 'bottom',
         width: 450,
       },

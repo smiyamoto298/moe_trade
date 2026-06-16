@@ -360,6 +360,21 @@ export default function AdminItemEditPage() {
   const removeBonus = (idx: number) =>
     setBonusEffects((prev) => prev.filter((_, i) => i !== idx))
 
+  // 確認済み → 確認中に戻す（フォーム保存とは独立した即時操作）
+  const handleUnverify = async () => {
+    if (saving || !id) return
+    setSaving(true)
+    try {
+      await itemsApi.unverify(Number(id))
+      setVerifiedStatus('unverified')
+    } catch (err: unknown) {
+      const res = (err as { response?: { data?: { message?: string } } })?.response
+      await alert(res?.data?.message ?? '確認状態の変更に失敗しました。', { title: 'エラー' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const andVerify = verifyAfterSaveRef.current
@@ -422,6 +437,8 @@ export default function AdminItemEditPage() {
           })) : [],
         // ハッシュタグ（admin/editor は固定タグ・通常タグの両方を編集可。固定は権限をバックエンドでも再チェック）
         ...(isEditor ? { fixed_hashtags: parseHashtags(fixedTagsText), user_hashtags: parseHashtags(userTagsText) } : {}),
+        // 新規登録時、editor/admin は確認済み(確認済みにして追加)/確認中(確認中で追加)を選べる
+        ...(isNew && isEditor ? { verified: andVerify } : {}),
       }
       // 既存の部位アイテム自身を構成部位に含む装備セットへ変換するケース
       // （部位として残し、出品などの紐付けを保持したまま新しいセット本体を作成する）。
@@ -442,7 +459,8 @@ export default function AdminItemEditPage() {
         await itemsApi.update(Number(id), payload as Parameters<typeof itemsApi.update>[1])
         itemId = Number(id)
       }
-      if (andVerify) await itemsApi.verify(itemId)
+      // 新規は payload の verified で確認状態を確定済みなので、追加の verify 呼び出しは不要
+      if (andVerify && !isNew) await itemsApi.verify(itemId)
       backToList()
     } catch (err: unknown) {
       const res = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response
@@ -464,7 +482,7 @@ export default function AdminItemEditPage() {
           <span className="ml-auto text-xs text-emerald-400 flex items-center gap-1">✓ 確認済み</span>
         )}
         {!isNew && verifiedStatus === 'unverified' && (
-          <span className="ml-auto text-xs text-yellow-400 flex items-center gap-1">⚠ 未確認</span>
+          <span className="ml-auto text-xs text-yellow-400 flex items-center gap-1">⚠ 確認中</span>
         )}
       </div>
 
@@ -972,22 +990,54 @@ export default function AdminItemEditPage() {
           >
             キャンセル
           </button>
-          <button
-            type="submit" disabled={saving}
-            onClick={() => { verifyAfterSaveRef.current = false }}
-            className="px-6 py-2 text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white rounded-md transition-colors"
-          >
-            {saving ? '保存中...' : isNew ? 'アイテムを追加' : '変更を保存'}
-          </button>
-          {/* 保存して確認済みにする：editor / admin のみ・既存の未確認アイテム編集時 */}
-          {!isNew && isEditor && verifiedStatus === 'unverified' && (
-            <button
-              type="submit" disabled={saving}
-              onClick={() => { verifyAfterSaveRef.current = true }}
-              className="px-6 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-md transition-colors"
-            >
-              {saving ? '保存中...' : '保存して確認済みにする'}
-            </button>
+          {isNew && isEditor ? (
+            // 新規登録：editor / admin は確認状態を選んで追加する
+            <>
+              <button
+                type="submit" disabled={saving}
+                onClick={() => { verifyAfterSaveRef.current = false }}
+                className="px-6 py-2 text-sm bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-md transition-colors"
+              >
+                {saving ? '保存中...' : '確認中で追加'}
+              </button>
+              <button
+                type="submit" disabled={saving}
+                onClick={() => { verifyAfterSaveRef.current = true }}
+                className="px-6 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-md transition-colors"
+              >
+                {saving ? '保存中...' : '確認済みにして追加'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="submit" disabled={saving}
+                onClick={() => { verifyAfterSaveRef.current = false }}
+                className="px-6 py-2 text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white rounded-md transition-colors"
+              >
+                {saving ? '保存中...' : isNew ? 'アイテムを追加' : '変更を保存'}
+              </button>
+              {/* 保存して確認済みにする：editor / admin のみ・既存の確認中アイテム編集時 */}
+              {!isNew && isEditor && verifiedStatus === 'unverified' && (
+                <button
+                  type="submit" disabled={saving}
+                  onClick={() => { verifyAfterSaveRef.current = true }}
+                  className="px-6 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-md transition-colors"
+                >
+                  {saving ? '保存中...' : '保存して確認済みにする'}
+                </button>
+              )}
+              {/* 確認中に戻す：editor / admin のみ・既存の確認済みアイテム編集時（フォーム保存とは独立した即時操作） */}
+              {!isNew && isEditor && verifiedStatus === 'verified' && (
+                <button
+                  type="button" disabled={saving}
+                  onClick={handleUnverify}
+                  className="px-6 py-2 text-sm bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-md transition-colors"
+                >
+                  {saving ? '処理中...' : '確認中に戻す'}
+                </button>
+              )}
+            </>
           )}
         </div>
       </form>

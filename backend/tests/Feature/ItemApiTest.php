@@ -110,6 +110,80 @@ class ItemApiTest extends TestCase
         $this->postJson('/api/items', ['name' => 'x'])->assertStatus(401);
     }
 
+    public function test_editorはverifiedフラグで確認済み_確認中を選んで登録できる(): void
+    {
+        $editor = $this->makeUserWithRole('editor');
+        $cats   = $this->makeCategoryTree();
+
+        // verified=true → 確認済み（verified_by・locked_by_staff も立つ）
+        $this->actingAs($editor, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'editorの確認済みの剣',
+            'verified'    => true,
+        ])->assertStatus(201)
+            ->assertJsonPath('verified_status', 'verified')
+            ->assertJsonPath('verified_by', $editor->id)
+            ->assertJsonPath('locked_by_staff', true);
+
+        // verified=false → 確認中
+        $this->actingAs($editor, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'editorの確認中の剣',
+            'verified'    => false,
+        ])->assertStatus(201)
+            ->assertJsonPath('verified_status', 'unverified')
+            ->assertJsonPath('verified_by', null)
+            ->assertJsonPath('locked_by_staff', false);
+    }
+
+    public function test_adminもverifiedフラグで確認中を選んで登録できる(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $cats  = $this->makeCategoryTree();
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'adminの確認中の剣',
+            'verified'    => false,
+        ])->assertStatus(201)
+            ->assertJsonPath('verified_status', 'unverified')
+            ->assertJsonPath('locked_by_staff', false);
+    }
+
+    public function test_一般ユーザーはverifiedフラグを送っても確認中になる(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        // 権限の無いユーザーが verified=true を送っても無視される
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => '一般ユーザーが確認済みを偽装した剣',
+            'verified'    => true,
+        ])->assertStatus(201)
+            ->assertJsonPath('verified_status', 'unverified')
+            ->assertJsonPath('verified_by', null);
+    }
+
+    public function test_verified未指定なら従来通りadminは確認済み_editorは確認中(): void
+    {
+        $cats = $this->makeCategoryTree();
+
+        $admin = $this->makeUserWithRole('admin');
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'admin既定の剣',
+        ])->assertStatus(201)
+            ->assertJsonPath('verified_status', 'verified');
+
+        $editor = $this->makeUserWithRole('editor');
+        $this->actingAs($editor, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'editor既定の剣',
+        ])->assertStatus(201)
+            ->assertJsonPath('verified_status', 'unverified');
+    }
+
     public function test_本人はunverified期間のみ編集できる(): void
     {
         $user = $this->makeUser();
@@ -174,6 +248,34 @@ class ItemApiTest extends TestCase
             ->assertJsonPath('verified_status', 'verified');
 
         $this->assertSame($editor->id, $item->fresh()->verified_by);
+    }
+
+    public function test_確認済みを確認中に戻せるのはeditor以上のみ(): void
+    {
+        $user   = $this->makeUser();
+        $editor = $this->makeUserWithRole('editor');
+        $item   = $this->makeItem([
+            'verified_status' => 'verified',
+            'verified_by'     => $editor->id,
+            'verified_at'     => now(),
+            'locked_by_staff' => true,
+        ]);
+
+        // 一般ユーザーは403
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/items/{$item->id}/unverify")
+            ->assertStatus(403);
+
+        // editor は確認中に戻せる（verified_by/at はクリア・staffロックは維持）
+        $this->actingAs($editor, 'sanctum')
+            ->postJson("/api/items/{$item->id}/unverify")
+            ->assertOk()
+            ->assertJsonPath('verified_status', 'unverified')
+            ->assertJsonPath('verified_by', null);
+
+        $fresh = $item->fresh();
+        $this->assertNull($fresh->verified_at);
+        $this->assertTrue((bool) $fresh->locked_by_staff);
     }
 
     public function test_削除はadminのみ(): void

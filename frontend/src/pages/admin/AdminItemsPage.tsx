@@ -92,7 +92,7 @@ export default function AdminItemsPage() {
   // editor 以上（editor / admin）。確認済みへの変更・全アイテム編集が可能。
   const isEditor = user?.role === 'editor' || user?.role === 'admin'
   const isLoggedIn = !!user
-  // 一般 user が編集できるのは「自分が登録した未確認アイテム」かつ「staff 未編集（排他制御）」のみ。
+  // 一般 user が編集できるのは「自分が登録した確認中アイテム」かつ「staff 未編集（排他制御）」のみ。
   const canEditItem = (item: Item) =>
     isEditor || (!!user && item.submitted_by === user.id && item.verified_status === 'unverified' && !item.locked_by_staff)
   const isSkillMode = mode === 'skill'
@@ -356,7 +356,7 @@ export default function AdminItemsPage() {
                 : user?.role === 'editor'
                 ? '編集者権限'
                 : user
-                ? '一般ユーザー（自分が登録した未確認アイテムのみ編集可）'
+                ? '一般ユーザー（自分が登録した確認中アイテムのみ編集可）'
                 : '閲覧のみ（編集にはログインが必要です）'}
             </p>
           </div>
@@ -368,7 +368,7 @@ export default function AdminItemsPage() {
               装備品
               {unverifiedEquipmentCount > 0 && (
                 <span
-                  title={`未確認アイテム ${unverifiedEquipmentCount}件`}
+                  title={`確認中アイテム ${unverifiedEquipmentCount}件`}
                   className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
                 >
                   {unverifiedEquipmentCount}
@@ -382,7 +382,7 @@ export default function AdminItemsPage() {
               テクニック
               {unverifiedTechniqueCount > 0 && (
                 <span
-                  title={`未確認アイテム ${unverifiedTechniqueCount}件`}
+                  title={`確認中アイテム ${unverifiedTechniqueCount}件`}
                   className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
                 >
                   {unverifiedTechniqueCount}
@@ -396,7 +396,7 @@ export default function AdminItemsPage() {
               アセット
               {unverifiedAssetCount > 0 && (
                 <span
-                  title={`未確認アイテム ${unverifiedAssetCount}件`}
+                  title={`確認中アイテム ${unverifiedAssetCount}件`}
                   className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
                 >
                   {unverifiedAssetCount}
@@ -410,7 +410,7 @@ export default function AdminItemsPage() {
               その他
               {unverifiedOtherCount > 0 && (
                 <span
-                  title={`未確認アイテム ${unverifiedOtherCount}件`}
+                  title={`確認中アイテム ${unverifiedOtherCount}件`}
                   className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
                 >
                   {unverifiedOtherCount}
@@ -444,7 +444,7 @@ export default function AdminItemsPage() {
                 filter === f ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
               }`}
             >
-              {f === 'all' ? `すべて (${modeItems.length})` : f === 'unverified' ? `未確認 (${unverifiedCount})` : `確認済み (${modeItems.length - unverifiedCount})`}
+              {f === 'all' ? `すべて (${modeItems.length})` : f === 'unverified' ? `確認中 (${unverifiedCount})` : `確認済み (${modeItems.length - unverifiedCount})`}
             </button>
           ))}
         </div>
@@ -688,7 +688,7 @@ export default function AdminItemsPage() {
                     {item.verified_status === 'verified' ? (
                       <span className="text-xs text-emerald-400 flex items-center gap-1">✓ 確認済み</span>
                     ) : (
-                      <span className="text-xs text-yellow-400 flex items-center gap-1">⚠ 未確認</span>
+                      <span className="text-xs text-yellow-400 flex items-center gap-1">⚠ 確認中</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -818,7 +818,7 @@ export default function AdminItemsPage() {
                         <span className="text-sm text-white flex-1 truncate">{it.name}</span>
                         <span className="text-[10px] text-gray-500 shrink-0">{it.category.name}</span>
                         {it.verified_status === 'unverified' && (
-                          <span className="text-[10px] text-yellow-400 shrink-0">⚠ 未確認</span>
+                          <span className="text-[10px] text-yellow-400 shrink-0">⚠ 確認中</span>
                         )}
                         {mergeTarget?.id === it.id && <span className="text-primary-400 text-xs shrink-0">✓</span>}
                       </button>

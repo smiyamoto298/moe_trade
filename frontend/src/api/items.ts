@@ -103,6 +103,8 @@ export const itemsApi = {
     fixed_hashtags?: string[]
     // 通常（ユーザー追加）ハッシュタグ（ログインユーザーなら反映・wiki型）
     user_hashtags?: string[]
+    // editor/admin が登録時に確認済み(true)/確認中(false)を選ぶ。一般ユーザーは無視される。
+    verified?: boolean
     pieces?: EquipmentSetPieceInput[]
   }): Promise<{ data: Item }> => {
     if (USE_MOCK) {
@@ -128,9 +130,9 @@ export const itemsApi = {
         asset_height: data.asset_height ?? null,
         storage_count: data.storage_count ?? null,
         special_function: data.special_function ?? null,
-        verified_status: 'unverified',
+        verified_status: data.verified ? 'verified' : 'unverified',
         submitted_by: 99,
-        locked_by_staff: false,
+        locked_by_staff: data.verified ?? false,
         bonus_effects: [],
       }
       mockItems.push(newItem)
@@ -232,6 +234,16 @@ export const itemsApi = {
       return Promise.resolve({ data: { ...item } })
     }
     return client.post(`/items/${id}/verify`)
+  },
+
+  // 確認済みアイテムを確認中（unverified）に戻す（editor / admin）
+  unverify: (id: number): Promise<{ data: Item }> => {
+    if (USE_MOCK) {
+      const item = mockItems.find((i) => i.id === id)!
+      item.verified_status = 'unverified'
+      return Promise.resolve({ data: { ...item } })
+    }
+    return client.post(`/items/${id}/unverify`)
   },
 
   // ユーザー追加ハッシュタグ（wiki型・ログイン必須）。先頭の # はサーバー側で除去される。

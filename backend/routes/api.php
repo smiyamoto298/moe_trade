@@ -106,6 +106,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // 通常の部位アイテムを、それ自身を構成部位に含む新しい装備セットへ変換する（id・出品を部位側に保持）
     Route::post('items/{id}/convert-to-set', [ItemController::class, 'convertToSet']);
     Route::post('items/{id}/verify',  [ItemController::class, 'verify'])->middleware('role:editor');
+    // 確認済み → 確認中に戻す（editor/admin）
+    Route::post('items/{id}/unverify', [ItemController::class, 'unverify'])->middleware('role:editor');
     // 相場登録は admin のみ（editor は不可）
     Route::post('items/{id}/market-prices', [ItemController::class, 'storeMarketPrice'])->middleware('role:admin');
     Route::delete('items/{id}',       [ItemController::class, 'destroy'])->middleware('role:admin');

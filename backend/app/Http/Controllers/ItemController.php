@@ -171,14 +171,19 @@ class ItemController extends Controller
             // 通常（ユーザー追加）ハッシュタグ。ログインユーザーなら反映される（wiki型）
             'user_hashtags'            => 'nullable|array',
             'user_hashtags.*'          => 'string|max:50',
+            // editor/admin が登録時に確認済み/確認中を選ぶフラグ（一般ユーザーが送っても無視される）
+            'verified'                 => 'nullable|boolean',
             ...$this->pieceValidationRules(),
         ], [
             'name.unique' => '同じ名前のアイテムが既に登録されています。',
         ]);
 
         $user = $request->user();
-        // 管理者が登録したアイテムは自動的に確認済みにする
-        $isAdmin = $user->isAdmin();
+        // editor/admin は登録時に確認済み/確認中を選べる（verified フラグ）。
+        // verified 未指定なら従来通り（admin=確認済み・editor/一般=確認中）。一般ユーザーは常に確認中。
+        $verifyOnCreate = $user->isEditor() && array_key_exists('verified', $data)
+            ? (bool) $data['verified']
+            : $user->isAdmin();
 
         // 装備セットの場合: 新規セットなので既存メンバーは無し → 全 piece の id を除去（新規作成）
         if (!empty($data['is_equipment_set'])) {
@@ -186,8 +191,8 @@ class ItemController extends Controller
             $this->assertPieceNamesUnique($data['pieces']);
         }
 
-        $item = DB::transaction(function () use ($data, $user, $isAdmin) {
-            $setData = collect($data)->except(['bonus_effects', 'pieces'])->toArray();
+        $item = DB::transaction(function () use ($data, $user, $verifyOnCreate) {
+            $setData = collect($data)->except(['bonus_effects', 'pieces', 'verified'])->toArray();
             $isSet = !empty($data['is_equipment_set']);
             // 装備セット本体は効果を持たない（部位側に持たせる）
             if ($isSet) {
@@ -197,11 +202,11 @@ class ItemController extends Controller
 
             $item = Item::create([
                 ...$setData,
-                'verified_status' => $isAdmin ? 'verified' : 'unverified',
+                'verified_status' => $verifyOnCreate ? 'verified' : 'unverified',
                 'submitted_by'    => $user->id,
-                'verified_by'     => $isAdmin ? $user->id : null,
-                'verified_at'     => $isAdmin ? now() : null,
-                'locked_by_staff' => $isAdmin,
+                'verified_by'     => $verifyOnCreate ? $user->id : null,
+                'verified_at'     => $verifyOnCreate ? now() : null,
+                'locked_by_staff' => $verifyOnCreate,
             ]);
 
             if (!$isSet && !empty($data['bonus_effects'])) {
@@ -216,7 +221,7 @@ class ItemController extends Controller
             \App\Models\BinderLabel::syncFromBinder($data['recipe_binder'] ?? null);
 
             if ($isSet) {
-                $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $isAdmin, $isAdmin);
+                $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $verifyOnCreate, $verifyOnCreate);
             }
 
             // 固定ハッシュタグは admin/editor のみ設定できる
@@ -598,6 +603,22 @@ class ItemController extends Controller
             'verified_status' => 'verified',
             'verified_by'     => $request->user()->id,
             'verified_at'     => now(),
+            'locked_by_staff' => true,
+        ]);
+        return response()->json($item);
+    }
+
+    /**
+     * 確認済みアイテムを確認中（unverified）に戻す（editor/admin）。
+     * staff が管理中の扱いは維持するため locked_by_staff は true のまま（登録者の上書きは引き続き防ぐ）。
+     */
+    public function unverify(Request $request, int $id)
+    {
+        $item = Item::findOrFail($id);
+        $item->update([
+            'verified_status' => 'unverified',
+            'verified_by'     => null,
+            'verified_at'     => null,
             'locked_by_staff' => true,
         ]);
         return response()->json($item);

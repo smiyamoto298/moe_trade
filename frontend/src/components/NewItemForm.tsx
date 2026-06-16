@@ -154,8 +154,9 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     setField('category_id', val)
   }
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault()
+  // verified: editor/admin が「確認済みにして登録」を選んだときのみ true。
+  // 一般ユーザーは undefined（サーバー側で常に確認中扱い）。
+  const handleSubmit = async (verified?: boolean) => {
     let pieces: ReturnType<typeof formToPieces> = []
     if (isEquipSet) {
       pieces = formToPieces(equipSetForm)
@@ -212,6 +213,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
             description: e.description,
             is_exclusive: e.is_exclusive,
           })) : [],
+        // editor/admin が選んだ確認状態（一般ユーザーは undefined）
+        ...(verified !== undefined && { verified }),
         ...(isEquipSet && {
           is_equipment_set: true,
           pieces,
@@ -239,7 +242,9 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-yellow-300">⚠ 新規アイテム登録（未確認として登録されます）</p>
+        <p className="text-sm font-semibold text-yellow-300">
+          {isStaff ? '新規アイテム登録' : '⚠ 新規アイテム登録（確認中として登録されます）'}
+        </p>
         <button type="button" onClick={onCancel} className="text-xs text-gray-400 hover:text-white">キャンセル</button>
       </div>
 
@@ -711,14 +716,36 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => handleSubmit()}
-        disabled={saving || !form.category_id || !form.name}
-        className="w-full bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium transition-colors"
-      >
-        {saving ? '登録中...' : 'アイテムを登録して選択'}
-      </button>
+      {isStaff ? (
+        // editor/admin は確認状態を選んで登録する
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => handleSubmit(true)}
+            disabled={saving || !form.category_id || !form.name}
+            className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            {saving ? '登録中...' : '確認済みにして登録'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSubmit(false)}
+            disabled={saving || !form.category_id || !form.name}
+            className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            {saving ? '登録中...' : '確認中で登録'}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => handleSubmit()}
+          disabled={saving || !form.category_id || !form.name}
+          className="w-full bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          {saving ? '登録中...' : 'アイテムを登録して選択'}
+        </button>
+      )}
     </div>
   )
 }

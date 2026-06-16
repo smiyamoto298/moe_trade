@@ -82,7 +82,7 @@ export default function CandidateSelectModal({ baseName, originalName, onSelect,
                   <span className="text-[10px] text-gray-500">{item.category.name}</span>
                   {item.verified_status === 'unverified' && (
                     <span className="text-[10px] text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1 py-0.5">
-                      ⚠ 未確認
+                      ⚠ 確認中
                     </span>
                   )}
                 </button>

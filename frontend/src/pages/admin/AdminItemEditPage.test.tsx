@@ -169,7 +169,8 @@ describe('AdminItemEditPage コピーして編集', () => {
     const nameInput = screen.getByDisplayValue('炎の大兜')
     await userEvent.clear(nameInput)
     await userEvent.type(nameInput, '水の大兜')
-    await userEvent.click(screen.getByRole('button', { name: 'アイテムを追加' }))
+    // editor/admin の新規登録は「確認中で追加」「確認済みにして追加」の2ボタン。前者で確認中(verified:false)登録
+    await userEvent.click(screen.getByRole('button', { name: '確認中で追加' }))
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1))
     expect(mockedUpdate).not.toHaveBeenCalled()
@@ -178,11 +179,26 @@ describe('AdminItemEditPage コピーして編集', () => {
       name: '水の大兜',
       base_stats: { atk: 10 },
       mithril: true,
+      verified: false,
       bonus_effects: [expect.objectContaining({ effect_name: '炎の加護' })],
     }))
 
     // 保存後は一覧へ戻る
     expect(await screen.findByTestId('list-page')).toBeInTheDocument()
+  })
+
+  it('「確認済みにして追加」は verified:true で登録し verify を追加で呼ばない', async () => {
+    mockedCreate.mockResolvedValue({ data: { ...sourceItem, id: 99 } })
+    const mockedVerify = vi.mocked(itemsApi.verify)
+    renderCopyPage()
+    await screen.findByDisplayValue('炎の大兜')
+
+    await userEvent.click(screen.getByRole('button', { name: '確認済みにして追加' }))
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1))
+    expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ verified: true }))
+    // 新規は payload の verified で確認状態を確定するため、verify API は呼ばない
+    expect(mockedVerify).not.toHaveBeenCalled()
   })
 
   it('コピーダイアログの名前変更（置換・末尾追加）をアイテム名へ適用する', async () => {

@@ -505,10 +505,10 @@ export default function BulkListingPage() {
                               <span className="text-primary-300">{r.item!.name}</span>
                               {r.item!.verified_status === 'unverified' && (
                                 <span
-                                  title="未確認アイテム"
+                                  title="確認中アイテム"
                                   className="text-[10px] text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1 py-0.5 shrink-0"
                                 >
-                                  ⚠ 未確認
+                                  ⚠ 確認中
                                 </span>
                               )}
                               <button

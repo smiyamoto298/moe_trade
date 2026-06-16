@@ -835,7 +835,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                               tabIndex={0}
                               className="group relative inline-block mb-1 text-xs text-yellow-400 cursor-help focus:outline-none"
                             >
-                              ⚠ 未確認
+                              ⚠ 確認中
                               <span className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block group-focus:block w-64 bg-surface-card border border-yellow-700/50 rounded-md px-3 py-2 text-xs text-yellow-200 shadow-xl whitespace-normal">
                                 アイテムの情報が正確でない場合があります。wiki等で確認してからの取引をお願いします。
                               </span>

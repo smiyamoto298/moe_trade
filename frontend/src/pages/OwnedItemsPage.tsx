@@ -768,7 +768,7 @@ export default function OwnedItemsPage() {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="text-white font-medium">{row.item!.name}</p>
                             {row.item!.verified_status === 'unverified' && (
-                              <span title="未確認アイテム" className="text-[10px] text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1 py-0.5">⚠ 未確認</span>
+                              <span title="確認中アイテム" className="text-[10px] text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1 py-0.5">⚠ 確認中</span>
                             )}
                           </div>
                           <p className="text-[11px] text-gray-500">{row.item!.category.name}</p>

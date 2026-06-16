@@ -134,7 +134,7 @@ export default function NewListingPage() {
                 <p className="text-xs text-gray-400">{selectedItem.category.name}</p>
                 <p className="text-white font-medium">{selectedItem.name}</p>
                 {selectedItem.verified_status === 'unverified' && (
-                  <p className="text-xs text-yellow-400 mt-0.5">⚠ 未確認アイテム</p>
+                  <p className="text-xs text-yellow-400 mt-0.5">⚠ 確認中アイテム</p>
                 )}
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -189,10 +189,10 @@ export default function NewListingPage() {
                         {item.name}
                         {item.verified_status === 'unverified' && (
                           <span
-                            title="未確認アイテム（管理者による確認が完了していません）"
+                            title="確認中アイテム（管理者が確認中です）"
                             className="text-xs text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1.5 py-0.5 shrink-0"
                           >
-                            ⚠ 未確認
+                            ⚠ 確認中
                           </span>
                         )}
                       </p>
