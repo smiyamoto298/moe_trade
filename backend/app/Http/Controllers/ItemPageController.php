@@ -38,7 +38,7 @@ class ItemPageController extends Controller
         $cat    = (string) ($item->category->name ?? '');
 
         $title       = "{$name} の相場・出品 | MoE Trade";
-        $description  = "Master of Epic「{$name}」（{$cat}）の相場・出品・買取情報。出品中の価格や取引履歴を確認できます。";
+        $description  = "マスターオブエピック（Master of Epic / MoE）「{$name}」（{$cat}）の相場・出品・買取情報。出品中の価格や取引履歴を確認できます。";
         $noindex      = $item->verified_status === 'unverified';
 
         $jsonLd = array_filter([

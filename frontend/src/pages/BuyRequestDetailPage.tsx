@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { usePageMeta } from '../hooks/usePageMeta'
+import { usePageMeta, SITE_BRAND } from '../hooks/usePageMeta'
 import client from '../api/client'
 import { buyRequestsApi } from '../api/buyRequests'
 import { itemsApi } from '../api/items'
@@ -27,7 +27,7 @@ export default function BuyRequestDetailPage() {
   usePageMeta(
     buyRequest ? `${buyRequest.item.name} の買取` : null,
     buyRequest
-      ? `Master of Epic「${buyRequest.item.name}」の買取（買いたい）情報。価格・取引条件を確認して取引チャットで売却できます。`
+      ? `${SITE_BRAND}「${buyRequest.item.name}」の買取（買いたい）情報。価格・取引条件を確認して取引チャットで売却できます。`
       : null,
     { canonicalPath: buyRequest ? `/items/${buyRequest.item.id}` : null }
   )

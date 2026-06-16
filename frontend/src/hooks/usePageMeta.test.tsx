@@ -2,7 +2,7 @@
 // 出品・買取の詳細ページでアイテム名がタイトルに入り、検索エンジンにヒットさせるための要。
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION, SITE_ORIGIN, type PageMetaOptions } from './usePageMeta'
+import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION, SITE_ORIGIN, SITE_BRAND, type PageMetaOptions } from './usePageMeta'
 
 function Meta({
   title,
@@ -29,6 +29,16 @@ describe('usePageMeta', () => {
 
   const descriptionContent = () =>
     document.head.querySelector('meta[name="description"]')?.getAttribute('content')
+
+  // ゲーム名の表記ゆれ（カタカナ・英語・略称）を既定メタに含め、ブランド系検索を取りこぼさない。
+  // 「moe/moE」は検索が大文字小文字を区別しないため「MoE」表記で自動的にカバーされる。
+  it('既定のタイトル・説明にゲーム名の表記ゆれを含む', () => {
+    expect(SITE_BRAND).toContain('マスターオブエピック')
+    expect(SITE_BRAND).toContain('Master of Epic')
+    expect(SITE_BRAND).toContain('MoE')
+    expect(DEFAULT_TITLE).toContain('マスターオブエピック')
+    expect(DEFAULT_DESCRIPTION).toContain('マスターオブエピック')
+  })
 
   it('タイトルを「◯◯ | MoE Trade」形式で設定し、説明文も差し替える', () => {
     render(<Meta title="テストの剣 の出品" description="テストの剣の出品情報" />)

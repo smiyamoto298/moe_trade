@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { usePageMeta } from '../hooks/usePageMeta'
+import { usePageMeta, SITE_BRAND } from '../hooks/usePageMeta'
 import client from '../api/client'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
@@ -30,7 +30,7 @@ export default function ListingDetailPage() {
   usePageMeta(
     listing ? `${listing.item.name} の出品` : null,
     listing
-      ? `Master of Epic「${listing.item.name}」の出品情報。価格・取引条件を確認して取引チャットで購入できます。`
+      ? `${SITE_BRAND}「${listing.item.name}」の出品情報。価格・取引条件を確認して取引チャットで購入できます。`
       : null,
     { canonicalPath: listing ? `/items/${listing.item.id}` : null }
   )

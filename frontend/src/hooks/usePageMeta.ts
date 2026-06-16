@@ -1,8 +1,14 @@
 import { useEffect } from 'react'
 
-export const DEFAULT_TITLE = 'MoE Trade — Master of Epic 取引所'
+// ゲーム名の表記ゆれ（カタカナ・英語・略称）を1か所に集約し、各ページの title/description で
+// 一貫して使う。日本のプレイヤーは「マスターオブエピック」（カタカナ）で検索することが多い一方、
+// 「Master of Epic」「MoE/moe」での検索もあるため、全バリアントを含めて取りこぼしを防ぐ。
+// 検索は大文字小文字を区別しないので「moe/moE」は「MoE」表記で自動的にカバーされる。
+export const SITE_BRAND = 'マスターオブエピック（Master of Epic / MoE）'
+
+export const DEFAULT_TITLE = 'MoE Trade — マスターオブエピック（Master of Epic）取引所'
 export const DEFAULT_DESCRIPTION =
-  'Master of Epic のアイテム取引所。出品・検索・取引チャットでスムーズにアイテムを売買できます。'
+  `${SITE_BRAND}のアイテム取引所。出品・検索・取引チャットでスムーズにアイテムを売買できます。`
 
 // canonical / 構造化データの絶対URLに使う本番オリジン。開発・ステージングのホスト名に
 // 関わらず、検索エンジンへ伝える正規URLは常に本番ドメインにする（重複URLの分散を防ぐ）。

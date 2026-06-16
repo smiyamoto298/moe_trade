@@ -27,6 +27,9 @@ class ItemPageTest extends TestCase
 
         $this->assertStringContainsString('<title>炎の剣 の相場・出品 | MoE Trade</title>', $html);
         $this->assertStringContainsString('炎の剣', $html);
+        // ゲーム名の表記ゆれ（カタカナ・英語）を description に含め、ブランド系検索でも拾われるようにする
+        $this->assertStringContainsString('マスターオブエピック', $html);
+        $this->assertStringContainsString('Master of Epic', $html);
         // canonical はアイテム自URL。usePageMeta と同じマーカーで二重化を防ぐ
         $this->assertStringContainsString('rel="canonical" data-page-canonical href="' . $base . '/items/' . $item->id . '"', $html);
         // Product JSON-LD

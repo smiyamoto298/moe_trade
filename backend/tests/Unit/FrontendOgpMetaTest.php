@@ -57,6 +57,17 @@ class FrontendOgpMetaTest extends TestCase
         }
     }
 
+    public function test_ゲーム名の表記ゆれをタイトルと説明に含む(): void
+    {
+        // 日本のプレイヤーはカタカナ「マスターオブエピック」で検索することが多いため、
+        // 英語表記だけでなくカタカナ表記もメタに含めてブランド系検索を取りこぼさない
+        // （SNSクローラーは JS 非実行のため、静的 index.html に直接含める必要がある）。
+        $html = $this->indexHtml();
+
+        $this->assertStringContainsString('マスターオブエピック', $html);
+        $this->assertStringContainsString('Master of Epic', $html);
+    }
+
     public function test_og_imageが指すファイルはリポジトリに存在する(): void
     {
         $html = $this->indexHtml();

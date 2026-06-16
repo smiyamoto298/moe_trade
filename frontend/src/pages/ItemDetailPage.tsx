@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { usePageMeta, SITE_ORIGIN } from '../hooks/usePageMeta'
+import { usePageMeta, SITE_ORIGIN, SITE_BRAND } from '../hooks/usePageMeta'
 import { itemsApi } from '../api/items'
 import UnverifiedBadge from '../components/UnverifiedBadge'
 import ItemInfoCard from '../components/ItemInfoCard'
@@ -43,7 +43,7 @@ export default function ItemDetailPage() {
   usePageMeta(
     item ? `${item.name} の相場・出品` : null,
     item
-      ? `Master of Epic「${item.name}」（${item.category.name}）の相場・出品・買取情報。${priceSummary}出品中の価格や取引履歴を確認できます。`
+      ? `${SITE_BRAND}「${item.name}」（${item.category.name}）の相場・出品・買取情報。${priceSummary}出品中の価格や取引履歴を確認できます。`
       : null,
     {
       canonicalPath: item ? `/items/${item.id}` : null,
