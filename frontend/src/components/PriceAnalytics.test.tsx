@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import PriceAnalytics from './PriceAnalytics'
-import type { ItemPriceAnalytics, PriceMarketSection, TradeRecord } from '../types'
+import type { ItemPriceAnalytics, PriceMarketSection, PriceOffer, TradeRecord } from '../types'
 
 // design.md「価格データ解析」:
 // - 取引履歴が無いアイテムでも 0 埋めの統計で画面が落ちない
@@ -101,5 +102,70 @@ describe('PriceAnalytics', () => {
     await userEvent.click(screen.getByRole('button', { name: '売り相場' }))
     expect(screen.getByText(/売り取引の成立/)).toBeInTheDocument()
     expect(screen.getByText('現在の出品はありません')).toBeInTheDocument()
+  })
+
+  it('出品中の価格の各行に、その出品の詳細へ飛ぶ「出品を見る」リンクを表示する', () => {
+    render(
+      <MemoryRouter>
+        <PriceAnalytics
+          analytics={base({
+            recent_listings: [
+              { id: 42, price: 500000, currency: 'AC', trade_type: 'fixed', listed_at: new Date().toISOString() },
+              { id: 43, price: 480000, currency: 'AC', trade_type: 'negotiable', listed_at: new Date().toISOString() },
+            ],
+          })}
+        />
+      </MemoryRouter>
+    )
+    const links = screen.getAllByRole('link', { name: /出品を見る/ })
+    expect(links).toHaveLength(2)
+    expect(links[0]).toHaveAttribute('href', '/listings/42')
+    expect(links[1]).toHaveAttribute('href', '/listings/43')
+  })
+
+  it('買い相場タブの各行は、その買取の詳細へ飛ぶ「買取を見る」リンクを表示する', async () => {
+    const section = (deals: TradeRecord[], offers: PriceOffer[]): PriceMarketSection => ({
+      stats: { ...emptyStats, deal_count: deals.length },
+      history: [],
+      recent_deals: deals,
+      recent_offers: offers,
+    })
+    render(
+      <MemoryRouter>
+        <PriceAnalytics
+          analytics={base({
+            recent_listings: [
+              { id: 10, price: 500000, currency: 'AC', trade_type: 'fixed', listed_at: new Date().toISOString() },
+            ],
+            sell: section([deal({ id: 1 })], [
+              { id: 10, price: 500000, currency: 'AC', trade_type: 'fixed', listed_at: new Date().toISOString() },
+            ]),
+            buy: section([deal({ id: 2 })], [
+              { id: 20, price: 300000, currency: 'AC', trade_type: 'fixed', listed_at: new Date().toISOString() },
+            ]),
+          })}
+        />
+      </MemoryRouter>
+    )
+    // 総合タブの行は出品詳細へ
+    expect(screen.getByRole('link', { name: /出品を見る/ })).toHaveAttribute('href', '/listings/10')
+
+    await userEvent.click(screen.getByRole('button', { name: '買い相場' }))
+    expect(screen.getByRole('link', { name: /買取を見る/ })).toHaveAttribute('href', '/buy-requests/20')
+  })
+
+  it('id を持たない古いレスポンスの行にはリンクを出さない', () => {
+    render(
+      <MemoryRouter>
+        <PriceAnalytics
+          analytics={base({
+            recent_listings: [
+              { price: 500000, currency: 'AC', trade_type: 'fixed', listed_at: new Date().toISOString() },
+            ],
+          })}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.queryByRole('link', { name: /出品を見る/ })).not.toBeInTheDocument()
   })
 })

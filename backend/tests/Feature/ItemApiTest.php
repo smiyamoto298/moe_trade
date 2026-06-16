@@ -321,6 +321,28 @@ class ItemApiTest extends TestCase
         $this->assertSame([], $res->json('recent_deals'));
     }
 
+    public function test_価格解析の募集一覧は各行の詳細リンク用にidを返す(): void
+    {
+        // 同一アイテムへの出品と買取をそれぞれ作成
+        $item    = $this->makeItem();
+        $listing = $this->makeListing(null, $item);
+        $buyer   = $this->makeUser();
+        $buyRequest = \App\Models\BuyRequest::create([
+            'user_id'    => $buyer->id, 'item_id' => $item->id,
+            'price'      => 500, 'currency' => 'AC', 'quantity' => 1,
+            'trade_type' => 'fixed', 'expires_at' => now()->addMonth(),
+        ]);
+
+        $res = $this->getJson("/api/items/{$item->id}/price-analytics");
+        $res->assertOk();
+
+        // 出品（売り相場）の募集一覧は出品idを含む
+        $this->assertSame($listing->id, $res->json('recent_listings.0.id'));
+        $this->assertSame($listing->id, $res->json('sell.recent_offers.0.id'));
+        // 買取（買い相場）の募集一覧は買取idを含む
+        $this->assertSame($buyRequest->id, $res->json('buy.recent_offers.0.id'));
+    }
+
     public function test_装備セットは部位アイテムを生成してメンバーに紐付ける(): void
     {
         $admin    = $this->makeUserWithRole('admin');

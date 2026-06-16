@@ -170,9 +170,9 @@ export const mockPriceAnalytics: Record<number, ItemPriceAnalytics> = {
       { id: 5, price: 600000, currency: 'AC', server: 'Emerald', traded_at: daysAgo(25) },
     ],
     recent_listings: [
-      { price: 500000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(1) },
-      { price: 480000, currency: 'AC', trade_type: 'negotiable', listed_at: daysAgo(2) },
-      { price: 550000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(4) },
+      { id: 1, price: 500000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(1) },
+      { id: 2, price: 480000, currency: 'AC', trade_type: 'negotiable', listed_at: daysAgo(2) },
+      { id: 3, price: 550000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(4) },
     ],
   },
   2: {
@@ -187,7 +187,7 @@ export const mockPriceAnalytics: Record<number, ItemPriceAnalytics> = {
       { id: 7, price:  900000, currency: 'AC', server: 'Pearl', traded_at: daysAgo(20) },
     ],
     recent_listings: [
-      { price: 1200000, currency: 'AC', trade_type: 'negotiable', listed_at: daysAgo(1) },
+      { id: 4, price: 1200000, currency: 'AC', trade_type: 'negotiable', listed_at: daysAgo(1) },
     ],
   },
   3: {
@@ -205,9 +205,9 @@ export const mockPriceAnalytics: Record<number, ItemPriceAnalytics> = {
       { id: 11, price: 70000, currency: 'AC', server: 'Emerald', traded_at: daysAgo(14) },
     ],
     recent_listings: [
-      { price: 80000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(1) },
-      { price: 75000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(2) },
-      { price: 90000, currency: 'AC', trade_type: 'negotiable', listed_at: daysAgo(3) },
+      { id: 5, price: 80000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(1) },
+      { id: 6, price: 75000, currency: 'AC', trade_type: 'fixed',      listed_at: daysAgo(2) },
+      { id: 7, price: 90000, currency: 'AC', trade_type: 'negotiable', listed_at: daysAgo(3) },
     ],
   },
 }

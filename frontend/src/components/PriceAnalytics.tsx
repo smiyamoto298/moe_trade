@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { ItemPriceAnalytics, PriceHistory, PriceOffer, PriceStats, TradeRecord } from '../types'
 import { SERVER_COLORS, TRADE_TYPE_LABEL } from '../utils/constants'
 import type { TradeType } from '../types'
@@ -79,6 +80,11 @@ export default function PriceAnalytics({ analytics }: Props) {
 
   const { stats, history, recent_deals, offers } = section
   const hasData = stats.deal_count > 0
+
+  // 募集価格一覧の各行から個別の詳細ページへ飛ばす導線。買い相場タブは買取詳細、それ以外は出品詳細へ。
+  // id を持たない古いレスポンスではリンクを出さない。
+  const offerDetailBase = view === 'buy' ? '/buy-requests' : '/listings'
+  const offerDetailLabel = view === 'buy' ? '買取を見る' : '出品を見る'
 
   const tabs: { key: View; label: string }[] = [
     { key: 'overall', label: '総合' },
@@ -212,7 +218,7 @@ export default function PriceAnalytics({ analytics }: Props) {
           ) : (
             <div className="space-y-1.5">
               {offers.map((l, i) => (
-                <div key={i} className="flex items-center gap-3 bg-surface rounded px-3 py-2 text-sm">
+                <div key={l.id ?? i} className="flex items-center gap-3 bg-surface rounded px-3 py-2 text-sm">
                   <span className={`font-bold w-28 shrink-0 ${view === 'buy' ? 'text-emerald-400' : 'text-white'}`}>
                     {fmt(l.price)} {l.currency}
                   </span>
@@ -220,6 +226,15 @@ export default function PriceAnalytics({ analytics }: Props) {
                     {TRADE_TYPE_LABEL[l.trade_type as TradeType] ?? l.trade_type}
                   </span>
                   <span className="text-xs text-gray-500 ml-auto">{relativeDate(l.listed_at)}</span>
+                  {/* 各行からその出品／買取の詳細ページへリンク（id が無い古いレスポンスでは非表示） */}
+                  {l.id != null && (
+                    <Link
+                      to={`${offerDetailBase}/${l.id}`}
+                      className="text-xs whitespace-nowrap text-primary-400 hover:text-primary-300 transition-colors shrink-0"
+                    >
+                      {offerDetailLabel} →
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>

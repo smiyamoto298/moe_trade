@@ -204,6 +204,8 @@ export interface PriceOffer {
 export interface PriceMarketSection {
   stats: PriceStats
   history: PriceHistory[]
+  /** 出品 or 買取の id（各行から詳細ページへリンクするため）。古いレスポンスでは未定義 */
+  id?: number
   recent_deals: TradeRecord[]
   recent_offers: PriceOffer[]
 }

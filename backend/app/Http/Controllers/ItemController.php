@@ -770,11 +770,11 @@ class ItemController extends Controller
             ])
         )->sortByDesc('traded_at')->take(10)->values();
 
-        // 現在の出品（出品中の価格一覧・出品数）
+        // 現在の出品（出品中の価格一覧・出品数）。各行から出品詳細へリンクするため id も取得する。
         $listings = Listing::where('item_id', $id)
             ->where('status', 'active')
             ->orderByDesc('created_at')
-            ->get(['price', 'currency', 'trade_type', 'created_at']);
+            ->get(['id', 'price', 'currency', 'trade_type', 'created_at']);
 
         $prices = $history->pluck('price');
         $sorted = $prices->sort()->values();
@@ -819,7 +819,7 @@ class ItemController extends Controller
         ])->values();
         $recentDeals = $mapDeals($allDeals);
 
-        // 現在の募集価格一覧（出品 or 買取）を整形
+        // 現在の募集価格一覧（出品 or 買取）を整形。id は各行から詳細ページへリンクするために含める。
         $mapOffers = fn($offers) => $offers->take(10)->map(fn($o) => [
             'price'      => $o->price,
             'currency'   => $o->currency,
@@ -850,12 +850,13 @@ class ItemController extends Controller
         $sellAll   = $tradeAll->where('origin', 'listing')->sortByDesc('traded_at')->take(10)->values();
         $buyAll    = $tradeAll->where('origin', 'buy_request')->sortByDesc('traded_at')->take(10)->values();
 
-        // 現在の買取募集（買取希望価格一覧）
+        // 現在の買取募集（買取希望価格一覧）。各行から買取詳細へリンクするため id も取得する。
         $buyRequests = BuyRequest::where('item_id', $id)
             ->where('status', 'active')
             ->orderByDesc('created_at')
-            ->get(['price', 'currency', 'trade_type', 'created_at']);
+            ->get(['id', 'price', 'currency', 'trade_type', 'created_at']);
 
+            'id'         => $o->id,
         $sell = [
             'stats'         => $statsOf($sellValid, $listings->count()),
             'history'       => $buildChart($sellValid),
