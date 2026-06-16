@@ -57,6 +57,14 @@ export interface ItemBonusEffect {
   is_exclusive?: boolean
 }
 
+// アイテムのハッシュタグ。is_fixed=true は admin/editor 管理の固定タグ（ユーザー削除不可）。
+export interface ItemHashtag {
+  id: number
+  tag: string
+  is_fixed: boolean
+  created_by?: number | null
+}
+
 export interface Item {
   id: number
   category: ItemCategory
@@ -89,6 +97,8 @@ export interface Item {
   // editor/admin が編集・確認すると true。true の間は登録者(user)が上書き編集できない（排他制御）。
   locked_by_staff: boolean
   bonus_effects: ItemBonusEffect[]
+  // ハッシュタグ（一覧・詳細取得時に付与）。固定タグ→ユーザータグの順。
+  hashtags?: ItemHashtag[]
   // ---- 取引情報（一覧取得時に付与。募集中=active の件数） ----
   active_listing_count?: number      // 出品数
   active_buy_request_count?: number  // 買取数
@@ -194,6 +204,8 @@ export interface PriceStats {
 }
 
 export interface PriceOffer {
+  /** 出品 or 買取の id（各行から詳細ページへリンクするため）。古いレスポンスでは未定義 */
+  id?: number
   price: number
   currency: string
   trade_type: string
@@ -204,8 +216,6 @@ export interface PriceOffer {
 export interface PriceMarketSection {
   stats: PriceStats
   history: PriceHistory[]
-  /** 出品 or 買取の id（各行から詳細ページへリンクするため）。古いレスポンスでは未定義 */
-  id?: number
   recent_deals: TradeRecord[]
   recent_offers: PriceOffer[]
 }
@@ -256,6 +266,8 @@ export interface ListingSearchParams {
   // 通常検索で、指定スキルを構成に含むマスタリを必要とするテクニックも対象にするか。
   skill_include_mastery?: boolean
   special_conditions?: string[]
+  // ハッシュタグでの絞り込み（タグ名・完全一致）
+  hashtag?: string
   sort?: string  // 'newest' | 'name_asc' | 'name_desc' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
   page?: number
 }

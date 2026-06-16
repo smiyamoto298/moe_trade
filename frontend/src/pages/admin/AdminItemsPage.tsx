@@ -4,10 +4,11 @@ import { itemsApi } from '../../api/items'
 import { useAuth } from '../../contexts/AuthContext'
 import { useNotification } from '../../contexts/NotificationContext'
 import Spinner from '../../components/Spinner'
-import type { Item, ItemCategory } from '../../types'
+import type { Item, ItemCategory, ItemHashtag } from '../../types'
 import { SERVERS } from '../../types'
 import { SPECIAL_CONDITIONS, MASTERY_BY_CODE } from '../../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../../components/equipmentCells'
+import InlineHashtags from '../../components/InlineHashtags'
 import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
 
 type Filter = 'all' | 'unverified' | 'verified'
@@ -77,6 +78,8 @@ export default function AdminItemsPage() {
   const [mode, setMode] = useState<Mode>(initialMode)
   const [filter, setFilter] = useState<Filter>(initialFilter)
   const [search, setSearch] = useState('')
+  // ハッシュタグでの絞り込み（チップのクリックで設定。クライアント側で適用）
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
   // 装備セットを展開表示（装備品タブのみ）。
   // チェックなし: セット本体のみ表示し構成部位は隠す / チェックあり: 構成部位を表示しセット本体は隠す
   const [expandSets, setExpandSets] = useState(false)
@@ -140,6 +143,10 @@ export default function AdminItemsPage() {
       .then((r) => setItems(r.data))
       .finally(() => setLoading(false))
   }
+
+  // ハッシュタグ編集後に該当アイテムの hashtags をローカル更新する
+  const updateItemHashtags = (itemId: number, hashtags: ItemHashtag[]) =>
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, hashtags } : i)))
 
   useEffect(() => {
     setMastersLoading(true)
@@ -328,8 +335,10 @@ export default function AdminItemsPage() {
   })
 
   const filtered = modeItems.filter((i) => {
-    if (filter === 'unverified') return i.verified_status === 'unverified'
-    if (filter === 'verified') return i.verified_status === 'verified'
+    if (filter === 'unverified' && i.verified_status !== 'unverified') return false
+    if (filter === 'verified' && i.verified_status !== 'verified') return false
+    // ハッシュタグ絞り込み（タグ名・大文字小文字を無視）
+    if (tagFilter && !(i.hashtags ?? []).some((h) => h.tag.toLowerCase() === tagFilter.toLowerCase())) return false
     return true
   })
 
@@ -446,6 +455,14 @@ export default function AdminItemsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-full sm:w-56"
         />
+        {/* ハッシュタグで絞り込み（タグ名・完全一致。# は省略可） */}
+        <input
+          type="text"
+          placeholder="#ハッシュタグで絞り込み"
+          value={tagFilter ?? ''}
+          onChange={(e) => setTagFilter(e.target.value.replace(/^[#＃]+/, '') || null)}
+          className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-full sm:w-48"
+        />
         {/* 装備セットを展開表示（装備品タブのみ） */}
         {!isSkillMode && !isAssetMode && !isOtherMode && (
           <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
@@ -530,6 +547,15 @@ export default function AdminItemsPage() {
                         <PartNamesLabel names={item.set_members!.map((m) => m.category.name)} />
                       </div>
                     )}
+                    {/* ハッシュタグ（クリックでまとめて編集。ログイン時のみ） */}
+                    <InlineHashtags
+                      itemId={item.id}
+                      hashtags={item.hashtags}
+                      editable={isLoggedIn}
+                      size="sm"
+                      className="mt-1"
+                      onSaved={(hashtags) => updateItemHashtags(item.id, hashtags)}
+                    />
                   </td>
                   <td className="px-4 py-3 text-gray-300">{item.category.name}</td>
                   {isSkillMode ? (

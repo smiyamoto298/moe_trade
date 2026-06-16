@@ -311,9 +311,12 @@ describe('AdminItemsPage 行操作アイコン', () => {
     expect(within(ownRow).queryByRole('button', { name: '相場登録' })).not.toBeInTheDocument()
     expect(within(ownRow).queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
 
-    // 他人のアイテム → 操作なし
+    // 他人のアイテム → 編集系の操作なし（ハッシュタグ編集は wiki 型で全ログインユーザーに表示される）
     const otherRow = await rowFor('炎の大剣')
-    expect(within(otherRow).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(otherRow).queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
+    expect(within(otherRow).queryByRole('button', { name: 'コピー' })).not.toBeInTheDocument()
+    expect(within(otherRow).queryByRole('button', { name: '相場登録' })).not.toBeInTheDocument()
+    expect(within(otherRow).queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
   })
 
   it('未ログイン時は操作アイコンを表示しない', async () => {

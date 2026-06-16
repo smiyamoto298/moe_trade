@@ -1,6 +1,6 @@
 import client from './client'
 import { USE_MOCK, mockCategories, mockBonusTypes, mockItems, mockPriceAnalytics } from './mock'
-import type { Item, ItemCategory, BonusEffectType, PriceHistory, ItemPriceAnalytics, AssetPlacement, AssetFunction } from '../types'
+import type { Item, ItemCategory, ItemHashtag, BonusEffectType, PriceHistory, ItemPriceAnalytics, AssetPlacement, AssetFunction } from '../types'
 
 // 装備セットの構成部位（通常アイテムとして登録される）の入力。
 export interface EquipmentSetPieceInput {
@@ -99,6 +99,10 @@ export const itemsApi = {
       description: string
       is_exclusive?: boolean
     }[]
+    // 固定ハッシュタグ（admin/editor のみ反映）
+    fixed_hashtags?: string[]
+    // 通常（ユーザー追加）ハッシュタグ（ログインユーザーなら反映・wiki型）
+    user_hashtags?: string[]
     pieces?: EquipmentSetPieceInput[]
   }): Promise<{ data: Item }> => {
     if (USE_MOCK) {
@@ -158,6 +162,10 @@ export const itemsApi = {
       description: string
       is_exclusive?: boolean
     }[]
+    // 固定ハッシュタグ（admin/editor のみ反映）
+    fixed_hashtags?: string[]
+    // 通常（ユーザー追加）ハッシュタグ（ログインユーザーなら反映・wiki型）
+    user_hashtags?: string[]
     pieces?: EquipmentSetPieceInput[]
   }): Promise<{ data: Item }> => {
     if (USE_MOCK) {
@@ -224,6 +232,31 @@ export const itemsApi = {
       return Promise.resolve({ data: { ...item } })
     }
     return client.post(`/items/${id}/verify`)
+  },
+
+  // ユーザー追加ハッシュタグ（wiki型・ログイン必須）。先頭の # はサーバー側で除去される。
+  addHashtag: (itemId: number, tag: string): Promise<{ data: ItemHashtag }> => {
+    if (USE_MOCK) {
+      return Promise.resolve({ data: { id: Date.now(), tag: tag.replace(/^[#＃]+/, '').trim(), is_fixed: false } })
+    }
+    return client.post<ItemHashtag>(`/items/${itemId}/hashtags`, { tag }).then((r) => ({ data: r.data }))
+  },
+
+  // ユーザー追加ハッシュタグの削除（固定タグは削除不可）。
+  removeHashtag: (itemId: number, hashtagId: number): Promise<void> => {
+    if (USE_MOCK) return Promise.resolve()
+    return client.delete(`/items/${itemId}/hashtags/${hashtagId}`)
+  },
+
+  // ユーザー追加ハッシュタグをテキスト入力で総入れ替えする（wiki型・固定タグは保持）。
+  // 戻り値は入れ替え後の全ハッシュタグ（固定＋通常）。
+  replaceHashtags: (itemId: number, tags: string[]): Promise<{ data: ItemHashtag[] }> => {
+    if (USE_MOCK) {
+      return Promise.resolve({
+        data: tags.map((tag, i) => ({ id: Date.now() + i, tag, is_fixed: false })),
+      })
+    }
+    return client.put<ItemHashtag[]>(`/items/${itemId}/hashtags`, { tags }).then((r) => ({ data: r.data }))
   },
 
   // force=true で関連データ（出品・取引チャット・取引履歴）ごと削除する

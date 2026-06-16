@@ -14,13 +14,18 @@ class ItemController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Item::with(['category', 'bonusEffects', 'setMembers.category', 'setMembers.bonusEffects'])
+        $query = Item::with(['category', 'bonusEffects', 'hashtags', 'setMembers.category', 'setMembers.bonusEffects'])
             // 取引情報表示用: 募集中（active）の出品数・買取数を集計して付与する
             ->withCount([
                 'listings as active_listing_count' => fn($q) => $q->where('status', 'active'),
                 'buyRequests as active_buy_request_count' => fn($q) => $q->where('status', 'active'),
             ])
             ->when($request->name, fn($q) => $q->where('name', 'like', "%{$request->name}%"))
+            // ハッシュタグでの絞り込み（タグ名は完全一致・大文字小文字を無視）
+            ->when($request->filled('hashtag'), function ($q) use ($request) {
+                $tag = mb_strtolower(trim((string) $request->hashtag));
+                $q->whereHas('hashtags', fn($hq) => $hq->whereRaw('LOWER(tag) = ?', [$tag]));
+            })
             ->when($request->verified_status, fn($q) => $q->where('verified_status', $request->verified_status))
             ->when($request->special_conditions, function ($q) use ($request) {
                 $conditions = (array) $request->special_conditions;
@@ -74,7 +79,7 @@ class ItemController extends Controller
     public function show(int $id)
     {
         $item = Item::with([
-            'category', 'bonusEffects', 'submittedBy:id,email',
+            'category', 'bonusEffects', 'hashtags', 'submittedBy:id,email',
             'setMembers.category', 'setMembers.bonusEffects',
         ])->findOrFail($id);
         return response()->json($item);
@@ -160,6 +165,12 @@ class ItemController extends Controller
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
             'bonus_effects.*.is_exclusive' => 'nullable|boolean',
+            // 固定ハッシュタグ（admin/editor のみ反映。一般ユーザーが送っても無視される）
+            'fixed_hashtags'           => 'nullable|array',
+            'fixed_hashtags.*'         => 'string|max:50',
+            // 通常（ユーザー追加）ハッシュタグ。ログインユーザーなら反映される（wiki型）
+            'user_hashtags'            => 'nullable|array',
+            'user_hashtags.*'          => 'string|max:50',
             ...$this->pieceValidationRules(),
         ], [
             'name.unique' => '同じ名前のアイテムが既に登録されています。',
@@ -208,11 +219,20 @@ class ItemController extends Controller
                 $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $isAdmin, $isAdmin);
             }
 
+            // 固定ハッシュタグは admin/editor のみ設定できる
+            if ($user->isEditor() && array_key_exists('fixed_hashtags', $data)) {
+                \App\Models\ItemHashtag::replaceForItem($item, (array) $data['fixed_hashtags'], true);
+            }
+            // 通常（ユーザー追加）ハッシュタグはログインユーザーなら設定できる（wiki型）
+            if (array_key_exists('user_hashtags', $data)) {
+                \App\Models\ItemHashtag::replaceForItem($item, (array) $data['user_hashtags'], false, $user->id);
+            }
+
             return $item;
         });
 
         return response()->json(
-            $item->load('bonusEffects', 'category', 'setMembers.category', 'setMembers.bonusEffects'),
+            $item->load('bonusEffects', 'hashtags', 'category', 'setMembers.category', 'setMembers.bonusEffects'),
             201
         );
     }
@@ -267,6 +287,12 @@ class ItemController extends Controller
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
             'bonus_effects.*.is_exclusive' => 'nullable|boolean',
+            // 固定ハッシュタグ（admin/editor のみ反映。一般ユーザーが送っても無視される）
+            'fixed_hashtags'           => 'nullable|array',
+            'fixed_hashtags.*'         => 'string|max:50',
+            // 通常（ユーザー追加）ハッシュタグ。ログインユーザーなら反映される（wiki型）
+            'user_hashtags'            => 'nullable|array',
+            'user_hashtags.*'          => 'string|max:50',
             ...$this->pieceValidationRules(),
         ], [
             'name.unique' => '同じ名前のアイテムが既に登録されています。',
@@ -314,10 +340,19 @@ class ItemController extends Controller
             if ($isSet) {
                 $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $isAdmin, $user->isEditor());
             }
+
+            // 固定ハッシュタグは admin/editor のみ設定できる（一般ユーザーは送っても無視）
+            if ($user->isEditor() && array_key_exists('fixed_hashtags', $data)) {
+                \App\Models\ItemHashtag::replaceForItem($item, (array) $data['fixed_hashtags'], true);
+            }
+            // 通常（ユーザー追加）ハッシュタグはログインユーザーなら設定できる（wiki型）
+            if (array_key_exists('user_hashtags', $data)) {
+                \App\Models\ItemHashtag::replaceForItem($item, (array) $data['user_hashtags'], false, $user->id);
+            }
         });
 
         return response()->json(
-            $item->fresh()->load('bonusEffects', 'category', 'setMembers.category', 'setMembers.bonusEffects')
+            $item->fresh()->load('bonusEffects', 'hashtags', 'category', 'setMembers.category', 'setMembers.bonusEffects')
         );
     }
 
@@ -821,6 +856,7 @@ class ItemController extends Controller
 
         // 現在の募集価格一覧（出品 or 買取）を整形。id は各行から詳細ページへリンクするために含める。
         $mapOffers = fn($offers) => $offers->take(10)->map(fn($o) => [
+            'id'         => $o->id,
             'price'      => $o->price,
             'currency'   => $o->currency,
             'trade_type' => $o->trade_type,
@@ -856,7 +892,6 @@ class ItemController extends Controller
             ->orderByDesc('created_at')
             ->get(['id', 'price', 'currency', 'trade_type', 'created_at']);
 
-            'id'         => $o->id,
         $sell = [
             'stats'         => $statsOf($sellValid, $listings->count()),
             'history'       => $buildChart($sellValid),

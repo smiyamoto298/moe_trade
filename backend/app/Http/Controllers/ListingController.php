@@ -15,7 +15,7 @@ class ListingController extends Controller
         $includeCompleted = $request->boolean('include_completed', false);
         $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
 
-        $query = Listing::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
+        $query = Listing::with(['item.category', 'item.bonusEffects', 'item.hashtags', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
             ->whereIn('status', $statuses)
             ->whereHas('user', fn($q) => $q->where('is_suspended', false));
 
@@ -31,6 +31,11 @@ class ListingController extends Controller
         $query->when($request->item_name, fn($q) =>
             $q->whereHas('item', fn($iq) => $iq->where('name', 'like', "%{$request->item_name}%"))
         );
+        // ハッシュタグでの絞り込み（タグ名は完全一致・大文字小文字を無視）
+        $query->when($request->filled('hashtag'), function ($q) use ($request) {
+            $tag = mb_strtolower(trim((string) $request->hashtag));
+            $q->whereHas('item.hashtags', fn($hq) => $hq->whereRaw('LOWER(tag) = ?', [$tag]));
+        });
         // カテゴリ（複数）+ 装備セットを含める
         if ($request->category_id || $request->category_ids) {
             $categoryIds = $request->category_ids

@@ -8,6 +8,7 @@ import Spinner from '../../components/Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces, membersToForm } from '../../components/EquipmentSetPiecesEditor'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../../types'
 import { applyCopyRename, type CopyRename } from '../../utils/copyRename'
+import { parseHashtags, formatHashtags } from '../../utils/hashtags'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 import { useBinderLabels } from '../../hooks/useBinderLabels'
@@ -93,6 +94,9 @@ export default function AdminItemEditPage() {
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
   // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
+  // ハッシュタグ（admin/editor は固定タグ・通常タグの両方を1つのテキストボックスで編集。例: #和風 #袴）
+  const [fixedTagsText, setFixedTagsText] = useState('')
+  const [userTagsText, setUserTagsText] = useState('')
 
   useEffect(() => {
     // アイテム情報をフォーム状態へ展開する。asCopy のときは新規作成として複製するため、
@@ -122,6 +126,10 @@ export default function AdminItemEditPage() {
         recipe_binder: item.recipe_binder ?? '',
       })
       if (!asCopy) setVerifiedStatus(item.verified_status)
+      // ハッシュタグをテキストボックスへ復元（コピー時も引き継ぐ）
+      const tags = item.hashtags ?? []
+      setFixedTagsText(formatHashtags(tags.filter((h) => h.is_fixed)))
+      setUserTagsText(formatHashtags(tags.filter((h) => !h.is_fixed)))
       // 装備セットの構成部位をフォーム状態へ復元（部位リスト＋追加効果/付加効果グループ）
       if (item.is_equipment_set) {
         const equipForm = membersToForm(item.set_members ?? [])
@@ -412,6 +420,8 @@ export default function AdminItemEditPage() {
             description: e.description,
             is_exclusive: e.is_exclusive,
           })) : [],
+        // ハッシュタグ（admin/editor は固定タグ・通常タグの両方を編集可。固定は権限をバックエンドでも再チェック）
+        ...(isEditor ? { fixed_hashtags: parseHashtags(fixedTagsText), user_hashtags: parseHashtags(userTagsText) } : {}),
       }
       // 既存の部位アイテム自身を構成部位に含む装備セットへ変換するケース
       // （部位として残し、出品などの紐付けを保持したまま新しいセット本体を作成する）。
@@ -918,6 +928,39 @@ export default function AdminItemEditPage() {
                 </span>
               </label>
             ))}
+          </div>
+        </div>
+        )}
+
+        {/* ハッシュタグ（editor / admin）。固定タグ・通常タグともテキストボックスで複数入力（例: #和風 #袴）。 */}
+        {isEditor && (
+        <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-300">ハッシュタグ</h2>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">固定ハッシュタグ</label>
+            <input
+              type="text"
+              value={fixedTagsText}
+              onChange={(e) => setFixedTagsText(e.target.value)}
+              placeholder="#公式 #イベント（スペース区切り）"
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+            />
+            <p className="text-xs text-gray-500 mt-0.5">
+              一覧でアイテム名の下に📌付きで表示されます。一般ユーザーは削除・編集できません。
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">通常ハッシュタグ</label>
+            <input
+              type="text"
+              value={userTagsText}
+              onChange={(e) => setUserTagsText(e.target.value)}
+              placeholder="#和風 #袴（スペース区切り）"
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+            />
+            <p className="text-xs text-gray-500 mt-0.5">
+              一般ユーザーも自由に追加・編集できる通常タグです。
+            </p>
           </div>
         </div>
         )}

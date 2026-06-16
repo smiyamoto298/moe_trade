@@ -99,6 +99,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('items/match',        [ItemController::class, 'matchNames']);
     Route::post('items',              [ItemController::class, 'store']);
     Route::put('items/{id}',          [ItemController::class, 'update']);
+    // ユーザー追加ハッシュタグ（wiki型・ログイン中の任意ユーザーが追加/削除/総入れ替え可。固定タグは対象外）
+    Route::post('items/{id}/hashtags',              [\App\Http\Controllers\ItemHashtagController::class, 'store']);
+    Route::put('items/{id}/hashtags',               [\App\Http\Controllers\ItemHashtagController::class, 'replace']);
+    Route::delete('items/{id}/hashtags/{hashtagId}', [\App\Http\Controllers\ItemHashtagController::class, 'destroy']);
     // 通常の部位アイテムを、それ自身を構成部位に含む新しい装備セットへ変換する（id・出品を部位側に保持）
     Route::post('items/{id}/convert-to-set', [ItemController::class, 'convertToSet']);
     Route::post('items/{id}/verify',  [ItemController::class, 'verify'])->middleware('role:editor');

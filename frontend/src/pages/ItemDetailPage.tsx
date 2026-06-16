@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { usePageMeta, SITE_ORIGIN, SITE_BRAND } from '../hooks/usePageMeta'
 import { itemsApi } from '../api/items'
+import { useAuth } from '../contexts/AuthContext'
 import UnverifiedBadge from '../components/UnverifiedBadge'
 import ItemInfoCard from '../components/ItemInfoCard'
+import InlineHashtags from '../components/InlineHashtags'
 import PriceAnalyticsComp from '../components/PriceAnalyticsAsync'
 import type { Item, ItemPriceAnalytics } from '../types'
 
@@ -17,6 +19,7 @@ import type { Item, ItemPriceAnalytics } from '../types'
  */
 export default function ItemDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
   const [item, setItem] = useState<Item | null>(null)
   const [analytics, setAnalytics] = useState<ItemPriceAnalytics | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -81,6 +84,24 @@ export default function ItemDetailPage() {
 
       {/* アイテム情報 */}
       <ItemInfoCard item={item} />
+
+      {/* ハッシュタグ（固定タグは📌付き。ログインユーザーは通常タグをまとめて編集できる） */}
+      <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6 space-y-3">
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">ハッシュタグ</h2>
+        <InlineHashtags
+          itemId={item.id}
+          hashtags={item.hashtags}
+          editable={!!user}
+          onSaved={(hashtags) => setItem((prev) => (prev ? { ...prev, hashtags } : prev))}
+        />
+        {user ? (
+          <p className="text-xs text-gray-500">
+            タグをクリックすると編集できます（スペース区切りで複数入力）。📌 は運営が設定した固定タグです（アイテム編集画面で設定）。
+          </p>
+        ) : (
+          <p className="text-xs text-gray-500">タグの編集にはログインが必要です。</p>
+        )}
+      </div>
 
       {/* 相場・取引履歴（出品・買取・他サイト相場をまとめた価格解析） */}
       {analytics && (

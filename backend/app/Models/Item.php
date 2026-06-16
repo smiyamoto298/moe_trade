@@ -46,6 +46,16 @@ class Item extends Model
         return $this->hasMany(ItemBonusEffect::class);
     }
 
+    /**
+     * ハッシュタグ。固定タグ（is_fixed）を先頭に、あとはタグ名順で返す。
+     */
+    public function hashtags()
+    {
+        return $this->hasMany(ItemHashtag::class)
+            ->orderByDesc('is_fixed')
+            ->orderBy('tag');
+    }
+
     public function listings()
     {
         return $this->hasMany(Listing::class);

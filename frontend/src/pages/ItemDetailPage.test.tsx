@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from '../contexts/AuthContext'
 import ItemDetailPage from './ItemDetailPage'
 import { itemsApi } from '../api/items'
 import { DEFAULT_TITLE, SITE_ORIGIN } from '../hooks/usePageMeta'
@@ -51,11 +52,13 @@ const analytics: ItemPriceAnalytics = {
 
 function renderAt(id = 12) {
   return render(
-    <MemoryRouter initialEntries={[`/items/${id}`]}>
-      <Routes>
-        <Route path="/items/:id" element={<ItemDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <AuthProvider>
+      <MemoryRouter initialEntries={[`/items/${id}`]}>
+        <Routes>
+          <Route path="/items/:id" element={<ItemDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </AuthProvider>,
   )
 }
 

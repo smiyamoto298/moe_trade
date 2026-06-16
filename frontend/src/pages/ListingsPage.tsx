@@ -10,10 +10,11 @@ import StatRangeFilter from '../components/StatRangeFilter'
 import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
-import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
+import type { Listing, ItemCategory, ItemHashtag, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../components/equipmentCells'
+import InlineHashtags from '../components/InlineHashtags'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -171,6 +172,12 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
   // 汎用セッター
   const setParam = (key: keyof ListingSearchParams, value: unknown) =>
     setParams((p) => ({ ...p, [key]: value || undefined, page: 1 }))
+
+  // ハッシュタグ編集後、同じアイテムを参照する全出品の hashtags をローカル更新する
+  const updateItemHashtags = (itemId: number, hashtags: ItemHashtag[]) =>
+    setListings((prev) =>
+      prev.map((l) => (l.item.id === itemId ? { ...l, item: { ...l.item, hashtags } } : l))
+    )
 
   // サーバーチェックボックス
   const toggleServer = (server: string) => {
@@ -396,6 +403,18 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 placeholder="キーワード検索"
                 className="w-full bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
                 onChange={(e) => setParam('item_name', e.target.value)}
+              />
+            </div>
+
+            {/* ハッシュタグで絞り込み（タグ名・完全一致。# は省略可） */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">ハッシュタグ</label>
+              <input
+                type="text"
+                placeholder="#ハッシュタグで絞り込み"
+                value={params.hashtag ?? ''}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
+                onChange={(e) => setParam('hashtag', e.target.value.replace(/^[#＃]+/, ''))}
               />
             </div>
 
@@ -723,7 +742,21 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
           )}
 
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm text-gray-400">{listings.length}件表示</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-gray-400">{listings.length}件表示</p>
+              {/* ハッシュタグ絞り込み中の表示と解除 */}
+              {params.hashtag && (
+                <button
+                  type="button"
+                  onClick={() => setParam('hashtag', undefined)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-primary-500 bg-primary-500/10 text-primary-300 text-xs hover:bg-primary-500/20 transition-colors"
+                >
+                  <span>#{params.hashtag}</span>
+                  <span aria-hidden="true">×</span>
+                  <span className="sr-only">タグ絞り込みを解除</span>
+                </button>
+              )}
+            </div>
             <select
               value={params.sort ?? 'newest'}
               className="bg-surface-card border border-surface-border rounded px-3 py-1 text-sm text-white focus:outline-none"
@@ -840,6 +873,15 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                               <PartNamesLabel names={l.item.set_members!.map((m) => m.category.name)} />
                             </div>
                           )}
+                          {/* ハッシュタグ（クリックでまとめて編集。ログイン時のみ） */}
+                          <InlineHashtags
+                            itemId={l.item.id}
+                            hashtags={l.item.hashtags}
+                            editable={!!user}
+                            size="sm"
+                            className="mt-1"
+                            onSaved={(hashtags) => updateItemHashtags(l.item.id, hashtags)}
+                          />
                         </td>
 
                         {isSkillMode ? (
