@@ -75,6 +75,9 @@ export const groupPiecesByBaseStats = (members: Item[]): PieceGroup[] =>
 export const groupPiecesByBonusEffects = (members: Item[]): PieceGroup[] =>
   groupBy(members, bonusEffectsKey)
 
+export const groupPiecesBySpecialConditions = (members: Item[]): PieceGroup[] =>
+  groupBy(members, specialConditionsKey)
+
 // 詳細のセット内訳用。性能（追加効果・付加効果・特殊条件）がすべて同一の部位を1グループにまとめる
 export const groupPiecesByPerformance = (members: Item[]): PieceGroup[] =>
   groupBy(members, performanceKey)
@@ -86,3 +89,7 @@ export const hasBaseStats = (it: Item): boolean =>
 // 付加効果が設定されているか
 export const hasBonusEffects = (it: Item): boolean =>
   (it.bonus_effects ?? []).length > 0
+
+// 特殊条件が設定されているか
+export const hasSpecialConditions = (it: Item): boolean =>
+  (it.special_conditions ?? []).length > 0

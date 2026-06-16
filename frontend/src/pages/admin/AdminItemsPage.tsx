@@ -7,7 +7,7 @@ import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory } from '../../types'
 import { SERVERS } from '../../types'
 import { SPECIAL_CONDITIONS, MASTERY_BY_CODE } from '../../utils/constants'
-import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../../components/equipmentCells'
+import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../../components/equipmentCells'
 import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
 
 type Filter = 'all' | 'unverified' | 'verified'
@@ -624,15 +624,19 @@ export default function AdminItemsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {item.special_conditions.length === 0 ? (
-                        <span className="text-xs text-gray-600">—</span>
-                      ) : item.special_conditions.map((c) => (
-                        <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
-                          {c}
-                        </span>
-                      ))}
-                    </div>
+                    {item.is_equipment_set ? (
+                      <SetSpecialConditionsCell members={item.set_members ?? []} />
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {item.special_conditions.length === 0 ? (
+                          <span className="text-xs text-gray-600">—</span>
+                        ) : item.special_conditions.map((c) => (
+                          <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   </>
                   )}

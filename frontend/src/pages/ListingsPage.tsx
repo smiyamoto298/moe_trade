@@ -13,7 +13,7 @@ import Spinner from '../components/Spinner'
 import type { Listing, ItemCategory, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
-import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell } from '../components/equipmentCells'
+import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../components/equipmentCells'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -952,16 +952,20 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
                           {/* 特殊条件 */}
                           <td className="listing-col-wide px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
-                              {l.item.special_conditions.length === 0 ? (
-                                <span className="text-xs text-gray-600">—</span>
-                              ) : l.item.special_conditions.map((c) => (
-                                <span key={c} title={SPECIAL_CONDITIONS[c]}
-                                  className="text-xs bg-red-900/30 border border-red-700/30 text-red-300 rounded px-1.5 py-0.5">
-                                  {c}
-                                </span>
-                              ))}
-                            </div>
+                            {l.item.is_equipment_set ? (
+                              <SetSpecialConditionsCell members={l.item.set_members ?? []} />
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {l.item.special_conditions.length === 0 ? (
+                                  <span className="text-xs text-gray-600">—</span>
+                                ) : l.item.special_conditions.map((c) => (
+                                  <span key={c} title={SPECIAL_CONDITIONS[c]}
+                                    className="text-xs bg-red-900/30 border border-red-700/30 text-red-300 rounded px-1.5 py-0.5">
+                                    {c}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           </>
                         )}

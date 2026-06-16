@@ -3,9 +3,11 @@ import type { Item, ItemBonusEffect } from '../types'
 import {
   groupPiecesByBaseStats,
   groupPiecesByBonusEffects,
+  groupPiecesBySpecialConditions,
   groupPiecesByPerformance,
   hasBaseStats,
   hasBonusEffects,
+  hasSpecialConditions,
 } from './equipmentSet'
 
 // design.md「装備セット」:
@@ -82,6 +84,26 @@ describe('groupPiecesByBonusEffects', () => {
   })
 })
 
+describe('groupPiecesBySpecialConditions', () => {
+  it('特殊条件が同一の部位を1グループにまとめる（順序非依存）', () => {
+    const a = piece('頭', { special_conditions: ['NT', 'ND'] })
+    const b = piece('胴', { special_conditions: ['ND', 'NT'] })
+    const c = piece('手', { special_conditions: ['NT'] })
+    const groups = groupPiecesBySpecialConditions([a, b, c])
+    expect(groups).toHaveLength(2)
+    expect(groups[0].partNames).toEqual(['頭', '胴'])
+    expect(groups[1].partNames).toEqual(['手'])
+  })
+
+  it('特殊条件を持つ部位（セット本体は空でも部位側に保持される）を集約できる', () => {
+    // 装備セット本体の special_conditions は空でも、構成部位側に条件が保持される
+    const members = [piece('頭', { special_conditions: ['NT'] }), piece('胴', { special_conditions: ['NT'] })]
+    const groups = groupPiecesBySpecialConditions(members)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].member.special_conditions).toEqual(['NT'])
+  })
+})
+
 describe('groupPiecesByPerformance', () => {
   it('追加効果・付加効果・特殊条件がすべて同一の部位のみ1グループにまとめる', () => {
     const same1 = piece('頭', {
@@ -117,5 +139,10 @@ describe('hasBaseStats / hasBonusEffects', () => {
   it('付加効果の有無を判定する', () => {
     expect(hasBonusEffects(piece('頭'))).toBe(false)
     expect(hasBonusEffects(piece('頭', { bonus_effects: [bonus('x', 1)] }))).toBe(true)
+  })
+
+  it('特殊条件の有無を判定する', () => {
+    expect(hasSpecialConditions(piece('頭'))).toBe(false)
+    expect(hasSpecialConditions(piece('頭', { special_conditions: ['NT'] }))).toBe(true)
   })
 })

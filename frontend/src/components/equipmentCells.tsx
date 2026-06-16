@@ -1,6 +1,6 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, formatSignedValue } from '../utils/constants'
-import { groupPiecesByBaseStats, groupPiecesByBonusEffects, hasBaseStats, hasBonusEffects } from '../utils/equipmentSet'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue } from '../utils/constants'
+import { groupPiecesByBaseStats, groupPiecesByBonusEffects, groupPiecesBySpecialConditions, hasBaseStats, hasBonusEffects, hasSpecialConditions } from '../utils/equipmentSet'
 
 // 出品一覧・アイテム管理一覧で共通利用する、装備品/装備セットの効果表示セル群。
 // 装備セットは「部位（部位カテゴリ名チップ）」「追加効果」「付加効果」を構成部位から組み立てて表示する。
@@ -48,6 +48,19 @@ export function BonusEffectList({ item }: { item: Item }) {
   )
 }
 
+// 特殊条件のバッジ群（コード＋説明をツールチップ表示）。
+export function SpecialConditionBadges({ item }: { item: Item }) {
+  return (
+    <>
+      {item.special_conditions.map((c) => (
+        <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
+          {c}
+        </span>
+      ))}
+    </>
+  )
+}
+
 // 装備セットの部位名ラベル（部位カテゴリ名チップ）。
 // アイテム名の下や、追加効果/付加効果列の各グループ見出しに並べて表示する。
 export function PartNamesLabel({ names }: { names: string[] }) {
@@ -77,6 +90,28 @@ export function SetBaseStatsCell({ members }: { members: Item[] }) {
         <div key={gi}>
           <PartNamesLabel names={g.partNames} />
           <div className="flex flex-wrap gap-1 mt-0.5">{renderEffects(g.member)}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// 装備セットの特殊条件セル。部位ごとの特殊条件を集約し、設定グループが1つなら条件のみ、
+// 複数なら部位名つきで分けて表示する（追加効果/付加効果セルと同じ表示ロジック）。
+export function SetSpecialConditionsCell({ members }: { members: Item[] }) {
+  if (members.length === 0) return <span className="text-xs text-gray-600">—</span>
+  const groups = groupPiecesBySpecialConditions(members)
+  const renderConds = (m: Item) =>
+    hasSpecialConditions(m) ? <SpecialConditionBadges item={m} /> : <span className="text-xs text-gray-600">—</span>
+  if (groups.length === 1) {
+    return <div className="flex flex-wrap gap-1">{renderConds(groups[0].member)}</div>
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {groups.map((g, gi) => (
+        <div key={gi}>
+          <PartNamesLabel names={g.partNames} />
+          <div className="flex flex-wrap gap-1 mt-0.5">{renderConds(g.member)}</div>
         </div>
       ))}
     </div>
