@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/cross_session_lock.sh"
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "hooks": [
