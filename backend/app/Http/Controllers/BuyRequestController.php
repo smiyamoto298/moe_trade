@@ -25,7 +25,7 @@ class BuyRequestController extends Controller
         $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
 
         $query = BuyRequest::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
-            ->whereIn('status', $statuses)
+            ->visible($statuses)
             ->whereHas('user', fn($q) => $q->where('is_suspended', false));
 
         // --- アイテム名フィルター（単一・部分一致） ---
@@ -113,9 +113,9 @@ class BuyRequestController extends Controller
             return response()->json((object) []);
         }
 
-        // アイテムごとに最高額の active 買取を選ぶ（停止ユーザーは除外）。
+        // アイテムごとに最高額の active 買取を選ぶ（期限内・停止ユーザーは除外）。
         $rows = BuyRequest::whereIn('item_id', $itemIds)
-            ->where('status', 'active')
+            ->visible(['active'])
             ->whereHas('user', fn($q) => $q->where('is_suspended', false))
             ->orderByDesc('price')
             ->orderByDesc('id')
@@ -142,7 +142,7 @@ class BuyRequestController extends Controller
     public function show(int $id)
     {
         $buyRequest = BuyRequest::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
-            ->whereIn('status', ['active', 'completed'])
+            ->visible(['active', 'completed'])
             ->findOrFail($id);
         $buyRequest->resolveServerContacts();
         // 現在の売却申し出者数（順番待ち人数）。「この取引はN人待ちです」の表示に使う。
@@ -278,7 +278,7 @@ class BuyRequestController extends Controller
 
         $buyRequest = BuyRequest::findOrFail($id);
 
-        if ($buyRequest->status !== 'active') {
+        if ($buyRequest->status !== 'active' || ($buyRequest->expires_at && $buyRequest->expires_at->isPast())) {
             return response()->json(['message' => 'この買取は取引できません。'], 400);
         }
         if ($buyRequest->user_id === $user->id) {

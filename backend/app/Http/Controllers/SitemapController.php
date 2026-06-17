@@ -42,7 +42,8 @@ class SitemapController extends Controller
         }
 
         // 出品中の出品詳細。取り下げ・期限切れ等は詳細APIが404を返すため含めない
-        foreach (Listing::where('status', 'active')->orderBy('id')->get(['id', 'updated_at']) as $listing) {
+        // （バッチ未実行で active のまま期限超過したものも visible スコープで除外する）
+        foreach (Listing::visible(['active'])->orderBy('id')->get(['id', 'updated_at']) as $listing) {
             $urls[] = [
                 'loc'     => "{$base}/listings/{$listing->id}",
                 'lastmod' => $listing->updated_at?->toAtomString(),
@@ -50,7 +51,7 @@ class SitemapController extends Controller
         }
 
         // 買取中の買取詳細
-        foreach (BuyRequest::where('status', 'active')->orderBy('id')->get(['id', 'updated_at']) as $buyRequest) {
+        foreach (BuyRequest::visible(['active'])->orderBy('id')->get(['id', 'updated_at']) as $buyRequest) {
             $urls[] = [
                 'loc'     => "{$base}/buy-requests/{$buyRequest->id}",
                 'lastmod' => $buyRequest->updated_at?->toAtomString(),

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -10,6 +11,23 @@ use Illuminate\Database\Eloquent\Model;
  */
 class BuyRequest extends Model
 {
+    /**
+     * 公開一覧・詳細で見える買取に絞り込む。
+     *
+     * status が $statuses に含まれること。ただし active は期限切れ（expires_at が過去）を除外する。
+     * これにより日次バッチ listings:expire が走る前でも、期限超過した買取が一覧・詳細に出ない。
+     * completed は成立済みなので期限に関わらず表示対象に残す。Listing::scopeVisible と対称。
+     */
+    public function scopeVisible(Builder $query, array $statuses): Builder
+    {
+        return $query->whereIn('status', $statuses)
+            ->where(function (Builder $q) {
+                $q->where('status', '!=', 'active')
+                  ->orWhereNull('expires_at')
+                  ->orWhere('expires_at', '>=', now());
+            });
+    }
+
     protected $fillable = [
         'user_id', 'item_id', 'price', 'currency', 'quantity',
         'trade_type', 'comment', 'status', 'expires_at',

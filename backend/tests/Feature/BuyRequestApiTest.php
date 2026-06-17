@@ -33,6 +33,26 @@ class BuyRequestApiTest extends TestCase
         return $buyRequest;
     }
 
+    public function test_active_でも期限切れの買取は一覧に出ない(): void
+    {
+        // バッチが走る前（status は active のまま）でも、期限超過は一覧から除外される
+        $live    = $this->makeBuyRequest(null, ['expires_at' => now()->addDay()]);
+        $expired = $this->makeBuyRequest(null, ['status' => 'active', 'expires_at' => now()->subHour()]);
+
+        $res = $this->getJson('/api/buy-requests')->assertOk();
+
+        $ids = collect($res->json('data'))->pluck('id')->all();
+        $this->assertContains($live->id, $ids);
+        $this->assertNotContains($expired->id, $ids);
+    }
+
+    public function test_active_でも期限切れの買取詳細は404(): void
+    {
+        $expired = $this->makeBuyRequest(null, ['status' => 'active', 'expires_at' => now()->subHour()]);
+
+        $this->getJson("/api/buy-requests/{$expired->id}")->assertNotFound();
+    }
+
     public function test_買取一覧を価格でソートできる(): void
     {
         $this->makeBuyRequest(null, ['price' => 100]);

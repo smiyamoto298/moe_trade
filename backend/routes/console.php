@@ -14,3 +14,13 @@ Artisan::command('inspire', function () {
 Schedule::command('announcements:purge-expired')
     ->dailyAt('06:00')
     ->timezone('Asia/Tokyo');
+
+// 期限切れ出品・買取の自動取り下げ（毎時）。
+// 公開クエリ側（visible スコープ）でも期限切れは除外しているため、これが遅延しても
+// 一覧・詳細に期限切れは出ないが、本バッチで status を expired に揃えることで
+// マイページの管理表示・再出品（renew）導線を正しくする。
+// ※ schedule:run を cron 登録している環境で有効。
+//    コマンドを直接 cron 実行する環境では deploy/cron-expire-listings.sh を使用。
+Schedule::command('listings:expire')
+    ->hourly()
+    ->timezone('Asia/Tokyo');

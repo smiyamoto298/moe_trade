@@ -16,7 +16,7 @@ class ListingController extends Controller
         $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
 
         $query = Listing::with(['item.category', 'item.bonusEffects', 'item.hashtags', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
-            ->whereIn('status', $statuses)
+            ->visible($statuses)
             ->whereHas('user', fn($q) => $q->where('is_suspended', false));
 
         // 種別フィルター（装備品 / テクニック / アセット）
@@ -399,7 +399,7 @@ class ListingController extends Controller
 
         $counts = [];
         foreach (['equipment', 'technique', 'asset', 'other'] as $type) {
-            $query = Listing::whereIn('status', $statuses)
+            $query = Listing::visible($statuses)
                 ->whereHas('user', fn($q) => $q->where('is_suspended', false));
             $this->applyItemTypeFilter($query, $type);
             $counts[$type] = $query->count();
@@ -411,8 +411,9 @@ class ListingController extends Controller
     public function show(int $id)
     {
         // 公開対象（出品中・取引成立）のみ閲覧可。取り下げ・期限切れ等は404。
+        // active は期限内のものだけ（バッチ未実行で active のまま期限超過したものも404にする）。
         $listing = Listing::with(['item.category', 'item.bonusEffects', 'item.setMembers.category', 'item.setMembers.bonusEffects', 'user:id,email', 'user.characters', 'servers'])
-            ->whereIn('status', ['active', 'completed'])
+            ->visible(['active', 'completed'])
             ->findOrFail($id);
         $listing->resolveServerContacts();
         // 現在の取引希望者数（順番待ち人数）。「この取引はN人待ちです」の表示に使う。
@@ -552,7 +553,7 @@ class ListingController extends Controller
 
         $listing = Listing::findOrFail($id);
 
-        if ($listing->status !== 'active') {
+        if ($listing->status !== 'active' || ($listing->expires_at && $listing->expires_at->isPast())) {
             return response()->json(['message' => 'この出品は取引できません。'], 400);
         }
         if ($listing->user_id === $user->id) {

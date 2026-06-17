@@ -431,6 +431,36 @@ class ListingApiTest extends TestCase
         $this->assertSame('active', $active->fresh()->status);
     }
 
+    public function test_active_でも期限切れの出品は一覧に出ない(): void
+    {
+        // バッチが走る前（status は active のまま）でも、期限超過は一覧から除外される
+        $live    = $this->makeListing(null, null, ['expires_at' => now()->addDay()]);
+        $expired = $this->makeListing(null, null, ['status' => 'active', 'expires_at' => now()->subHour()]);
+
+        $res = $this->getJson('/api/listings')->assertOk();
+
+        $ids = collect($res->json('data'))->pluck('id')->all();
+        $this->assertContains($live->id, $ids);
+        $this->assertNotContains($expired->id, $ids);
+    }
+
+    public function test_active_でも期限切れの出品詳細は404(): void
+    {
+        $expired = $this->makeListing(null, null, ['status' => 'active', 'expires_at' => now()->subHour()]);
+
+        $this->getJson("/api/listings/{$expired->id}")->assertNotFound();
+    }
+
+    public function test_active_でも期限切れの出品には取引希望できない(): void
+    {
+        $expired = $this->makeListing(null, null, ['status' => 'active', 'expires_at' => now()->subHour()]);
+        $buyer   = $this->makeUser();
+
+        $this->actingAs($buyer, 'sanctum')
+            ->postJson("/api/listings/{$expired->id}/chats", ['server' => 'Emerald'])
+            ->assertStatus(400);
+    }
+
     public function test_アセットは設置個所_特殊機能_ストレージ数で絞り込める(): void
     {
         $assetTop = ItemCategory::create(['name' => 'アセット', 'sort_order' => 8]);

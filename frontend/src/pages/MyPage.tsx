@@ -332,6 +332,42 @@ export default function MyPage() {
         </div>
       </div>
 
+      {/* 期限切れの自分の出品・買取がある場合の通知バナー。
+          再出品・再登録を促し、ボタンで該当タブ（出品中／買取中）の期限切れ一覧へ誘導する。 */}
+      {(expired.length > 0 || expiredBuy.length > 0) && (
+        <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg p-4 flex flex-wrap items-center gap-3">
+          <span className="text-amber-300 text-lg shrink-0" aria-hidden>⚠️</span>
+          <div className="flex-1 min-w-[12rem]">
+            <p className="text-sm font-semibold text-amber-200">期限切れの取引があります</p>
+            <p className="text-xs text-amber-100/80 mt-0.5">
+              {[
+                expired.length > 0 ? `出品 ${expired.length}件` : null,
+                expiredBuy.length > 0 ? `買取 ${expiredBuy.length}件` : null,
+              ].filter(Boolean).join('・')}
+              {' '}が期限切れです。再出品・再登録ができます。
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            {expired.length > 0 && (
+              <button
+                onClick={() => switchTab('listings')}
+                className="text-xs bg-amber-500/80 hover:bg-amber-500 text-white px-3 py-1.5 rounded transition-colors"
+              >
+                出品を確認
+              </button>
+            )}
+            {expiredBuy.length > 0 && (
+              <button
+                onClick={() => switchTab('buy_requests')}
+                className="text-xs bg-amber-500/80 hover:bg-amber-500 text-white px-3 py-1.5 rounded transition-colors"
+              >
+                買取を確認
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="bg-surface-card border border-surface-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-400">キャラクター</h2>
@@ -399,6 +435,9 @@ export default function MyPage() {
           className={`relative px-4 py-2 text-sm font-medium transition-colors ${tab === 'listings' ? 'text-white border-b-2 border-primary-500' : 'text-gray-400 hover:text-white'}`}
         >
           出品中
+          {expired.length > 0 && (
+            <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded px-1 py-px">期限切れ{expired.length}</span>
+          )}
           {unreadListingIds.size > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{unreadListingIds.size}</span>
           )}
@@ -419,6 +458,9 @@ export default function MyPage() {
           className={`relative px-4 py-2 text-sm font-medium transition-colors ${tab === 'buy_requests' ? 'text-white border-b-2 border-primary-500' : 'text-gray-400 hover:text-white'}`}
         >
           買取中
+          {expiredBuy.length > 0 && (
+            <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded px-1 py-px">期限切れ{expiredBuy.length}</span>
+          )}
           {unreadBuyRequestIds.size > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{unreadBuyRequestIds.size}</span>
           )}
