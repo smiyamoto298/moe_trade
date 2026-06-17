@@ -631,19 +631,20 @@ class ItemController extends Controller
         // 出品・取引履歴・装備セットへの参加と紐づいている場合は、禁止せず確認を促す。
         // force=true で確認済みとして関連データごと削除する。
         $listingCount = Listing::where('item_id', $id)->count();
+        $buyRequestCount = BuyRequest::where('item_id', $id)->count();
         $historyCount = TradeHistory::where('item_id', $id)->count();
         // この部位を構成に含む装備セット数（部位アイテムを削除するとセットから外れる）
         $setUsageCount = DB::table('equipment_set_members')->where('piece_item_id', $id)->count();
         // 自身が装備セットの場合の構成部位数（部位アイテムは独立アイテムとして残る）
         $pieceCount = $item->is_equipment_set ? $item->setMembers()->count() : 0;
 
-        $hasRelated = $listingCount > 0 || $historyCount > 0 || $setUsageCount > 0;
+        $hasRelated = $listingCount > 0 || $buyRequestCount > 0 || $historyCount > 0 || $setUsageCount > 0;
 
         if ($hasRelated && !$request->boolean('force')) {
             $lines = [];
-            if ($listingCount > 0 || $historyCount > 0) {
-                $lines[] = "このアイテムには出品（{$listingCount}件）・取引履歴（{$historyCount}件）が紐づいています。";
-                $lines[] = "削除すると、関連する出品・取引チャット・取引履歴もすべて削除されます。";
+            if ($listingCount > 0 || $buyRequestCount > 0 || $historyCount > 0) {
+                $lines[] = "このアイテムには出品（{$listingCount}件）・買取（{$buyRequestCount}件）・取引履歴（{$historyCount}件）が紐づいています。";
+                $lines[] = "削除すると、関連する出品・買取・取引チャット・取引履歴もすべて削除されます。";
             }
             if ($setUsageCount > 0) {
                 $lines[] = "このアイテムは装備セット{$setUsageCount}件の構成部位です。削除するとそれらのセットから外れます。";
@@ -655,10 +656,11 @@ class ItemController extends Controller
 
             return response()->json([
                 'requires_confirmation' => true,
-                'listing_count'   => $listingCount,
-                'history_count'   => $historyCount,
-                'set_usage_count' => $setUsageCount,
-                'message'         => implode("\n", $lines),
+                'listing_count'     => $listingCount,
+                'buy_request_count' => $buyRequestCount,
+                'history_count'     => $historyCount,
+                'set_usage_count'   => $setUsageCount,
+                'message'           => implode("\n", $lines),
             ], 409);
         }
 
@@ -670,6 +672,9 @@ class ItemController extends Controller
             TradeHistory::where('item_id', $id)->delete();
             // 出品を削除（listing_servers / trade_chats / trade_messages は外部キー cascade）
             Listing::where('item_id', $id)->delete();
+            // 買取を削除（buy_requests は item を RESTRICT 参照。trade_chats は cascade、
+            // trade_history.buy_request_id は nullOnDelete で自動処理される）
+            BuyRequest::where('item_id', $id)->delete();
             // アイテム削除（item_bonus_effects / equipment_set_members は外部キー cascade）
             $item->delete();
 

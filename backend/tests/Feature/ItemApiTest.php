@@ -346,15 +346,31 @@ class ItemApiTest extends TestCase
             'server' => 'Emerald', 'is_valid' => true, 'traded_at' => now(),
         ]);
 
+        // 同じアイテムへの買取（buy_requests は item を RESTRICT 参照）と、それに紐づくチャット。
+        // これが残っていると items 削除が FK 制約違反で 500 になっていた（回帰防止）。
+        $buyRequest = \App\Models\BuyRequest::create([
+            'user_id'    => $this->makeUser()->id,
+            'item_id'    => $itemId,
+            'price'      => 800, 'currency' => 'AC', 'quantity' => 1,
+            'trade_type' => 'fixed', 'expires_at' => now()->addMonth(),
+        ]);
+        $brChat = \App\Models\TradeChat::create([
+            'buy_request_id' => $buyRequest->id,
+            'buyer_id'       => $this->makeUser()->id,
+            'server'         => 'Emerald',
+            'status'         => 'open',
+        ]);
+
         // force 未指定なら 409 で確認を要求し、件数を返す（削除はしない）
         $res = $this->actingAs($admin, 'sanctum')->deleteJson("/api/items/{$itemId}");
         $res->assertStatus(409)
             ->assertJsonPath('requires_confirmation', true)
             ->assertJsonPath('listing_count', 1)
+            ->assertJsonPath('buy_request_count', 1)
             ->assertJsonPath('history_count', 1);
         $this->assertDatabaseHas('items', ['id' => $itemId]);
 
-        // force=1 で関連（出品・チャット・メッセージ・取引履歴）ごと削除
+        // force=1 で関連（出品・買取・チャット・メッセージ・取引履歴）ごと削除
         $this->actingAs($admin, 'sanctum')
             ->deleteJson("/api/items/{$itemId}?force=1")
             ->assertStatus(204);
@@ -363,6 +379,8 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseMissing('listings', ['id' => $listing->id]);
         $this->assertDatabaseMissing('trade_chats', ['id' => $chat->id]);
         $this->assertDatabaseMissing('trade_history', ['item_id' => $itemId]);
+        $this->assertDatabaseMissing('buy_requests', ['id' => $buyRequest->id]);
+        $this->assertDatabaseMissing('trade_chats', ['id' => $brChat->id]);
     }
 
     public function test_アイテム統合で関連データを付け替えて元を削除する(): void
