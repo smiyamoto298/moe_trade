@@ -340,6 +340,42 @@ class ListingApiTest extends TestCase
         $this->assertNotContains('刀剣料理の書', $names);
     }
 
+    public function test_構成検索で複数の必要マスタリはOR判定になる(): void
+    {
+        $cats = $this->makeCategoryTree();
+
+        // WAR（刀剣・キック・盾・戦闘技術）または ALC（破壊魔法・回復魔法・強化魔法・神秘魔法）で発動するテクニック
+        $orTech = Item::create([
+            'category_id' => $cats['noah']->id, 'name' => 'ウォーリアー/アルケミスト技',
+            'verified_status' => 'verified', 'mastery_requirements' => ['WAR', 'ALC'],
+        ]);
+        $this->makeListing(null, $orTech);
+
+        // WAR の全構成スキルだけ選択 → WAR が完全被覆。ALC は未被覆だが OR なので表示される
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'skill_keys'  => ['刀剣', 'キック', '盾', '戦闘技術'],
+            'skill_match' => 'composition',
+        ]));
+        $res->assertOk();
+        $this->assertContains('ウォーリアー/アルケミスト技', collect($res->json('data'))->pluck('item.name')->all());
+
+        // ALC の全構成スキルだけ選択 → ALC が完全被覆。OR なので表示される
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'skill_keys'  => ['破壊魔法', '回復魔法', '強化魔法', '神秘魔法'],
+            'skill_match' => 'composition',
+        ]));
+        $res->assertOk();
+        $this->assertContains('ウォーリアー/アルケミスト技', collect($res->json('data'))->pluck('item.name')->all());
+
+        // どちらのマスタリも完全被覆されない（刀剣のみ）→ 表示されない
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'skill_keys'  => ['刀剣'],
+            'skill_match' => 'composition',
+        ]));
+        $res->assertOk();
+        $this->assertNotContains('ウォーリアー/アルケミスト技', collect($res->json('data'))->pluck('item.name')->all());
+    }
+
     public function test_価格でフィルタとソートができる(): void
     {
         $this->makeListing(null, null, ['price' => 100]);

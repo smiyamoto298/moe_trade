@@ -854,7 +854,7 @@ export default function AdminItemEditPage() {
         {isSkill && (
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-3">
             <h2 className="text-sm font-semibold text-gray-300">必要マスタリ</h2>
-            <p className="text-xs text-gray-500">発動に必要なマスタリがあれば選択してください（構成スキルを全て40で発動）。</p>
+            <p className="text-xs text-gray-500">発動に必要なマスタリがあれば選択してください（構成スキルを全て40で発動）。複数選択した場合は「いずれか」で発動（OR条件）。</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {MASTERIES.map((m) => (
                 <label

@@ -417,7 +417,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
       {isSkill && (
         <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-2">
           <p className="text-xs font-semibold text-primary-400">必要マスタリ</p>
-          <p className="text-[10px] text-gray-500">発動に必要なマスタリがあれば選択してください（構成スキルを全て40で発動）。</p>
+          <p className="text-[10px] text-gray-500">発動に必要なマスタリがあれば選択してください（構成スキルを全て40で発動）。複数選択した場合は「いずれか」で発動（OR条件）。</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {MASTERIES.map((m) => (
               <label

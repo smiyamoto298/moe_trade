@@ -161,7 +161,8 @@ class ListingController extends Controller
                     });
                 }
             } else {
-                // 構成検索: アイテムの必要スキル + 必要マスタリの構成スキルが、すべて選択スキルに含まれる（部分集合）。
+                // 構成検索: アイテムの必要スキルがすべて選択スキルに含まれ（部分集合）、かつ
+                // 必要マスタリ（複数は OR）のいずれか1つの構成スキルが選択スキルで完全被覆されるテクニックを表示。
 
                 // 範囲指定が 40 を許容するスキルだけマスタリ判定に使う（マスタリは構成スキルを全て40で発動）
                 $permits40 = function (string $key) use ($skillRanges): bool {
@@ -200,18 +201,16 @@ class ListingController extends Controller
                             });
                         });
                     }
-                    // 必要マスタリ: 構成スキルが全て選択されていない（＝完全被覆でない）マスタリを必要としない。
-                    // マスタリ未設定（NULL）のテクニックはこの条件を満たす（MySQL の JSON_CONTAINS は
-                    // NULL 列に対して NULL を返し WHERE で除外されてしまうため、明示的に NULL を許可する）。
-                    $covered    = \App\Support\Mastery::fullyCoveredCodes($masterySkills);
-                    $notCovered = array_values(array_diff(\App\Support\Mastery::codes(), $covered));
-                    $iq->where(function ($mw) use ($notCovered) {
+                    // 必要マスタリ（複数指定は OR）: いずれか1つでも構成スキルが完全被覆されていれば対象。
+                    // マスタリ未設定（NULL・空配列）のテクニックは常に対象（マスタリ条件なし）。
+                    $covered = \App\Support\Mastery::fullyCoveredCodes($masterySkills);
+                    $iq->where(function ($mw) use ($covered) {
                         $mw->whereNull('mastery_requirements')
-                           ->orWhere(function ($m2) use ($notCovered) {
-                               foreach ($notCovered as $code) {
-                                   $m2->whereJsonDoesntContain('mastery_requirements', $code);
-                               }
-                           });
+                           ->orWhereJsonLength('mastery_requirements', 0);
+                        // 完全被覆されたマスタリのいずれかを必要とするテクニックを OR で対象に含める
+                        foreach ($covered as $code) {
+                            $mw->orWhereJsonContains('mastery_requirements', $code);
+                        }
                     });
                 });
             }

@@ -41,6 +41,9 @@ function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
   if (!codes || codes.length === 0) return <span className="text-xs text-gray-600">—</span>
   return (
     <div className="flex flex-col gap-1.5">
+      {codes.length > 1 && (
+        <span className="text-[10px] text-purple-300/80">いずれかで発動（OR）</span>
+      )}
       {codes.map((code) => {
         const m = MASTERY_BY_CODE[code]
         return (
