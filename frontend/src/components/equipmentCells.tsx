@@ -10,7 +10,7 @@ import { groupPiecesByBaseStats, groupPiecesByBonusEffects, groupPiecesBySpecial
 export function BaseStatBadges({ item }: { item: Item }) {
   return (
     <>
-      {Object.entries(item.base_stats).map(([key, val]) => (
+      {Object.entries(item.base_stats ?? {}).map(([key, val]) => (
         <span key={key} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
           {BASE_STAT_LABELS[key] ?? key}: <span className="text-white font-medium">{formatSignedValue(val)}</span>
         </span>
@@ -28,7 +28,7 @@ export function BaseStatBadges({ item }: { item: Item }) {
 export function BonusEffectList({ item }: { item: Item }) {
   return (
     <>
-      {item.bonus_effects.map((e) => (
+      {(item.bonus_effects ?? []).map((e) => (
         <div key={e.id} className="text-xs bg-surface border border-primary-500/20 rounded px-2 py-1">
           <p className="text-primary-500 font-medium">
             {e.effect_name}
@@ -52,7 +52,7 @@ export function BonusEffectList({ item }: { item: Item }) {
 export function SpecialConditionBadges({ item }: { item: Item }) {
   return (
     <>
-      {item.special_conditions.map((c) => (
+      {(item.special_conditions ?? []).map((c) => (
         <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
           {c}
         </span>

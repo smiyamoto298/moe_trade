@@ -251,6 +251,24 @@ describe('AdminItemsPage 取引情報の表示', () => {
     expect(screen.queryByText('出品 3')).not.toBeInTheDocument()
   })
 
+  it('base_stats・bonus_effects・special_conditions が null のアイテムでもクラッシュせず「—」を表示する', async () => {
+    // 実APIはこれらの配列/オブジェクト項目を null で返すことがある（型は非null宣言だが防御する）
+    const nullFields = makeItem({
+      id: 1,
+      name: '炎の大剣',
+      base_stats: null as unknown as Record<string, number>,
+      bonus_effects: null as unknown as Item['bonus_effects'],
+      special_conditions: null as unknown as string[],
+    })
+    mockedList.mockResolvedValue({ data: [nullFields] })
+    renderPage()
+    await waitForLoaded()
+
+    // 追加効果・付加効果・特殊条件の3列がいずれも「—」を表示する
+    const row = (await screen.findByText('炎の大剣')).closest('tr')!
+    expect(within(row).getAllByText('—').length).toBeGreaterThanOrEqual(3)
+  })
+
   it('件数が無いアイテムは出品0・買取0を表示する', async () => {
     mockedList.mockResolvedValue({ data: [makeItem({ id: 1, name: '炎の大剣' })] })
     renderPage()
@@ -265,12 +283,16 @@ describe('AdminItemsPage 取引情報の表示', () => {
 describe('AdminItemsPage 行操作アイコン', () => {
   const rowFor = async (name: string) => (await screen.findByText(name)).closest('tr')!
 
-  it('アイテム名はアイテム恒久ページ /items/:id への公開リンクになっている', async () => {
+  it('アイテム名はテキスト表示で、その下の「詳細を見る」リンクからアイテム恒久ページ /items/:id へ遷移する', async () => {
     renderPage()
     await waitForLoaded()
 
-    // 名前リンク（id=1 の通常アイテム）をクリックすると公開詳細ページへ遷移する
-    await userEvent.click(screen.getByRole('link', { name: '炎の大剣' }))
+    // アイテム名自体はリンクではなくテキスト表示
+    const row = await rowFor('炎の大剣')
+    expect(within(row).queryByRole('link', { name: '炎の大剣' })).not.toBeInTheDocument()
+
+    // 名前の下の「詳細を見る」リンク（id=1 の通常アイテム）をクリックすると公開詳細ページへ遷移する
+    await userEvent.click(within(row).getByRole('link', { name: '詳細を見る' }))
     expect(await screen.findByTestId('location')).toHaveTextContent('/items/1')
   })
 

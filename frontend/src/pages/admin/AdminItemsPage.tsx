@@ -533,12 +533,13 @@ export default function AdminItemsPage() {
                   className={`hover:bg-surface-border/30 transition-colors ${item.verified_status === 'unverified' ? 'bg-yellow-900/5' : ''}`}
                 >
                   <td className="px-4 py-3">
-                    {/* アイテム名はアイテム恒久ページ（公開・SEOの正規ランディング先）への導線 */}
+                    {/* アイテム名はテキスト表示にし、その下にアイテム恒久ページ（公開・SEOの正規ランディング先）への詳細リンクを置く */}
+                    <span className="text-white font-medium">{item.name}</span>
                     <Link
                       to={`/items/${item.id}`}
-                      className="text-white font-medium hover:text-primary-500 hover:underline transition-colors"
+                      className="block text-xs text-primary-500 hover:underline transition-colors mt-0.5 w-fit"
                     >
-                      {item.name}
+                      詳細を見る
                     </Link>
                     {item.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{item.description}</p>}
                     {/* 装備セットは構成部位（部位カテゴリ名チップ）をアイテム名の下に表示する */}
@@ -605,9 +606,9 @@ export default function AdminItemsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
-                      {item.special_conditions.length === 0 ? (
+                      {(item.special_conditions ?? []).length === 0 ? (
                         <span className="text-xs text-gray-600">—</span>
-                      ) : item.special_conditions.map((c) => (
+                      ) : (item.special_conditions ?? []).map((c) => (
                         <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
                           {c}
                         </span>
@@ -627,7 +628,7 @@ export default function AdminItemsPage() {
                       <SetBaseStatsCell members={item.set_members ?? []} />
                     ) : (
                       <div className="flex flex-wrap gap-1">
-                        {Object.keys(item.base_stats).length === 0 && !item.mithril ? (
+                        {Object.keys(item.base_stats ?? {}).length === 0 && !item.mithril ? (
                           <span className="text-xs text-gray-600">—</span>
                         ) : (
                           <BaseStatBadges item={item} />
@@ -641,7 +642,7 @@ export default function AdminItemsPage() {
                       <SetBonusCell members={item.set_members ?? []} />
                     ) : (
                       <div className="flex flex-col gap-1.5">
-                        {item.bonus_effects.length === 0 ? (
+                        {(item.bonus_effects ?? []).length === 0 ? (
                           <span className="text-xs text-gray-600">—</span>
                         ) : (
                           <BonusEffectList item={item} />
@@ -654,9 +655,9 @@ export default function AdminItemsPage() {
                       <SetSpecialConditionsCell members={item.set_members ?? []} />
                     ) : (
                       <div className="flex flex-wrap gap-1">
-                        {item.special_conditions.length === 0 ? (
+                        {(item.special_conditions ?? []).length === 0 ? (
                           <span className="text-xs text-gray-600">—</span>
-                        ) : item.special_conditions.map((c) => (
+                        ) : (item.special_conditions ?? []).map((c) => (
                           <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-700/30">
                             {c}
                           </span>
