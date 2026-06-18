@@ -132,6 +132,29 @@ class PromoTweetComposerTest extends TestCase
         $this->assertStringContainsString('売)量産の矢 100AC ×3', $tweets[0]);
     }
 
+    public function test_交渉可は価格の後ろに交渉可が付き即決は付かない(): void
+    {
+        $negotiable = $this->item('剛力の剣', 12000) + ['negotiable' => true];
+        $tweets = (new PromoTweetComposer())->compose(
+            '6/12',
+            [$negotiable, $this->item('守りの盾', 500)],
+            [$this->item('量産の矢', 100, 3) + ['negotiable' => true]],
+            0,
+            0,
+            0,
+            self::URL
+        );
+
+        $text = $tweets[0];
+        // 交渉可: 価格の後ろに「:交渉可」
+        $this->assertStringContainsString('売)剛力の剣 12,000AC:交渉可', $text);
+        // 即決: 付かない
+        $this->assertStringContainsString('売)守りの盾 500AC', $text);
+        $this->assertStringNotContainsString('守りの盾 500AC:交渉可', $text);
+        // 交渉可は個数表示の前に付く
+        $this->assertStringContainsString('買)量産の矢 100AC:交渉可 ×3', $text);
+    }
+
     public function test_出品も買取も無い場合は「なし」と表示される(): void
     {
         $tweets = (new PromoTweetComposer())->compose('6/12', [], [], 0, 0, 0, self::URL);

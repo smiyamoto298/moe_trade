@@ -34,8 +34,8 @@ class PromoTweetComposer
 
     /**
      * @param string $dateLabel 「6/12」（単日）または「6/8〜6/12」（期間）のような日付表示
-     * @param array<int, array{name: string, price: int, currency: string, count: int}> $listings
-     * @param array<int, array{name: string, price: int, currency: string, count: int}> $buyRequests
+     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $listings
+     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $buyRequests
      * @param int $tradeCount 取引成立件数
      * @param int $activeListingCount 現在有効な出品の総数
      * @param int $activeBuyRequestCount 現在有効な買取の総数
@@ -129,11 +129,15 @@ class PromoTweetComposer
     }
 
     /**
-     * 「売)アイテム名 12,000AC ×3」形式の行を作る。
+     * 「売)アイテム名 12,000AC:交渉可 ×3」形式の行を作る。
+     * 交渉可（negotiable=true）のときは価格の後ろに「:交渉可」を付ける。
      */
     public static function itemLine(array $item, string $prefix = ''): string
     {
         $line = $prefix . $item['name'] . ' ' . number_format($item['price']) . ($item['currency'] ?? '');
+        if (!empty($item['negotiable'])) {
+            $line .= ':交渉可';
+        }
         if (($item['count'] ?? 1) > 1) {
             $line .= ' ×' . $item['count'];
         }

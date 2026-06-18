@@ -136,19 +136,22 @@ class PromoTweetController extends Controller
     }
 
     /**
-     * アイテム名＋価格＋通貨が同じものを {name, price, currency, count} に集約する。
+     * アイテム名＋価格＋通貨＋取引方法が同じものを
+     * {name, price, currency, count, negotiable} に集約する。
+     * 取引方法（即決/交渉可）が違うものは別行として扱う。
      *
-     * @return array<int, array{name: string, price: int, currency: string, count: int}>
+     * @return array<int, array{name: string, price: int, currency: string, count: int, negotiable: bool}>
      */
     private function aggregate($rows): array
     {
         return $rows
-            ->groupBy(fn ($row) => ($row->item?->name ?? '不明なアイテム') . '|' . $row->price . '|' . $row->currency)
+            ->groupBy(fn ($row) => ($row->item?->name ?? '不明なアイテム') . '|' . $row->price . '|' . $row->currency . '|' . $row->trade_type)
             ->map(fn ($group) => [
-                'name'     => $group->first()->item?->name ?? '不明なアイテム',
-                'price'    => (int) $group->first()->price,
-                'currency' => (string) $group->first()->currency,
-                'count'    => $group->count(),
+                'name'       => $group->first()->item?->name ?? '不明なアイテム',
+                'price'      => (int) $group->first()->price,
+                'currency'   => (string) $group->first()->currency,
+                'count'      => $group->count(),
+                'negotiable' => $group->first()->trade_type === 'negotiable',
             ])
             ->values()
             ->all();
