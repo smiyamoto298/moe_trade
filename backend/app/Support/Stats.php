@@ -16,7 +16,7 @@ class Stats
         'atk', 'mag', 'def', 'atk_delay', 'mag_delay',
         'max_hp', 'max_st', 'max_mp', 'hit', 'eva',
         'res_fire', 'res_earth', 'res_water', 'res_wind', 'res_none',
-        'max_weight', 'move_speed',
+        'max_weight', 'move_speed', 'swim_speed',
     ];
 
     /** 既知の base_stats キーかどうか。 */

@@ -35,7 +35,7 @@ export const BONUS_VALUE_LABEL_OPTIONS: string[] = [
   '攻撃力', '魔力', '攻撃ディレイ', '魔法ディレイ',
   '最大HP', '最大ST', '最大MP', '命中', '回避',
   '耐火属性', '耐地属性', '耐水属性', '耐風属性', '耐無属性',
-  '最大重量', '移動速度',
+  '最大重量', '移動速度', '泳ぎ速度',
   // 付加効果種別（旧"種別"セレクトの選択肢をマージ）
   '魔法スキル効果上昇', '火属性強化', '水属性強化', '風属性強化', '地属性強化',
   '無属性強化', '全属性強化',
@@ -96,13 +96,14 @@ export const BASE_STAT_LABELS: Record<string, string> = {
   max_mp:     '最大MP',
   move_speed: '移動速度',
   max_weight: '最大重量',
-  atk_delay:  '攻撃ディレイ',
-  mag_delay:  '魔法ディレイ',
+  swim_speed: '泳ぎ速度',
   atk:        '攻撃力',
   mag:        '魔力',
   def:        '防御力',
   hit:        '命中',
   eva:        '回避',
+  atk_delay:  '攻撃ディレイ',
+  mag_delay:  '魔法ディレイ',
   res_fire:   '耐火属性',
   res_water:  '耐水属性',
   res_earth:  '耐地属性',
@@ -113,8 +114,8 @@ export const BASE_STAT_LABELS: Record<string, string> = {
 // 追加効果入力欄の並び順（ゲーム内のステータス表示に合わせた3列構成）。
 // 各配列が1列分で、列内は上から順に表示する。キーは BASE_STAT_LABELS と完全一致させること。
 export const STAT_INPUT_COLUMNS: string[][] = [
-  ['max_hp', 'max_st', 'max_mp', 'move_speed', 'max_weight', 'atk_delay', 'mag_delay'],
-  ['atk', 'mag', 'def', 'hit', 'eva'],
+  ['max_hp', 'max_st', 'max_mp', 'move_speed', 'max_weight', 'swim_speed'],
+  ['atk', 'mag', 'def', 'hit', 'eva', 'atk_delay', 'mag_delay'],
   ['res_fire', 'res_water', 'res_earth', 'res_wind', 'res_none'],
 ]
 

@@ -55,13 +55,13 @@ describe('SPECIAL_CONDITIONS', () => {
 })
 
 describe('BASE_STAT_LABELS', () => {
-  it('design.md の追加効果キー 17 種と一致する', () => {
+  it('design.md の追加効果キー 18 種と一致する', () => {
     expect(Object.keys(BASE_STAT_LABELS).sort()).toEqual(
       [
         'atk', 'mag', 'def', 'atk_delay', 'mag_delay',
         'max_hp', 'max_st', 'max_mp', 'hit', 'eva',
         'res_fire', 'res_earth', 'res_water', 'res_wind', 'res_none',
-        'max_weight', 'move_speed',
+        'max_weight', 'move_speed', 'swim_speed',
       ].sort()
     )
   })
@@ -74,8 +74,8 @@ describe('BASE_STAT_LABELS', () => {
 describe('STAT_INPUT_COLUMNS', () => {
   it('design.md の追加効果入力欄の並び（3列構成）と一致する', () => {
     expect(STAT_INPUT_COLUMNS).toEqual([
-      ['max_hp', 'max_st', 'max_mp', 'move_speed', 'max_weight', 'atk_delay', 'mag_delay'],
-      ['atk', 'mag', 'def', 'hit', 'eva'],
+      ['max_hp', 'max_st', 'max_mp', 'move_speed', 'max_weight', 'swim_speed'],
+      ['atk', 'mag', 'def', 'hit', 'eva', 'atk_delay', 'mag_delay'],
       ['res_fire', 'res_water', 'res_earth', 'res_wind', 'res_none'],
     ])
   })
