@@ -70,6 +70,10 @@ interface NotificationContextValue {
   unverifiedAssetCount: number
   unverifiedOtherCount: number
   unverifiedItemCount: number
+  // 項目名の管理: 未整理の付加効果ラベル件数（editor / admin のみ。それ以外は 0）
+  unorganizedLabelCount: number
+  // 除外アイテム管理: ユーザー個別除外の昇格候補件数（admin のみ。それ以外は 0）
+  excludedSuggestionCount: number
   // お知らせ（管理者がDBで設定。通知と同じ5秒間隔で更新）
   announcements: Announcement[]
 }
@@ -101,6 +105,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [board, setBoard] = useState<BoardSummary | null>(null)
   const [boardThreads, setBoardThreads] = useState<BoardThreadUnread[]>([])
   const [unverifiedItems, setUnverifiedItems] = useState<UnverifiedItems | null>(null)
+  const [unorganizedLabelCount, setUnorganizedLabelCount] = useState(0)
+  const [excludedSuggestionCount, setExcludedSuggestionCount] = useState(0)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   // localStorage 更新を画面に反映させるためのバージョンカウンタ
   const [, setSeenVersion] = useState(0)
@@ -131,7 +137,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const check = async () => {
       try {
-        const res = await client.get<{ unread_chats: UnreadChat[]; board: BoardSummary | null; board_threads?: BoardThreadUnread[]; unverified_items?: UnverifiedItems | null }>(
+        const res = await client.get<{ unread_chats: UnreadChat[]; board: BoardSummary | null; board_threads?: BoardThreadUnread[]; unverified_items?: UnverifiedItems | null; unorganized_label_count?: number; excluded_suggestion_count?: number }>(
           '/notifications/summary'
         )
         const seen = loadChatSeen()
@@ -142,6 +148,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setBoard(res.data.board)
         setBoardThreads(res.data.board_threads ?? [])
         setUnverifiedItems(res.data.unverified_items ?? null)
+        setUnorganizedLabelCount(res.data.unorganized_label_count ?? 0)
+        setExcludedSuggestionCount(res.data.excluded_suggestion_count ?? 0)
         summaryRef.current = res.data.unread_chats
 
         // ブラウザ通知（初回ポーリングは通知せずベースラインのみ記録）
@@ -255,6 +263,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       unverifiedAssetCount: unverifiedItems?.asset ?? 0,
       unverifiedOtherCount: unverifiedItems?.other ?? 0,
       unverifiedItemCount: unverifiedItems?.total ?? 0,
+      unorganizedLabelCount,
+      excludedSuggestionCount,
       announcements,
     }}>
       {children}

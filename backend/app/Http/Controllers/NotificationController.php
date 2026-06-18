@@ -3,10 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\BoardPost;
+use App\Models\BonusValueLabel;
+use App\Models\DismissedExcludedSuggestion;
+use App\Models\ExcludedItem;
 use App\Models\Item;
 use App\Models\ItemCategory;
+use App\Models\ReportedExcludedName;
 use App\Models\TradeChat;
 use App\Models\User;
+use App\Models\UserExcludedItem;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
@@ -165,6 +170,33 @@ class NotificationController extends Controller
             ];
         }
 
+        // ---- 項目名の管理: 未整理の付加効果ラベル件数（editor / admin のみ） ----
+        // bonus_value_labels のうち is_organized=false（自動追加されたまま整理されていない）件数。
+        $unorganizedLabelCount = $user->isEditor()
+            ? BonusValueLabel::where('is_organized', false)->count()
+            : 0;
+
+        // ---- 除外アイテム管理: ユーザーが個別に除外している昇格候補件数（admin のみ） ----
+        // userSuggestions と同じ集合（DB保存ユーザー分＋端末報告分から、共通除外済み・却下済みを除く）の
+        // 名前の種類数。共通除外への昇格を検討すべき名前があることを管理者に知らせる。
+        $excludedSuggestionCount = 0;
+        if ($user->isAdmin()) {
+            $excludeNames = ExcludedItem::pluck('name')
+                ->merge(DismissedExcludedSuggestion::pluck('name'))
+                ->unique()
+                ->all();
+
+            $dbNames = UserExcludedItem::query()
+                ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
+                ->distinct()
+                ->pluck('name');
+            $deviceNames = ReportedExcludedName::query()
+                ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
+                ->pluck('name');
+
+            $excludedSuggestionCount = $dbNames->merge($deviceNames)->unique()->count();
+        }
+
         return response()->json([
             'unread_chats' => $unreadChats,
             'board' => $latestPost ? [
@@ -174,6 +206,8 @@ class NotificationController extends Controller
             ] : null,
             'board_threads' => $boardThreads,
             'unverified_items' => $unverifiedItems,
+            'unorganized_label_count' => $unorganizedLabelCount,
+            'excluded_suggestion_count' => $excludedSuggestionCount,
         ]);
     }
 

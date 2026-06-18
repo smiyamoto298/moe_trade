@@ -6,7 +6,9 @@ import VerifyEmailBanner from './VerifyEmailBanner'
 
 export default function Header() {
   const { user, logout } = useAuth()
-  const { totalUnread, hasNewBoard, unverifiedItemCount, announcements } = useNotification()
+  const { totalUnread, hasNewBoard, unverifiedItemCount, unorganizedLabelCount, excludedSuggestionCount, announcements } = useNotification()
+  // 管理メニュー配下の通知合計（ドロップダウンを閉じていても気づけるよう「管理」にドット表示）
+  const adminNotifCount = unorganizedLabelCount + excludedSuggestionCount
   const navigate = useNavigate()
   const [adminOpen, setAdminOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -153,15 +155,26 @@ export default function Header() {
               >
                 管理
                 <span className="text-xs text-gray-500">{adminOpen ? '▲' : '▼'}</span>
+                {!adminOpen && adminNotifCount > 0 && (
+                  <span className="absolute -top-1 -right-2 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                )}
               </button>
               {adminOpen && (
                 <div className="absolute top-full left-0 mt-1 w-44 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
                   <Link
                     to="/admin/bonus-value-labels"
                     onClick={() => setAdminOpen(false)}
-                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                    className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
                   >
-                    項目名の管理
+                    <span>項目名の管理</span>
+                    {unorganizedLabelCount > 0 && (
+                      <span
+                        title={`未整理の項目名 ${unorganizedLabelCount}件`}
+                        className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
+                      >
+                        {unorganizedLabelCount}
+                      </span>
+                    )}
                   </Link>
                   <Link
                     to="/admin/binder-labels"
@@ -196,9 +209,17 @@ export default function Header() {
                       <Link
                         to="/admin/excluded-items"
                         onClick={() => setAdminOpen(false)}
-                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                        className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
                       >
-                        除外アイテム管理
+                        <span>除外アイテム管理</span>
+                        {excludedSuggestionCount > 0 && (
+                          <span
+                            title={`ユーザーが個別に除外しているアイテム ${excludedSuggestionCount}件`}
+                            className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
+                          >
+                            {excludedSuggestionCount}
+                          </span>
+                        )}
                       </Link>
                     </>
                   )}
@@ -247,7 +268,7 @@ export default function Header() {
             </svg>
           )}
           {/* 未読・未確認の合計バッジ（メニューを閉じているときのみ） */}
-          {!mobileOpen && (totalUnread > 0 || hasNewBoard || unverifiedItemCount > 0) && (
+          {!mobileOpen && (totalUnread > 0 || hasNewBoard || unverifiedItemCount > 0 || adminNotifCount > 0) && (
             <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
           )}
         </button>
@@ -300,9 +321,14 @@ export default function Header() {
                 <Link
                   to="/admin/bonus-value-labels"
                   onClick={closeMobile}
-                  className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                  className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
                 >
-                  項目名の管理
+                  <span>項目名の管理</span>
+                  {unorganizedLabelCount > 0 && (
+                    <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                      {unorganizedLabelCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   to="/admin/binder-labels"
@@ -337,9 +363,14 @@ export default function Header() {
                     <Link
                       to="/admin/excluded-items"
                       onClick={closeMobile}
-                      className="block py-3 text-gray-300 hover:text-white transition-colors"
+                      className="flex items-center justify-between py-3 text-gray-300 hover:text-white transition-colors"
                     >
-                      除外アイテム管理
+                      <span>除外アイテム管理</span>
+                      {excludedSuggestionCount > 0 && (
+                        <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                          {excludedSuggestionCount}
+                        </span>
+                      )}
                     </Link>
                   </>
                 )}

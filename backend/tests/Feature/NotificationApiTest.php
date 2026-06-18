@@ -118,6 +118,56 @@ class NotificationApiTest extends TestCase
         );
     }
 
+    public function test_未整理の項目名件数はeditor_adminにのみ返る(): void
+    {
+        // 未整理 (is_organized=false) を2件、整理済みを1件用意
+        \App\Models\BonusValueLabel::create(['label' => '攻撃力', 'is_organized' => false, 'sort_order' => 0]);
+        \App\Models\BonusValueLabel::create(['label' => '防御力', 'is_organized' => false, 'sort_order' => 0]);
+        \App\Models\BonusValueLabel::create(['label' => '命中', 'is_organized' => true, 'sort_order' => 1]);
+
+        $editor = $this->makeUserWithRole('editor');
+        $this->assertSame(
+            2,
+            $this->actingAs($editor, 'sanctum')->getJson('/api/notifications/summary')->json('unorganized_label_count')
+        );
+
+        // 一般ユーザーには 0（露出させない）
+        $user = $this->makeUser();
+        $this->assertSame(
+            0,
+            $this->actingAs($user, 'sanctum')->getJson('/api/notifications/summary')->json('unorganized_label_count')
+        );
+    }
+
+    public function test_ユーザー個別除外の昇格候補件数はadminにのみ返る(): void
+    {
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+        // DB保存の個別除外（同名は1件として数える）
+        \App\Models\UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ']);
+        \App\Models\UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ']);
+        \App\Models\UserExcludedItem::create(['user_id' => $u1->id, 'name' => '木の枝']);
+        // 端末報告（別名は加算、共通除外済みは除外）
+        \App\Models\ReportedExcludedName::create(['name' => '石ころ']);
+        \App\Models\ReportedExcludedName::create(['name' => '木の枝']); // DB分と同名→重複は1件
+        // 共通除外済みは候補に出さない
+        \App\Models\ExcludedItem::create(['name' => 'ゴミ']);
+
+        // 残る候補: 木の枝・石ころ の2件
+        $admin = $this->makeUserWithRole('admin');
+        $this->assertSame(
+            2,
+            $this->actingAs($admin, 'sanctum')->getJson('/api/notifications/summary')->json('excluded_suggestion_count')
+        );
+
+        // editor / 一般には 0（admin 専用機能のため露出させない）
+        $editor = $this->makeUserWithRole('editor');
+        $this->assertSame(
+            0,
+            $this->actingAs($editor, 'sanctum')->getJson('/api/notifications/summary')->json('excluded_suggestion_count')
+        );
+    }
+
     public function test_未ログインではアクセスできない(): void
     {
         $this->getJson('/api/notifications/summary')->assertStatus(401);
