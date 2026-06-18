@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BatchRun;
 use App\Models\User;
 use Illuminate\Http\Request;
 
@@ -48,5 +49,28 @@ class AdminController extends Controller
             $user->markEmailAsVerified();
         }
         return response()->json($user->load('characters'));
+    }
+
+    // バッチ（Artisanコマンド）の実行履歴。新しい順に直近分を返す。
+    // command クエリで特定コマンドだけに絞り込める。
+    public function batchRuns(Request $request)
+    {
+        $data = $request->validate([
+            'command' => 'nullable|string|max:100',
+        ]);
+
+        $runs = BatchRun::query()
+            ->when($data['command'] ?? null, fn($q, $command) => $q->where('command', $command))
+            ->orderByDesc('started_at')
+            ->limit(200)
+            ->get();
+
+        // 過去に1度でも実行されたコマンド名（フィルタ用の選択肢）
+        $commands = BatchRun::query()->distinct()->orderBy('command')->pluck('command');
+
+        return response()->json([
+            'runs'     => $runs,
+            'commands' => $commands,
+        ]);
     }
 }

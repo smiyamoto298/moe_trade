@@ -33,6 +33,7 @@ const AnnouncementsAdminPage = lazy(() => import('./pages/admin/AnnouncementsAdm
 const BonusValueLabelsAdminPage = lazy(() => import('./pages/admin/BonusValueLabelsAdminPage'))
 const BinderLabelsAdminPage = lazy(() => import('./pages/admin/BinderLabelsAdminPage'))
 const PromoTweetsPage = lazy(() => import('./pages/admin/PromoTweetsPage'))
+const BatchRunsPage = lazy(() => import('./pages/admin/BatchRunsPage'))
 const AdminExcludedItemsPage = lazy(() => import('./pages/admin/AdminExcludedItemsPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -136,6 +137,10 @@ export default function App() {
           <Route
             path="/admin/promo-tweets"
             element={<RoleRoute roles={['admin']}><PromoTweetsPage /></RoleRoute>}
+          />
+          <Route
+            path="/admin/batch-runs"
+            element={<RoleRoute roles={['admin']}><BatchRunsPage /></RoleRoute>}
           />
           <Route
             path="/admin/excluded-items"

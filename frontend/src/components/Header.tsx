@@ -207,6 +207,13 @@ export default function Header() {
                         宣伝ポスト
                       </Link>
                       <Link
+                        to="/admin/batch-runs"
+                        onClick={() => setAdminOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                      >
+                        バッチ実行履歴
+                      </Link>
+                      <Link
                         to="/admin/excluded-items"
                         onClick={() => setAdminOpen(false)}
                         className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
@@ -359,6 +366,13 @@ export default function Header() {
                       className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
                     >
                       宣伝ポスト
+                    </Link>
+                    <Link
+                      to="/admin/batch-runs"
+                      onClick={closeMobile}
+                      className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                    >
+                      バッチ実行履歴
                     </Link>
                     <Link
                       to="/admin/excluded-items"

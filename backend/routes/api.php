@@ -319,6 +319,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('admin/users/{id}/unsuspend',[AdminController::class, 'unsuspend']);
         Route::post('admin/users/{id}/verify',   [AdminController::class, 'verifyEmail']);
 
+        // バッチ（Artisanコマンド）の実行履歴
+        Route::get('admin/batch-runs', [AdminController::class, 'batchRuns']);
+
         // X宣伝ツイート文面の生成
         Route::get('admin/promo-tweets', [PromoTweetController::class, 'index']);
         // 「Xでポスト」押下時に前回ツイート時刻を記録（単日モードの集計開始時刻になる）
