@@ -9,10 +9,8 @@ export default function Header() {
   const { totalUnread, hasNewBoard, unverifiedItemCount, announcements } = useNotification()
   const navigate = useNavigate()
   const [adminOpen, setAdminOpen] = useState(false)
-  const [myPageOpen, setMyPageOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const adminRef = useRef<HTMLDivElement>(null)
-  const myPageRef = useRef<HTMLDivElement>(null)
 
   // ユーザーが「表示しない」にしたお知らせ（端末ごとに localStorage で保持）。
   // 内容が更新された場合は再表示するため、id と updated_at を組にしてキーにする。
@@ -60,18 +58,6 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [adminOpen])
 
-  // マイページドロップダウンの外側をクリックしたら閉じる
-  useEffect(() => {
-    if (!myPageOpen) return
-    const handleOutside = (e: MouseEvent) => {
-      if (myPageRef.current && !myPageRef.current.contains(e.target as Node)) {
-        setMyPageOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [myPageOpen])
-
   const handleLogout = async () => {
     setMobileOpen(false)
     await logout()
@@ -95,20 +81,21 @@ export default function Header() {
       >
         買取一覧
       </Link>
-      {user && (
-        <>
-          <Link
-            to="/board"
-            onClick={closeMobile}
-            className="relative text-gray-300 hover:text-white transition-colors"
+      <Link
+        to="/items"
+        onClick={closeMobile}
+        className="relative text-gray-300 hover:text-white transition-colors"
+      >
+        アイテム一覧
+        {unverifiedItemCount > 0 && (
+          <span
+            title={`確認中アイテム ${unverifiedItemCount}件`}
+            className="absolute -top-1.5 -right-3 bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none"
           >
-            運営掲示板
-            {hasNewBoard && (
-              <span className="absolute -top-1 -right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
-            )}
-          </Link>
-        </>
-      )}
+            {unverifiedItemCount}
+          </span>
+        )}
+      </Link>
     </>
   )
 
@@ -126,130 +113,99 @@ export default function Header() {
         {/* デスクトップナビ（lg以上） */}
         <nav className="hidden lg:flex items-center gap-6 text-sm">
           {navLinks}
-          {/* マイページメニュー：取引リストと所有アイテム管理へ */}
+          {/* マイ取引・マイペ整理をトップ階層に直接表示 */}
           {user && (
-            <div ref={myPageRef} className="relative">
-              <button
-                onClick={() => setMyPageOpen((v) => !v)}
-                className="relative text-gray-300 hover:text-white transition-colors flex items-center gap-1"
+            <>
+              <Link
+                to="/mypage"
+                className="relative text-gray-300 hover:text-white transition-colors"
               >
-                マイページ
-                <span className="text-xs text-gray-500">{myPageOpen ? '▲' : '▼'}</span>
+                マイ取引
                 {totalUnread > 0 && (
                   <span className="absolute -top-1.5 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none">
                     {totalUnread}
                   </span>
                 )}
+              </Link>
+              <Link
+                to="/mypage/items"
+                className="text-gray-300 hover:text-white transition-colors"
+              >
+                マイペ整理
+              </Link>
+              <Link
+                to="/board"
+                className="relative text-gray-300 hover:text-white transition-colors"
+              >
+                運営掲示板
+                {hasNewBoard && (
+                  <span className="absolute -top-1 -right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                )}
+              </Link>
+            </>
+          )}
+          {/* 管理メニュー：editor/admin のみ表示（アイテム一覧はトップ階層へ移動） */}
+          {(user?.role === 'editor' || user?.role === 'admin') && (
+            <div ref={adminRef} className="relative">
+              <button
+                onClick={() => setAdminOpen((v) => !v)}
+                className="relative text-gray-300 hover:text-white transition-colors flex items-center gap-1"
+              >
+                管理
+                <span className="text-xs text-gray-500">{adminOpen ? '▲' : '▼'}</span>
               </button>
-              {myPageOpen && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
+              {adminOpen && (
+                <div className="absolute top-full left-0 mt-1 w-44 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
                   <Link
-                    to="/mypage"
-                    onClick={() => setMyPageOpen(false)}
-                    className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                  >
-                    <span>取引リスト</span>
-                    {totalUnread > 0 && (
-                      <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
-                        {totalUnread}
-                      </span>
-                    )}
-                  </Link>
-                  <Link
-                    to="/mypage/items"
-                    onClick={() => setMyPageOpen(false)}
+                    to="/admin/bonus-value-labels"
+                    onClick={() => setAdminOpen(false)}
                     className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
                   >
-                    所有アイテム管理
+                    項目名の管理
                   </Link>
+                  <Link
+                    to="/admin/binder-labels"
+                    onClick={() => setAdminOpen(false)}
+                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                  >
+                    バインダーの管理
+                  </Link>
+                  {user?.role === 'admin' && (
+                    <>
+                      <Link
+                        to="/admin/users"
+                        onClick={() => setAdminOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                      >
+                        ユーザー管理
+                      </Link>
+                      <Link
+                        to="/admin/announcements"
+                        onClick={() => setAdminOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                      >
+                        お知らせ管理
+                      </Link>
+                      <Link
+                        to="/admin/promo-tweets"
+                        onClick={() => setAdminOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                      >
+                        宣伝ポスト
+                      </Link>
+                      <Link
+                        to="/admin/excluded-items"
+                        onClick={() => setAdminOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                      >
+                        除外アイテム管理
+                      </Link>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           )}
-          {/* 管理メニュー：アイテム管理は全員、ユーザー管理は admin のみ */}
-          <div ref={adminRef} className="relative">
-            <button
-              onClick={() => setAdminOpen((v) => !v)}
-              className="relative text-gray-300 hover:text-white transition-colors flex items-center gap-1"
-            >
-              管理
-              <span className="text-xs text-gray-500">{adminOpen ? '▲' : '▼'}</span>
-              {unverifiedItemCount > 0 && (
-                <span
-                  title={`確認中アイテム ${unverifiedItemCount}件`}
-                  className="absolute -top-1.5 -right-3 bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none"
-                >
-                  {unverifiedItemCount}
-                </span>
-              )}
-            </button>
-            {adminOpen && (
-              <div className="absolute top-full left-0 mt-1 w-44 bg-surface-card border border-surface-border rounded-lg shadow-xl overflow-hidden z-50">
-                <Link
-                  to="/items"
-                  onClick={() => setAdminOpen(false)}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                >
-                  <span>アイテム管理</span>
-                  {unverifiedItemCount > 0 && (
-                    <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
-                      {unverifiedItemCount}
-                    </span>
-                  )}
-                </Link>
-                {(user?.role === 'editor' || user?.role === 'admin') && (
-                  <>
-                    <Link
-                      to="/admin/bonus-value-labels"
-                      onClick={() => setAdminOpen(false)}
-                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                    >
-                      項目名の管理
-                    </Link>
-                    <Link
-                      to="/admin/binder-labels"
-                      onClick={() => setAdminOpen(false)}
-                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                    >
-                      バインダーの管理
-                    </Link>
-                  </>
-                )}
-                {user?.role === 'admin' && (
-                  <>
-                    <Link
-                      to="/admin/users"
-                      onClick={() => setAdminOpen(false)}
-                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                    >
-                      ユーザー管理
-                    </Link>
-                    <Link
-                      to="/admin/announcements"
-                      onClick={() => setAdminOpen(false)}
-                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                    >
-                      お知らせ管理
-                    </Link>
-                    <Link
-                      to="/admin/promo-tweets"
-                      onClick={() => setAdminOpen(false)}
-                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                    >
-                      宣伝ポスト
-                    </Link>
-                    <Link
-                      to="/admin/excluded-items"
-                      onClick={() => setAdminOpen(false)}
-                      className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
-                    >
-                      除外アイテム管理
-                    </Link>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
         </nav>
 
         {/* デスクトップ右側のログイン操作 */}
@@ -311,93 +267,84 @@ export default function Header() {
             <Link to="/buy-requests" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
               買取一覧
             </Link>
+            <Link to="/items" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+              <span>アイテム一覧</span>
+              {unverifiedItemCount > 0 && (
+                <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                  {unverifiedItemCount}
+                </span>
+              )}
+            </Link>
             {user && (
               <>
+                <Link to="/mypage" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                  <span>マイ取引</span>
+                  {totalUnread > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                      {totalUnread}
+                    </span>
+                  )}
+                </Link>
+                <Link to="/mypage/items" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                  マイペ整理
+                </Link>
                 <Link to="/board" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
                   <span>運営掲示板</span>
                   {hasNewBoard && <span className="w-2 h-2 rounded-full bg-red-500" />}
                 </Link>
-                <div className="mt-2 pt-4 border-t border-surface-border">
-                  <p className="text-xs text-gray-500 mb-1">マイページ</p>
-                  <Link to="/mypage" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-                    <span>取引リスト</span>
-                    {totalUnread > 0 && (
-                      <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
-                        {totalUnread}
-                      </span>
-                    )}
-                  </Link>
-                  <Link to="/mypage/items" onClick={closeMobile} className="block py-3 text-gray-300 hover:text-white transition-colors">
-                    所有アイテム管理
-                  </Link>
-                </div>
               </>
             )}
-            <div className="mt-2 pt-4 border-t border-surface-border">
-              <p className="text-xs text-gray-500 mb-1">管理</p>
-              <Link
-                to="/items"
-                onClick={closeMobile}
-                className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
-              >
-                <span>アイテム管理</span>
-                {unverifiedItemCount > 0 && (
-                  <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
-                    {unverifiedItemCount}
-                  </span>
+            {(user?.role === 'editor' || user?.role === 'admin') && (
+              <div className="mt-2 pt-4 border-t border-surface-border">
+                <p className="text-xs text-gray-500 mb-1">管理</p>
+                <Link
+                  to="/admin/bonus-value-labels"
+                  onClick={closeMobile}
+                  className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                >
+                  項目名の管理
+                </Link>
+                <Link
+                  to="/admin/binder-labels"
+                  onClick={closeMobile}
+                  className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                >
+                  バインダーの管理
+                </Link>
+                {user?.role === 'admin' && (
+                  <>
+                    <Link
+                      to="/admin/users"
+                      onClick={closeMobile}
+                      className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                    >
+                      ユーザー管理
+                    </Link>
+                    <Link
+                      to="/admin/announcements"
+                      onClick={closeMobile}
+                      className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                    >
+                      お知らせ管理
+                    </Link>
+                    <Link
+                      to="/admin/promo-tweets"
+                      onClick={closeMobile}
+                      className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                    >
+                      宣伝ポスト
+                    </Link>
+                    <Link
+                      to="/admin/excluded-items"
+                      onClick={closeMobile}
+                      className="block py-3 text-gray-300 hover:text-white transition-colors"
+                    >
+                      除外アイテム管理
+                    </Link>
+                  </>
                 )}
-              </Link>
-              {(user?.role === 'editor' || user?.role === 'admin') && (
-                <>
-                  <Link
-                    to="/admin/bonus-value-labels"
-                    onClick={closeMobile}
-                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
-                  >
-                    項目名の管理
-                  </Link>
-                  <Link
-                    to="/admin/binder-labels"
-                    onClick={closeMobile}
-                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
-                  >
-                    バインダーの管理
-                  </Link>
-                </>
-              )}
-              {user?.role === 'admin' && (
-                <>
-                  <Link
-                    to="/admin/users"
-                    onClick={closeMobile}
-                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
-                  >
-                    ユーザー管理
-                  </Link>
-                  <Link
-                    to="/admin/announcements"
-                    onClick={closeMobile}
-                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
-                  >
-                    お知らせ管理
-                  </Link>
-                  <Link
-                    to="/admin/promo-tweets"
-                    onClick={closeMobile}
-                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
-                  >
-                    宣伝ポスト
-                  </Link>
-                  <Link
-                    to="/admin/excluded-items"
-                    onClick={closeMobile}
-                    className="block py-3 text-gray-300 hover:text-white transition-colors"
-                  >
-                    除外アイテム管理
-                  </Link>
-                </>
-              )}
-            </div>
+              </div>
+            )}
             <div className="mt-auto pt-4 border-t border-surface-border">
               {user ? (
                 <button

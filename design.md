@@ -250,7 +250,8 @@ X（旧Twitter）への宣伝用に、対象期間の
 
 ### レイアウト・ブランド表示（ヘッダー / フッター / 背景 / バナー）
 - **ヘッダーロゴ**: 画像ロゴ `public/img/logo_header.png`（高さ40px・クリックでトップへ）。元画像 `public/img/logo.png`（透過PNG）からの縮小版で、差し替え時は縮小版を再生成する
-- **ヘッダー「管理」ドロップダウン**（デスクトップナビ・lg以上）: 「管理」ボタンで開閉トグル。開いている間はメニュー外での `mousedown` で自動的に閉じる（メニュー内・ボタン上のクリックでは閉じない）
+- **ヘッダーのナビ構成**: トップ階層に `出品一覧` / `買取一覧` / `アイテム一覧`（`/items`・全ユーザー。`unverifiedItemCount` のバッジ付き）を並べ、ログイン時はその後ろに `マイ取引`（`/mypage`）/ `マイペ整理`（`/mypage/items`）/ `運営掲示板`（管理メニューの直前）を表示する。マイページ階層・アイテム一覧は以前ドロップダウン配下だったがトップ階層へ移動済み
+- **ヘッダー「管理」ドロップダウン**（デスクトップナビ・lg以上、editor/admin のみ表示）: 「管理」ボタンで開閉トグル。開いている間はメニュー外での `mousedown` で自動的に閉じる（メニュー内・ボタン上のクリックでは閉じない）。中身は editor/admin の項目名・バインダー管理と admin 限定のユーザー/お知らせ/宣伝/除外アイテム管理（アイテム一覧はトップ階層へ移動したため非掲載）
 - **ファビコン**: `public/img/favicon.jpg`（`index.html` から参照）
 - **OGP / Twitter Card**: `frontend/index.html` の `<head>` に静的メタタグを定義（SPAだがクローラーはJSを実行しないため、ビルド成果物の HTML に直接含める）。
   - `og:title` / `og:description` / `og:url` / `og:site_name` / `og:type=website` / `og:locale=ja_JP` と `twitter:card=summary_large_image` ＋ `meta name="description"`
