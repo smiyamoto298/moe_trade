@@ -78,9 +78,9 @@ describe('BonusValueLabelsAdminPage 2ペイン管理', () => {
     render(<BonusValueLabelsAdminPage />)
     await waitFor(() => expect(screen.getByDisplayValue('攻撃力')).toBeInTheDocument())
 
-    // 魔力(id=3) のカードをドラッグ → 整理済みゾーンへドロップ（末尾に挿入）
-    const card = within(unorganizedZone()).getByDisplayValue('魔力').closest('[draggable="true"]')!
-    fireEvent.dragStart(card)
+    // 魔力(id=3) のハンドルをドラッグ → 整理済みゾーンへドロップ（末尾に挿入）
+    const card = within(unorganizedZone()).getByDisplayValue('魔力').closest('div')!
+    fireEvent.dragStart(within(card).getByTitle('ドラッグして移動'))
     fireEvent.dragOver(organizedZone())
     fireEvent.drop(organizedZone())
 
@@ -95,8 +95,8 @@ describe('BonusValueLabelsAdminPage 2ペイン管理', () => {
     render(<BonusValueLabelsAdminPage />)
     await waitFor(() => expect(screen.getByDisplayValue('攻撃力')).toBeInTheDocument())
 
-    const card = within(organizedZone()).getByDisplayValue('防御力').closest('[draggable="true"]')!
-    fireEvent.dragStart(card)
+    const card = within(organizedZone()).getByDisplayValue('防御力').closest('div')!
+    fireEvent.dragStart(within(card).getByTitle('ドラッグして移動'))
     fireEvent.dragOver(unorganizedZone())
     fireEvent.drop(unorganizedZone())
 

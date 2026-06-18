@@ -184,14 +184,16 @@ export default function BonusValueLabelsAdminPage() {
   const renderCard = (row: Row) => (
     <div
       key={row.id}
-      draggable
-      onDragStart={onCardDragStart(row.id)}
-      onDragEnd={clearDrag}
       className={`flex items-center gap-2 bg-surface-card border rounded-lg px-2 py-1.5 transition-colors ${
         dragId === row.id ? 'border-primary-500 opacity-50' : 'border-surface-border'
       }`}
     >
+      {/* ハンドルだけを draggable にする。カード全体を draggable にすると内包する
+          <input> の編集が不安定になり、ブラウザによってはドラッグ自体が始まらないため。 */}
       <span
+        draggable
+        onDragStart={onCardDragStart(row.id)}
+        onDragEnd={clearDrag}
         title="ドラッグして移動"
         className="cursor-grab active:cursor-grabbing select-none text-gray-500 hover:text-gray-300 text-lg leading-none px-1"
       >
@@ -201,8 +203,6 @@ export default function BonusValueLabelsAdminPage() {
         type="text"
         value={row.draft}
         onChange={(e) => setDraft(row.id, e.target.value)}
-        // input 上ではドラッグせずテキスト選択できるようにする
-        draggable={false}
         className="flex-1 min-w-0 bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-primary-500"
       />
       <button
