@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
+import { useGoBackOr } from '../hooks/useGoBackOr'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
 import client from '../api/client'
@@ -87,7 +87,8 @@ export function parsePaste(text: string): { rows: Row[]; excluded: number; skipp
 export default function BulkListingPage() {
   const { user } = useAuth()
   const { confirm } = useDialog()
-  const navigate = useNavigate()
+  // 一括出品後は元居た画面に戻る（戻り先が無ければマイページ）
+  const goBack = useGoBackOr('/mypage')
 
   const { run: runLoad, loading: loadingRows } = useAsync()
   const { run: runSubmit, loading: submitting } = useAsync()
@@ -349,8 +350,8 @@ export default function BulkListingPage() {
         setResult(created > 0 ? `${created}件の出品を登録しました。` : null)
         return
       }
-      setResult(`${created}件の出品を登録しました。マイページへ移動します…`)
-      setTimeout(() => navigate('/mypage'), 1200)
+      setResult(`${created}件の出品を登録しました。元の画面に戻ります…`)
+      setTimeout(() => goBack(), 1200)
     })
   }
 

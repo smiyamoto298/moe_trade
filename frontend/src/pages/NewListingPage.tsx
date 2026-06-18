@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
+import { useGoBackOr } from '../hooks/useGoBackOr'
 import { listingsApi } from '../api/listings'
 import { itemsApi } from '../api/items'
 import client from '../api/client'
@@ -14,8 +15,9 @@ import { itemTypeOf, topCategoryName, OTHER_CATEGORY } from '../utils/itemType'
 
 export default function NewListingPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const location = useLocation()
+  // 出品登録後は元居た画面に戻る（戻り先が無ければマイページ）
+  const goBack = useGoBackOr('/mypage')
   // 所有アイテム管理などから「このアイテムを出品」で遷移してきた場合の初期選択（削れ・染色も引き継ぐ）
   const presetState = (location.state as { presetItem?: Item; presetWorn?: boolean; presetDyed?: boolean } | null)
   const presetItem = presetState?.presetItem ?? null
@@ -101,7 +103,7 @@ export default function NewListingPage() {
         is_dyed: hideWornDyed ? false : form.is_dyed,
         servers: serverPayload,
       })
-      navigate('/mypage')
+      goBack()
     })
   }
 

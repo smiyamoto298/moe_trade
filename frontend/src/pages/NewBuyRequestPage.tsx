@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
+import { useGoBackOr } from '../hooks/useGoBackOr'
 import { buyRequestsApi } from '../api/buyRequests'
 import { itemsApi } from '../api/items'
 import client from '../api/client'
@@ -13,7 +13,8 @@ import { TRADE_TYPE_LABEL } from '../utils/constants'
 
 export default function NewBuyRequestPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
+  // 買取登録後は元居た画面に戻る（戻り先が無ければマイページ）
+  const goBack = useGoBackOr('/mypage')
 
   const { run: runSubmit, loading: submitting } = useAsync()
   const { run: runSearch, loading: searching } = useAsync()
@@ -79,7 +80,7 @@ export default function NewBuyRequestPage() {
         comment: form.comment,
         servers: serverPayload,
       })
-      navigate('/mypage')
+      goBack()
     })
   }
 
