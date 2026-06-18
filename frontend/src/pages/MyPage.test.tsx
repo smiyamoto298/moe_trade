@@ -113,6 +113,24 @@ describe('MyPage', () => {
     })
   })
 
+  it('status=active でも expires_at が過去なら出品中でなく期限切れ扱いにする（残り日数マイナスを出さない）', async () => {
+    // 毎時バッチ未実行・遅延で status=active のまま期限超過したレコードを想定
+    mockData.listings = [expiredItem(3, 'active')]
+
+    const { getByText, queryByText } = render(
+      <MemoryRouter>
+        <MyPage />
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      // 期限切れバナー＋期限切れセクションの再出品ボタンが出る
+      expect(getByText('期限切れの取引があります')).toBeTruthy()
+      expect(getByText('再出品')).toBeTruthy()
+    })
+    // 「残り-N日」の出品中カードは出さない
+    expect(queryByText(/残り-?\d+日/)).toBeNull()
+  })
+
   it('期限切れが無ければ通知バナーを表示しない', async () => {
     const { queryByText } = render(
       <MemoryRouter>

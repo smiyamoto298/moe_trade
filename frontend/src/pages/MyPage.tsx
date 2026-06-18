@@ -207,14 +207,24 @@ export default function MyPage() {
 
   const myUserId = USE_MOCK ? MOCK_MY_USER_ID : user?.id ?? null
 
+  // status が active でも expires_at が過去なら「期限切れ」として扱う。
+  // 期限切れ化は毎時バッチ（listings:expire）任せで、本番 cron は 1日1回のため、
+  // バッチ未実行・遅延の間は status=active のまま期限超過したレコードが残りうる。
+  // それを出品中カードに出すと「残り-N日」になるので、公開側 Listing::visible と
+  // 同じ多層防御をフロントにも効かせ、再出品（期限切れ）導線へ寄せる。
+  // completed / deal_failed は成立済みなので期限に関わらず active 扱いのまま残す。
+  const isExpired = (r: { status: string; expires_at?: string }) =>
+    r.status === 'expired' ||
+    (r.status === 'active' && !!r.expires_at && new Date(r.expires_at).getTime() < Date.now())
+
   const active = listings
-    .filter((l) => ['active', 'completed', 'deal_failed'].includes(l.status))
+    .filter((l) => !isExpired(l) && ['active', 'completed', 'deal_failed'].includes(l.status))
     .sort((a, b) => (unreadListingIds.has(b.id) ? 1 : 0) - (unreadListingIds.has(a.id) ? 1 : 0))
-  const expired = listings.filter((l) => l.status === 'expired')
+  const expired = listings.filter(isExpired)
   const activeBuy = buyRequests
-    .filter((b) => ['active', 'completed', 'deal_failed'].includes(b.status))
+    .filter((b) => !isExpired(b) && ['active', 'completed', 'deal_failed'].includes(b.status))
     .sort((a, b) => (unreadBuyRequestIds.has(b.id) ? 1 : 0) - (unreadBuyRequestIds.has(a.id) ? 1 : 0))
-  const expiredBuy = buyRequests.filter((b) => b.status === 'expired')
+  const expiredBuy = buyRequests.filter(isExpired)
 
   const chatStatusLabel = (s: TradeChat['status']) =>
     s === 'open' ? '交渉中' : s === 'deal' ? '取引成立' : s === 'deal_failed' ? '不成立' : '見送り'
