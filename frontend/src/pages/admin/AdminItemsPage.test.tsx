@@ -243,10 +243,11 @@ describe('AdminItemsPage 取引情報の表示', () => {
     const checkbox = screen.getByRole('checkbox', { name: '取引情報を表示' })
     expect(checkbox).toBeChecked()
     const row = (await screen.findByText('炎の大剣')).closest('tr')!
-    expect(within(row).getByText('出品 3')).toBeInTheDocument()
-    expect(within(row).getByText('買取 2')).toBeInTheDocument()
+    // レスポンシブ対応で取引情報は2箇所に出る（広い画面の「取引情報」列＋狭い画面用にアイテム名下へまとめた表示）
+    expect(within(row).getAllByText('出品 3')).toHaveLength(2)
+    expect(within(row).getAllByText('買取 2')).toHaveLength(2)
 
-    // チェックを外すと取引情報を表示しない
+    // チェックを外すと取引情報を表示しない（広い列・狭い画面用まとめのどちらも消える）
     await userEvent.click(checkbox)
     expect(screen.queryByText('出品 3')).not.toBeInTheDocument()
   })
@@ -275,8 +276,9 @@ describe('AdminItemsPage 取引情報の表示', () => {
     await waitForLoaded()
 
     const row = (await screen.findByText('炎の大剣')).closest('tr')!
-    expect(within(row).getByText('出品 0')).toBeInTheDocument()
-    expect(within(row).getByText('買取 0')).toBeInTheDocument()
+    // 取引情報列＋狭い画面用まとめの2箇所
+    expect(within(row).getAllByText('出品 0')).toHaveLength(2)
+    expect(within(row).getAllByText('買取 0')).toHaveLength(2)
   })
 })
 

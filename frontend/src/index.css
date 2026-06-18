@@ -25,6 +25,25 @@
   }
 }
 
+/* 汎用データテーブルのレスポンシブ（アイテム一覧など）。出品一覧と同じく、
+   囲むコンテナの実幅で詳細列を畳む。狭いときは主要情報を1セルにまとめて表示する。 */
+.resp-table-container {
+  container-type: inline-size;
+}
+.resp-col-wide {
+  display: none; /* コンテナが狭い間は詳細列を隠す */
+}
+@container (min-width: 720px) {
+  .resp-col-wide {
+    display: table-cell;
+  }
+  /* 狭いときだけ出す要素（畳んだ列の代替表示）。基底の display は要素側の
+     Tailwind ユーティリティ（flex 等）に委ね、広いときだけここで非表示にする。 */
+  .resp-narrow-only {
+    display: none;
+  }
+}
+
 @layer base {
   /* 背景画像は body::before（fixed）で敷くため、フォールバック色は html 側に置く。
      body 自体を不透明にすると ::before が背面に隠れて見えなくなる。 */

@@ -363,10 +363,10 @@ export default function AdminItemsPage() {
                 : '閲覧のみ（編集にはログインが必要です）'}
             </p>
           </div>
-          <div className="flex border border-surface-border rounded-lg overflow-hidden text-sm">
+          <div className="flex border border-surface-border rounded-lg overflow-hidden text-xs sm:text-sm">
             <button
               onClick={() => { setMode('equipment'); setFilter('all') }}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${mode === 'equipment' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${mode === 'equipment' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               装備品
               {unverifiedEquipmentCount > 0 && (
@@ -380,7 +380,7 @@ export default function AdminItemsPage() {
             </button>
             <button
               onClick={() => { setMode('skill'); setFilter('all') }}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               テクニック
               {unverifiedTechniqueCount > 0 && (
@@ -394,7 +394,7 @@ export default function AdminItemsPage() {
             </button>
             <button
               onClick={() => { setMode('asset'); setFilter('all') }}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               アセット
               {unverifiedAssetCount > 0 && (
@@ -408,7 +408,7 @@ export default function AdminItemsPage() {
             </button>
             <button
               onClick={() => { setMode('other'); setFilter('all') }}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 transition-colors ${isOtherMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${isOtherMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               その他
               {unverifiedOtherCount > 0 && (
@@ -490,37 +490,37 @@ export default function AdminItemsPage() {
         </label>
       </div>
 
-      {/* テーブル */}
-      <div className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
-        <table className="w-full min-w-[760px] text-sm">
+      {/* テーブル（コンテナ幅で詳細列を畳む。狭い画面ではアイテム名セルに主要情報をまとめて表示する） */}
+      <div className="resp-table-container bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-surface-border">
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">アイテム名</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">種別</th>
+              <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">種別</th>
               {isSkillMode ? (
                 <>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={2}>必要スキル</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">必要マスタリ</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={2}>必要スキル</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">必要マスタリ</th>
                 </>
               ) : isAssetMode ? (
                 <>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">設置・サイズ</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">ストレージ・特殊機能</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">設置・サイズ</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">ストレージ・特殊機能</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
                 </>
               ) : isOtherMode ? (
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={3}>情報</th>
+                <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider" colSpan={3}>情報</th>
               ) : (
                 <>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">追加効果</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">付加効果</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">追加効果</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">付加効果</th>
+                  <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">特殊条件</th>
                 </>
               )}
               {showTrade && (
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">取引情報</th>
+                <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">取引情報</th>
               )}
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">状態</th>
+              <th className="resp-col-wide text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">状態</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -544,6 +544,25 @@ export default function AdminItemsPage() {
                     >
                       詳細を見る
                     </Link>
+                    {/* 狭い画面用: 畳んだ「種別・状態・取引情報」列をアイテム名の下にまとめて表示する */}
+                    <div className="resp-narrow-only mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-gray-400">{item.category.name}</span>
+                      {item.verified_status === 'verified' ? (
+                        <span className="text-xs text-emerald-400">✓ 確認済み</span>
+                      ) : (
+                        <span className="text-xs text-yellow-400">⚠ 確認中</span>
+                      )}
+                      {showTrade && (
+                        <>
+                          <span className="text-xs bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                            出品 {item.active_listing_count ?? 0}
+                          </span>
+                          <span className="text-xs bg-sky-900/30 border border-sky-700/40 text-sky-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                            買取 {item.active_buy_request_count ?? 0}
+                          </span>
+                        </>
+                      )}
+                    </div>
                     {item.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{item.description}</p>}
                     {/* 装備セットは構成部位（部位カテゴリ名チップ）をアイテム名の下に表示する */}
                     {item.is_equipment_set && (item.set_members?.length ?? 0) > 0 && (
@@ -561,10 +580,10 @@ export default function AdminItemsPage() {
                       onSaved={(hashtags) => updateItemHashtags(item.id, hashtags)}
                     />
                   </td>
-                  <td className="px-4 py-3 text-gray-300">{item.category.name}</td>
+                  <td className="resp-col-wide px-4 py-3 text-gray-300">{item.category.name}</td>
                   {isSkillMode ? (
                     <>
-                    <td className="px-4 py-3 align-top" colSpan={2}>
+                    <td className="resp-col-wide px-4 py-3 align-top" colSpan={2}>
                       <div className="flex flex-wrap gap-1">
                         {!item.skill_requirements || Object.keys(item.skill_requirements).length === 0 ? (
                           <span className="text-xs text-gray-600">—</span>
@@ -575,13 +594,13 @@ export default function AdminItemsPage() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3 align-top">
+                    <td className="resp-col-wide px-4 py-3 align-top">
                       <MasteryBadges codes={item.mastery_requirements} />
                     </td>
                     </>
                   ) : isAssetMode ? (
                   <>
-                  <td className="px-4 py-3">
+                  <td className="resp-col-wide px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {item.placement && (
                         <span className="text-xs bg-surface text-gray-300 px-1.5 py-0.5 rounded">{item.placement}</span>
@@ -594,7 +613,7 @@ export default function AdminItemsPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="resp-col-wide px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {(item.storage_count ?? 0) > 0 && (
                         <span className="text-xs bg-surface text-gray-300 px-1.5 py-0.5 rounded">ストレージ {item.storage_count}</span>
@@ -607,7 +626,7 @@ export default function AdminItemsPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="resp-col-wide px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {(item.special_conditions ?? []).length === 0 ? (
                         <span className="text-xs text-gray-600">—</span>
@@ -620,13 +639,13 @@ export default function AdminItemsPage() {
                   </td>
                   </>
                   ) : isOtherMode ? (
-                  <td className="px-4 py-3" colSpan={3}>
+                  <td className="resp-col-wide px-4 py-3" colSpan={3}>
                     <OtherInfoCell item={item} />
                   </td>
                   ) : (
                   <>
                   {/* 追加効果（出品一覧に合わせ、装備セットは構成部位を効果内容でまとめて表示） */}
-                  <td className="px-4 py-3">
+                  <td className="resp-col-wide px-4 py-3">
                     {item.is_equipment_set ? (
                       <SetBaseStatsCell members={item.set_members ?? []} />
                     ) : (
@@ -640,7 +659,7 @@ export default function AdminItemsPage() {
                     )}
                   </td>
                   {/* 付加効果（装備セットは構成部位の付加効果をまとめて表示） */}
-                  <td className="px-4 py-3">
+                  <td className="resp-col-wide px-4 py-3">
                     {item.is_equipment_set ? (
                       <SetBonusCell members={item.set_members ?? []} />
                     ) : (
@@ -653,7 +672,7 @@ export default function AdminItemsPage() {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="resp-col-wide px-4 py-3">
                     {item.is_equipment_set ? (
                       <SetSpecialConditionsCell members={item.set_members ?? []} />
                     ) : (
@@ -671,7 +690,7 @@ export default function AdminItemsPage() {
                   </>
                   )}
                   {showTrade && (
-                    <td className="px-4 py-3">
+                    <td className="resp-col-wide px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         <span
                           title="出品数（募集中）"
@@ -688,7 +707,7 @@ export default function AdminItemsPage() {
                       </div>
                     </td>
                   )}
-                  <td className="px-4 py-3">
+                  <td className="resp-col-wide px-4 py-3">
                     {item.verified_status === 'verified' ? (
                       <span className="text-xs text-emerald-400 flex items-center gap-1">✓ 確認済み</span>
                     ) : (
@@ -696,7 +715,7 @@ export default function AdminItemsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
                       {/* 確認済みにする：editor / admin のみ（未確認のとき） */}
                       {isEditor && item.verified_status === 'unverified' && (
                         <button
