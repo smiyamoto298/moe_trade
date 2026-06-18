@@ -24,7 +24,7 @@ const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function OwnedItemsPage() {
-  usePageMeta('所有アイテム管理', '公式サイトのアイテムボックスを貼り付けて、所持アイテムを管理できます。')
+  usePageMeta('マイペ整理', '公式サイトのアイテムボックスを貼り付けて、所持アイテムを管理できます。')
   const { confirm, alert } = useDialog()
   const navigate = useNavigate()
 
@@ -64,6 +64,8 @@ export default function OwnedItemsPage() {
 
   // ---- モーダル ----
   const [newItemRowId, setNewItemRowId] = useState<string | null>(null)
+  // 新規登録モーダルに渡す初期アイテム名（候補ダイアログから登録する場合は検索キーワードを引き継ぐ）
+  const [newItemInitialName, setNewItemInitialName] = useState('')
   const [candidateRowId, setCandidateRowId] = useState<string | null>(null)
   const [analyticsItem, setAnalyticsItem] = useState<{ id: number; name: string } | null>(null)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
@@ -497,6 +499,20 @@ export default function OwnedItemsPage() {
     patchRow(id, { itemId: item.id, item })
   }
 
+  // 新規登録モーダルを開く（初期名を指定）
+  const openNewItemForm = (rowId: string, initialName: string) => {
+    setNewItemInitialName(initialName)
+    setNewItemRowId(rowId)
+  }
+
+  // 候補ダイアログで候補が無いとき → そのまま新規登録へ（検索キーワードを初期名に引き継ぐ）
+  const handleCandidateRegisterNew = (keyword: string) => {
+    const id = candidateRowId
+    setCandidateRowId(null)
+    if (!id) return
+    openNewItemForm(id, keyword)
+  }
+
   // 「除外時の確認を今後表示しない」設定（端末ごと・localStorage）
   const [hideExcludeConfirm, setHideExcludeConfirm] = useState(getSkipExcludeConfirm())
 
@@ -569,7 +585,7 @@ export default function OwnedItemsPage() {
       {/* ヘッダー */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">所有アイテム管理</h1>
+          <h1 className="text-xl font-bold text-white">マイペ整理</h1>
           <p className="text-xs text-gray-400 mt-0.5">
             公式サイトのアイテムボックスを貼り付けて、所持アイテムを記録・管理できます。
             保存先は「この端末（ローカル）」か「サーバー（DB）」を選べます（既定はこの端末）。
@@ -783,20 +799,23 @@ export default function OwnedItemsPage() {
                           <p className="text-white font-medium">{row.name}</p>
                           {row.category && <p className="text-[11px] text-gray-500">{row.category}</p>}
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            {isTruncatedName(row.name) && (
+                            {/* 「...」省略名は候補ボタンのみ（候補が無ければダイアログから新規登録できる）。
+                                完全な名前のときだけ新規登録ボタンを出す。 */}
+                            {isTruncatedName(row.name) ? (
                               <button
                                 onClick={() => setCandidateRowId(row.id)}
                                 className="text-xs bg-sky-600/80 hover:bg-sky-600 text-white px-2 py-0.5 rounded transition-colors"
                               >
                                 候補
                               </button>
+                            ) : (
+                              <button
+                                onClick={() => openNewItemForm(row.id, row.name)}
+                                className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-2 py-0.5 rounded transition-colors"
+                              >
+                                + 新規登録
+                              </button>
                             )}
-                            <button
-                              onClick={() => setNewItemRowId(row.id)}
-                              className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-2 py-0.5 rounded transition-colors"
-                            >
-                              + 新規登録
-                            </button>
                           </div>
                         </>
                       )}
@@ -912,7 +931,7 @@ export default function OwnedItemsPage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
           <div className="bg-surface-card border border-yellow-700/50 rounded-lg p-5 max-w-2xl w-full my-8">
             <NewItemForm
-              initialName={isTruncatedName(newItemRow.name) ? '' : newItemRow.name}
+              initialName={newItemInitialName}
               onRegistered={handleRegistered}
               onCancel={() => setNewItemRowId(null)}
             />
@@ -926,6 +945,7 @@ export default function OwnedItemsPage() {
           baseName={truncatedBase(candidateRow.name)}
           originalName={candidateRow.name}
           onSelect={handleCandidateSelected}
+          onRegisterNew={handleCandidateRegisterNew}
           onCancel={() => setCandidateRowId(null)}
         />
       )}

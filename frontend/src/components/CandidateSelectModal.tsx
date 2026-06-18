@@ -10,6 +10,8 @@ interface Props {
   /** 元の（省略された）アイテム名。見出し表示用 */
   originalName: string
   onSelect: (item: Item) => void
+  /** 候補が見つからないときに新規登録へ進む（現在の検索キーワードを渡す） */
+  onRegisterNew?: (keyword: string) => void
   onCancel: () => void
 }
 
@@ -17,7 +19,7 @@ interface Props {
  * 末尾が「...」で省略されたアイテム名から、前方一致で既存アイテムを
  * 検索して選択させるモーダル。
  */
-export default function CandidateSelectModal({ baseName, originalName, onSelect, onCancel }: Props) {
+export default function CandidateSelectModal({ baseName, originalName, onSelect, onRegisterNew, onCancel }: Props) {
   const [loading, setLoading] = useState(true)
   const [candidates, setCandidates] = useState<Item[]>([])
   const [keyword, setKeyword] = useState(baseName)
@@ -89,6 +91,20 @@ export default function CandidateSelectModal({ baseName, originalName, onSelect,
               </li>
             ))}
           </ul>
+        )}
+
+        {/* 候補の有無に関わらず、新規登録へ進めるボタンを常に表示する */}
+        {onRegisterNew && (
+          <div className="mt-4 pt-3 border-t border-surface-border flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-gray-500">該当する既存アイテムが候補に無い場合</span>
+            <button
+              type="button"
+              onClick={() => onRegisterNew(keyword)}
+              className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-3 py-1.5 rounded transition-colors"
+            >
+              + このアイテムを新規登録する
+            </button>
+          </div>
         )}
       </div>
     </div>

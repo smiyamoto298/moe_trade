@@ -261,7 +261,7 @@ export default function AdminExcludedItemsPage() {
       <div className="mb-6 bg-surface-card border border-surface-border rounded-lg p-4">
         <h2 className="text-sm font-semibold text-gray-300 mb-1">種別（カテゴリ）の管理</h2>
         <p className="text-xs text-gray-400 mb-3">
-          共通除外を種別で分類できます。ユーザーは所有アイテム管理で適用する種別を選べます。
+          共通除外を種別で分類できます。ユーザーはマイペ整理で適用する種別を選べます。
           「{defaultType?.name ?? 'その他'}」は既定種別で削除できません（種別を削除すると、その種別の除外アイテムは既定種別へ移動します）。
         </p>
         <div className="flex items-center gap-2 mb-3">

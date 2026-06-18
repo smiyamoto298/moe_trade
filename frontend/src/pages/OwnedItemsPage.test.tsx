@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import OwnedItemsPage from './OwnedItemsPage'
 import { itemsApi } from '../api/items'
 import { saveInventory, loadInitialInventory } from '../utils/inventoryStore'
 import type { Item, InventoryData } from '../types'
 
-// design.md「所有アイテム管理 > 貼り付け取り込み」:
+// design.md「マイペ整理 > 貼り付け取り込み」:
 // 一覧を表示するタイミングで、未紐づけ（itemId=null）の行を /api/items/match で
 // 登録アイテムへ再照合し、一致したものを自動でリンクして保存する。
 // 末尾「...」の省略名は誤紐づけ防止のため対象外。
+// 未紐づけ行のボタン: 省略名（...）は「候補」のみ、完全名は「新規登録」のみを表示する。
 
 vi.mock('../api/items', () => ({ itemsApi: { matchNames: vi.fn() } }))
 vi.mock('../api/buyRequests', () => ({ buyRequestsApi: { prices: vi.fn(() => Promise.resolve({ data: {} })) } }))
@@ -124,5 +125,29 @@ describe('OwnedItemsPage 自動再紐づけ', () => {
 
     await waitFor(() => expect(mockedLoad).toHaveBeenCalled())
     expect(mockedMatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('OwnedItemsPage 未紐づけ行のボタン表示', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('末尾「...」の省略名は「候補」のみを表示し、新規登録ボタンは出さない', async () => {
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow({ name: '炎の大...' })]) })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('候補')).toBeInTheDocument())
+    expect(screen.queryByText('+ 新規登録')).not.toBeInTheDocument()
+  })
+
+  it('完全名の未紐づけ行は「新規登録」のみを表示し、候補ボタンは出さない', async () => {
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow({ name: '炎の大剣' })]) })
+    // 再照合で一致させない（未紐づけのまま）
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('+ 新規登録')).toBeInTheDocument())
+    expect(screen.queryByText('候補')).not.toBeInTheDocument()
   })
 })

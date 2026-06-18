@@ -302,7 +302,7 @@ export default function MyPage() {
             to="/mypage/items"
             className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
           >
-            📦 所有アイテム管理
+            📦 マイペ整理
           </Link>
           <button
             onClick={async () => {

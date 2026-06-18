@@ -169,7 +169,7 @@ export const TOURS: Record<string, PageTour> = {
     version: 1,
     steps: [
       {
-        title: '所有アイテム管理へようこそ',
+        title: 'マイペ整理へようこそ',
         body: '公式サイトのアイテムボックスを貼り付けて、自分の所持アイテムを記録・管理できます。',
       },
       {
