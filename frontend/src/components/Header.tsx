@@ -68,7 +68,7 @@ export default function Header() {
   const navLinks = (
     <>
       <Link
-        to="/listings"
+        to="/all"
         onClick={closeMobile}
         className="text-gray-300 hover:text-white transition-colors"
       >
@@ -261,7 +261,7 @@ export default function Header() {
             onClick={() => setMobileOpen(false)}
           />
           <nav className="absolute top-0 right-0 w-72 max-w-[85vw] h-full bg-surface-card border-l border-surface-border shadow-xl overflow-y-auto flex flex-col p-4 text-sm">
-            <Link to="/listings" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+            <Link to="/all" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
               出品一覧
             </Link>
             <Link to="/buy-requests" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
