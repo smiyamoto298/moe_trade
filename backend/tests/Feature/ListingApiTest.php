@@ -58,7 +58,7 @@ class ListingApiTest extends TestCase
 
         $this->getJson('/api/listings/counts')
             ->assertOk()
-            ->assertExactJson(['equipment' => 2, 'technique' => 1, 'asset' => 1, 'other' => 0]);
+            ->assertExactJson(['all' => 4, 'equipment' => 2, 'technique' => 1, 'asset' => 1, 'other' => 0]);
     }
 
     public function test_種別件数は既定では取引完了を含めずinclude_completedで含める(): void
@@ -69,15 +69,17 @@ class ListingApiTest extends TestCase
         $this->makeListing(null, $this->makeItem(['name' => '出品中', 'category_id' => $sword->id]));
         $this->makeListing(null, $this->makeItem(['name' => '完了', 'category_id' => $sword->id]), ['status' => 'completed']);
 
-        // 既定では active のみ
+        // 既定では active のみ（all も種別合計に追従する）
         $this->getJson('/api/listings/counts')
             ->assertOk()
-            ->assertJsonPath('equipment', 1);
+            ->assertJsonPath('equipment', 1)
+            ->assertJsonPath('all', 1);
 
         // include_completed=true で取引完了も含める
         $this->getJson('/api/listings/counts?include_completed=1')
             ->assertOk()
-            ->assertJsonPath('equipment', 2);
+            ->assertJsonPath('equipment', 2)
+            ->assertJsonPath('all', 2);
     }
 
     public function test_種別件数は凍結ユーザーの出品を除外する(): void

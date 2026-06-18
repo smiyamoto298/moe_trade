@@ -14,8 +14,9 @@ export interface ListingCreatePayload {
   servers: { server: string; character_id: number | null }[]
 }
 
-// 種別タブに表示する各種別の出品件数
+// 種別タブに表示する各種別の出品件数（all は種別を問わない総件数）
 export interface ListingCounts {
+  all: number
   equipment: number
   technique: number
   asset: number
@@ -30,7 +31,7 @@ export const listingsApi = {
 
   counts: (includeCompleted = false): Promise<{ data: ListingCounts }> => {
     if (USE_MOCK) {
-      return Promise.resolve({ data: { equipment: 0, technique: 0, asset: 0, other: 0 } })
+      return Promise.resolve({ data: { all: 0, equipment: 0, technique: 0, asset: 0, other: 0 } })
     }
     return client.get<ListingCounts>('/listings/counts', {
       params: includeCompleted ? { include_completed: true } : {},

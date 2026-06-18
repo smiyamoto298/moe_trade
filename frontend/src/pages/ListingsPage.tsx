@@ -10,8 +10,9 @@ import StatRangeFilter from '../components/StatRangeFilter'
 import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
-import type { Listing, ItemCategory, ItemHashtag, ListingSearchParams, StatRange } from '../types'
+import type { Listing, Item, ItemType, ItemCategory, ItemHashtag, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
+import { itemTypeOf } from '../utils/itemType'
 import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../components/equipmentCells'
 import InlineHashtags from '../components/InlineHashtags'
@@ -88,15 +89,147 @@ function TabLink({ to, label, active, count }: { to: string; label: string; acti
   )
 }
 
-interface Props { mode?: 'equipment' | 'skill' | 'asset' | 'other' }
+// 「全て」タブのアイテム名脇に表示する種別ラベル
+const ITEM_TYPE_LABEL: Record<ItemType, string> = {
+  equipment: '装備品',
+  technique: 'テクニック',
+  asset: 'アセット',
+  other: 'その他',
+}
+
+// 「全て」タブの情報列で使う、ラベル付きの小ブロック
+function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <span className="text-[10px] uppercase tracking-wider text-gray-500">{label}</span>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  )
+}
+
+// 「全て」タブの情報列。行ごとに種別を判定し、その種別に応じた情報を1セルにまとめて表示する。
+// 各種別タブの効果列と同じ部品（equipmentCells / MasteryBadges）を再利用する。
+function AllInfoCell({ item, type }: { item: Item; type: ItemType }) {
+  const dash = <span className="text-xs text-gray-600">—</span>
+
+  if (type === 'technique') {
+    const reqs = Object.entries(item.skill_requirements ?? {})
+    return (
+      <div className="flex flex-col gap-2">
+        <Labeled label="必要スキル">
+          {reqs.length === 0 ? dash : (
+            <div className="flex flex-wrap gap-1">
+              {reqs.map(([skill, val]) => (
+                <span key={skill} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+                  {skill}: <span className="text-white font-medium">{val}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </Labeled>
+        {(item.mastery_requirements?.length ?? 0) > 0 && (
+          <Labeled label="必要マスタリ">
+            <MasteryBadges codes={item.mastery_requirements} />
+          </Labeled>
+        )}
+      </div>
+    )
+  }
+
+  if (type === 'asset') {
+    const hasPlacement = !!item.placement || !!(item.asset_width && item.asset_height)
+    const hasStorage = (item.storage_count ?? 0) > 0 || !!item.special_function
+    return (
+      <div className="flex flex-col gap-2">
+        <Labeled label="設置・サイズ">
+          {!hasPlacement ? dash : (
+            <div className="flex flex-wrap gap-1">
+              {item.placement && (
+                <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">{item.placement}</span>
+              )}
+              {item.asset_width && item.asset_height && (
+                <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+                  {item.asset_width}×{item.asset_height}
+                </span>
+              )}
+            </div>
+          )}
+        </Labeled>
+        <Labeled label="ストレージ・特殊機能">
+          {!hasStorage ? dash : (
+            <div className="flex flex-wrap gap-1">
+              {(item.storage_count ?? 0) > 0 && (
+                <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+                  ストレージ <span className="text-white font-medium">{item.storage_count}</span>
+                </span>
+              )}
+              {item.special_function && (
+                <span className="text-xs bg-primary-500/10 border border-primary-500/30 text-primary-300 rounded px-1.5 py-0.5">
+                  {item.special_function}
+                </span>
+              )}
+            </div>
+          )}
+        </Labeled>
+        {item.special_conditions.length > 0 && (
+          <Labeled label="特殊条件">
+            <div className="flex flex-wrap gap-1">
+              {item.special_conditions.map((c) => (
+                <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/30 border border-red-700/30 text-red-300 rounded px-1.5 py-0.5">
+                  {c}
+                </span>
+              ))}
+            </div>
+          </Labeled>
+        )}
+      </div>
+    )
+  }
+
+  if (type === 'other') return <OtherInfoCell item={item} />
+
+  // 装備品 / 装備セット
+  const isSet = item.is_equipment_set
+  const members = item.set_members ?? []
+  const hasBase = isSet ? members.length > 0 : (Object.keys(item.base_stats).length > 0 || item.mithril)
+  const hasBonus = isSet ? members.length > 0 : item.bonus_effects.length > 0
+  const hasSpecial = isSet ? members.length > 0 : item.special_conditions.length > 0
+  return (
+    <div className="flex flex-col gap-2">
+      <Labeled label="追加効果">
+        {isSet ? <SetBaseStatsCell members={members} />
+          : hasBase ? <div className="flex flex-wrap gap-1"><BaseStatBadges item={item} /></div> : dash}
+      </Labeled>
+      <Labeled label="付加効果">
+        {isSet ? <SetBonusCell members={members} />
+          : hasBonus ? <div className="flex flex-col gap-1.5"><BonusEffectList item={item} /></div> : dash}
+      </Labeled>
+      <Labeled label="特殊条件">
+        {isSet ? <SetSpecialConditionsCell members={members} />
+          : hasSpecial ? (
+            <div className="flex flex-wrap gap-1">
+              {item.special_conditions.map((c) => (
+                <span key={c} title={SPECIAL_CONDITIONS[c]} className="text-xs bg-red-900/30 border border-red-700/30 text-red-300 rounded px-1.5 py-0.5">
+                  {c}
+                </span>
+              ))}
+            </div>
+          ) : dash}
+      </Labeled>
+    </div>
+  )
+}
+
+interface Props { mode?: 'equipment' | 'all' | 'skill' | 'asset' | 'other' }
 
 export default function ListingsPage({ mode = 'equipment' }: Props) {
+  const isAllMode = mode === 'all'
   const isSkillMode = mode === 'skill'
   const isAssetMode = mode === 'asset'
   const isOtherMode = mode === 'other'
-  const isEquipmentMode = !isSkillMode && !isAssetMode && !isOtherMode
+  const isEquipmentMode = mode === 'equipment'
   usePageMeta(
-    isSkillMode ? 'スキル・テクニックの出品一覧' : isAssetMode ? 'アセットの出品一覧' : isOtherMode ? 'その他アイテムの出品一覧' : '装備品の出品一覧',
+    isAllMode ? 'すべての出品一覧' : isSkillMode ? 'スキル・テクニックの出品一覧' : isAssetMode ? 'アセットの出品一覧' : isOtherMode ? 'その他アイテムの出品一覧' : '装備品の出品一覧',
     `${SITE_BRAND}のアイテム取引所。出品中のアイテムを検索して取引チャットで購入できます。`
   )
   const { user } = useAuth()
@@ -123,7 +256,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
   const [params, setParams] = useState<ListingSearchParams>({
     sort: 'newest', page: 1,
-    item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : mode === 'other' ? 'other' : 'equipment',
+    // 「全て」タブは種別を問わないため item_type を送らない（バックエンドは未指定で全種別を返す）
+    ...(mode === 'all' ? {} : {
+      item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : mode === 'other' ? 'other' : 'equipment',
+    }),
     // スキルタブの検索モード（通常検索 / 構成検索）。既定は通常検索。
     ...(mode === 'skill' ? { skill_match: 'normal' as const } : {}),
   })
@@ -320,6 +456,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <h1 className="text-lg sm:text-xl font-bold text-white">出品一覧</h1>
             <div data-tour="listings-modes" className="flex border border-surface-border rounded-lg overflow-hidden text-xs sm:text-sm">
+              <TabLink to="/all" label="全て" active={isAllMode} count={counts?.all} />
               <TabLink to="/listings" label="装備品" active={isEquipmentMode} count={counts?.equipment} />
               <TabLink to="/skills" label="テクニック" active={isSkillMode} count={counts?.technique} />
               <TabLink to="/assets" label="アセット" active={isAssetMode} count={counts?.asset} />
@@ -421,8 +558,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               />
             </div>
 
-            {/* 種別（カテゴリ）— アセットはカテゴリ分けが無いため非表示 */}
-            {!isAssetMode && (
+            {/* 種別（カテゴリ）— アセット・全てタブはカテゴリで絞り込まないため非表示 */}
+            {!isAssetMode && !isAllMode && (
             <div>
               <label className="block text-xs text-gray-400 mb-1.5">種別</label>
               <FilterPopup
@@ -789,7 +926,9 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               <thead>
                 <tr className="border-b border-surface-border">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-52">アイテム</th>
-                  {isSkillMode ? (
+                  {isAllMode ? (
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide" colSpan={3}>情報</th>
+                  ) : isSkillMode ? (
                     <>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide" colSpan={2}>必要スキル</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">必要マスタリ</th>
@@ -845,6 +984,12 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                             </span>
                           )}
                           <div className="flex items-center gap-1 flex-wrap">
+                            {/* 全てタブでは種別を一目で分かるよう種別ラベルを先頭に表示 */}
+                            {isAllMode && !l.item.is_equipment_set && (
+                              <span className="text-[10px] bg-surface-border/60 text-gray-300 rounded px-1.5 py-0.5">
+                                {ITEM_TYPE_LABEL[itemTypeOf(l.item.category, categories)]}
+                              </span>
+                            )}
                             {l.item.is_equipment_set ? (
                               <span className="text-xs bg-amber-900/30 border border-amber-600/40 text-amber-300 rounded px-1.5 py-0.5">
                                 ⚔ 装備セット
@@ -887,7 +1032,12 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           />
                         </td>
 
-                        {isSkillMode ? (
+                        {isAllMode ? (
+                          /* 全てタブ: 行ごとに種別を判定し、その種別の情報を1セルにまとめて表示 */
+                          <td className="listing-col-wide px-4 py-3 align-top" colSpan={3}>
+                            <AllInfoCell item={l.item} type={itemTypeOf(l.item.category, categories)} />
+                          </td>
+                        ) : isSkillMode ? (
                           <>
                           {/* 必要スキル値 */}
                           <td className="listing-col-wide px-4 py-3 align-top" colSpan={2}>

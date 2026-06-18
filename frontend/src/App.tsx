@@ -60,6 +60,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/listings" replace />} />
           <Route path="/listings" element={<ListingsPage key="equipment" mode="equipment" />} />
+          <Route path="/all" element={<ListingsPage key="all" mode="all" />} />
           <Route path="/skills" element={<ListingsPage key="skill" mode="skill" />} />
           <Route path="/assets" element={<ListingsPage key="asset" mode="asset" />} />
           <Route path="/others" element={<ListingsPage key="other" mode="other" />} />

@@ -110,12 +110,13 @@ const page = (data: Listing[]): { data: Paginated<Listing> } => ({
   data: { data, current_page: 1, last_page: 1, per_page: 20, total: data.length },
 })
 
-function renderAt(path: '/listings' | '/skills' | '/assets' | '/others') {
+function renderAt(path: '/listings' | '/all' | '/skills' | '/assets' | '/others') {
   // App.tsx と同じルーティング構成（ルートごとの key で再マウント）を再現する
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/listings" element={<ListingsPage key="equipment" mode="equipment" />} />
+        <Route path="/all" element={<ListingsPage key="all" mode="all" />} />
         <Route path="/skills" element={<ListingsPage key="skill" mode="skill" />} />
         <Route path="/assets" element={<ListingsPage key="asset" mode="asset" />} />
         <Route path="/others" element={<ListingsPage key="other" mode="other" />} />
@@ -135,7 +136,7 @@ beforeEach(() => {
   auth.user = null
   mockedCategories.mockResolvedValue({ data: categories })
   mockedList.mockResolvedValue(page([makeListing()]))
-  mockedCounts.mockResolvedValue({ data: { equipment: 12, technique: 3, asset: 5, other: 1 } })
+  mockedCounts.mockResolvedValue({ data: { all: 21, equipment: 12, technique: 3, asset: 5, other: 1 } })
   mockedClientGet.mockImplementation((url: string) => {
     if (url === '/bonus-value-labels') return Promise.resolve({ data: ['物理ダメージ'] })
     if (url === '/mypage/chats') return Promise.resolve({ data: [] })
@@ -202,6 +203,40 @@ describe('ListingsPage タブ', () => {
     expect(screen.getByText('銀行')).toBeInTheDocument()
   })
 
+  it('全てタブは item_type を送らず、種別を問わず新着で表示し情報列に種別ごとの情報を出す', async () => {
+    mockedList.mockResolvedValue(
+      page([
+        makeListing({ id: 1, item: makeItem({ id: 1, name: '炎の大剣' }) }),
+        makeListing({
+          id: 2,
+          item: makeItem({
+            id: 2,
+            name: 'ノアの一撃',
+            category: { id: 21, parent_id: 2, name: 'ノアピース', sort_order: 1 },
+            base_stats: {}, special_conditions: [],
+            skill_requirements: { 刀剣: 80 }, mastery_requirements: ['WAR'],
+          }),
+        }),
+      ])
+    )
+    renderAt('/all')
+    await waitForLoaded()
+
+    // item_type を含めずに取得する（全種別が対象）
+    expect(lastParams()).toEqual({ sort: 'newest', page: 1 })
+    // 情報列は1列に集約
+    expect(screen.getByRole('columnheader', { name: '情報' })).toBeInTheDocument()
+    // 種別ラベルと両種別の中身が混在して表示される（種別ラベルはタブにも出るため表内に限定）
+    expect(await screen.findByText('炎の大剣')).toBeInTheDocument()
+    expect(screen.getByText('ノアの一撃')).toBeInTheDocument()
+    const table = screen.getByRole('table')
+    expect(within(table).getByText('装備品')).toBeInTheDocument()
+    expect(within(table).getByText('テクニック')).toBeInTheDocument()
+    expect(within(table).getByText(/攻撃力:/)).toBeInTheDocument()
+    expect(within(table).getByText(/刀剣:/)).toBeInTheDocument()
+    expect(within(table).getByText('ウォーリアー【WAR】')).toBeInTheDocument()
+  })
+
   it('各種別タブに件数バッジを表示する（counts API の結果）', async () => {
     renderAt('/listings')
     await waitForLoaded()
@@ -210,6 +245,7 @@ describe('ListingsPage タブ', () => {
     // 各タブのラベルと件数が同じリンク内に表示される
     const equip = await screen.findByRole('link', { name: /装備品/ })
     expect(equip).toHaveTextContent('12')
+    expect(screen.getByRole('link', { name: /全て/ })).toHaveTextContent('21')
     expect(screen.getByRole('link', { name: /テクニック/ })).toHaveTextContent('3')
     expect(screen.getByRole('link', { name: /アセット/ })).toHaveTextContent('5')
     expect(screen.getByRole('link', { name: /その他/ })).toHaveTextContent('1')

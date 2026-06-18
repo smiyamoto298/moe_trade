@@ -390,16 +390,20 @@ class ListingController extends Controller
      * 種別タブに表示する各種別の出品件数。
      * 一覧と同じ公開条件（出品中／取引成立・凍結ユーザー除外）で集計する。
      * include_completed は一覧と揃えるが、その他の絞り込みは反映しない（タブの総件数）。
+     * all は種別を問わない総件数（「全て」タブ用）。
      */
     public function counts(Request $request)
     {
         $includeCompleted = $request->boolean('include_completed', false);
         $statuses = $includeCompleted ? ['active', 'completed'] : ['active'];
 
-        $counts = [];
+        // 公開条件のみを適用したベースクエリ（種別フィルター無し）
+        $base = fn() => Listing::visible($statuses)
+            ->whereHas('user', fn($q) => $q->where('is_suspended', false));
+
+        $counts = ['all' => $base()->count()];
         foreach (['equipment', 'technique', 'asset', 'other'] as $type) {
-            $query = Listing::visible($statuses)
-                ->whereHas('user', fn($q) => $q->where('is_suspended', false));
+            $query = $base();
             $this->applyItemTypeFilter($query, $type);
             $counts[$type] = $query->count();
         }
