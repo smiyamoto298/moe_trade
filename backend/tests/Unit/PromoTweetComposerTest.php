@@ -80,11 +80,14 @@ class PromoTweetComposerTest extends TestCase
                 PromoTweetComposer::weightedLength($tweet),
                 "制限超過: {$tweet}"
             );
-            // 各ツイートにハッシュタグが付く。URLは1通目のみ（2通目以降は返信で投稿するため不要）
-            $this->assertStringContainsString('#MasterofEpic #MoETrade', $tweet);
+            // 共通タグ(#MoETrade)は全ツイート、ゲーム名タグ(#MasterofEpic)とURLは1通目のみ
+            // （2通目以降は1通目への返信で投稿するため不要）
+            $this->assertStringContainsString('#MoETrade', $tweet);
             if ($i === 0) {
+                $this->assertStringContainsString('#MasterofEpic #MoETrade', $tweet);
                 $this->assertStringContainsString(self::URL, $tweet);
             } else {
+                $this->assertStringNotContainsString('#MasterofEpic', $tweet);
                 $this->assertStringNotContainsString(self::URL, $tweet);
             }
 

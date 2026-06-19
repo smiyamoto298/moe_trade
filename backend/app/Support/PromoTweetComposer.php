@@ -10,6 +10,8 @@ namespace App\Support;
  * 複数ツイートへ自動分割し、全アイテムを漏れなく掲載する。
  * アイテムは出品「売)」・買取「買)」のプレフィックス付きで1つのリストにまとめる。
  * 分割時は本文末尾に「...続く」を付け、続きツイートは「（続き）」の行で始める。
+ * ゲーム名タグ（#MasterofEpic）は複数ツイートに分割された場合、1通目だけに付ける
+ * （2通目以降は1通目への返信として連なるため、ゲーム名タグの重複を避ける）。
  *
  * DBや外部APIに依存しない純粋クラス（ユニットテスト対象）。
  */
@@ -30,7 +32,14 @@ class PromoTweetComposer
     // 期間（累計）モード用の見出し
     public const SECTION_TRADES_RANGE = '【期間中の取引成立数】';
 
-    public const HASHTAGS = '#MasterofEpic #MoETrade';
+    /** ゲーム名のハッシュタグ。複数ツイートに分割される場合は1通目だけに付ける。 */
+    public const GAME_HASHTAG = '#MasterofEpic';
+
+    /** 全ツイートに付ける共通ハッシュタグ。 */
+    public const COMMON_HASHTAGS = '#MoETrade';
+
+    /** 1通目に付くハッシュタグ（ゲーム名＋共通）。 */
+    public const HASHTAGS = self::GAME_HASHTAG . ' ' . self::COMMON_HASHTAGS;
 
     /**
      * @param string $dateLabel 「6/12」（単日）または「6/8〜6/12」（期間）のような日付表示
@@ -52,14 +61,20 @@ class PromoTweetComposer
         int $activeBuyRequestCount,
         string $siteUrl,
         bool $cumulative = false,
-        string $hashtags = self::HASHTAGS
+        string $commonHashtags = self::COMMON_HASHTAGS,
+        string $firstHashtag = self::GAME_HASHTAG
     ): array {
+        // 1通目はゲーム名タグ＋共通タグ、2通目以降は共通タグのみ。
+        $footerHashtags = fn (int $tweetIndex): string => $tweetIndex === 0
+            ? trim($firstHashtag . ' ' . $commonHashtags)
+            : $commonHashtags;
+
         // フッターは1通目のみハッシュタグ＋URL、2通目以降は1通目への返信として
         // 投稿する前提のためハッシュタグのみ（サイトリンクは付けない）。
         // 続きがあるツイートは本文末尾に「...続く」を付けるため、その分（改行込み）を常に確保しておく。
         $ellipsisReserve = self::weight("\n...続く");
-        $budgetFor = function (int $tweetIndex) use ($hashtags, $ellipsisReserve): int {
-            $footerWeight = 1 + self::weight($hashtags)
+        $budgetFor = function (int $tweetIndex) use ($footerHashtags, $ellipsisReserve): int {
+            $footerWeight = 1 + self::weight($footerHashtags($tweetIndex))
                 + ($tweetIndex === 0 ? 1 + self::URL_WEIGHT : 0);
             return self::WEIGHT_LIMIT - $footerWeight - $ellipsisReserve;
         };
@@ -122,7 +137,7 @@ class PromoTweetComposer
 
         // 1通目のみサイトURLを付ける（2通目以降は1通目への返信として投稿する）
         return array_map(
-            fn (string $body, int $i) => $body . "\n" . $hashtags . ($i === 0 ? "\n" . $siteUrl : ''),
+            fn (string $body, int $i) => $body . "\n" . $footerHashtags($i) . ($i === 0 ? "\n" . $siteUrl : ''),
             $tweets,
             array_keys($tweets)
         );
