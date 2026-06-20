@@ -83,4 +83,71 @@ class BuyRequestApiTest extends TestCase
         $names = collect($res->json('data'))->pluck('item.name')->all();
         $this->assertSame(['さくら', 'かえで', 'あんず'], $names);
     }
+
+    public function test_renewで期限が延長されactiveに戻る(): void
+    {
+        $buyRequest = $this->makeBuyRequest(null, [
+            'status'     => 'expired',
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($buyRequest->user, 'sanctum')
+            ->postJson("/api/buy-requests/{$buyRequest->id}/renew")
+            ->assertOk();
+
+        $fresh = $buyRequest->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertTrue($fresh->expires_at->gt(now()->addDays(20)));
+    }
+
+    public function test_renewで価格と取引方法を変更して再登録できる(): void
+    {
+        $buyRequest = $this->makeBuyRequest(null, [
+            'status'     => 'expired',
+            'expires_at' => now()->subDay(),
+            'price'      => 500,
+            'trade_type' => 'fixed',
+        ]);
+
+        $this->actingAs($buyRequest->user, 'sanctum')
+            ->postJson("/api/buy-requests/{$buyRequest->id}/renew", [
+                'price'      => 1200,
+                'trade_type' => 'negotiable',
+            ])
+            ->assertOk();
+
+        $fresh = $buyRequest->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertSame(1200, $fresh->price);
+        $this->assertSame('negotiable', $fresh->trade_type);
+    }
+
+    public function test_renewの価格は1以上の整数のみ許可(): void
+    {
+        $buyRequest = $this->makeBuyRequest(null, [
+            'status'     => 'expired',
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($buyRequest->user, 'sanctum')
+            ->postJson("/api/buy-requests/{$buyRequest->id}/renew", ['price' => 0])
+            ->assertStatus(422);
+    }
+
+    public function test_値下げ再登録は新着扱いになり新着順で先頭へ来る(): void
+    {
+        // 期限切れの古い買取 A と、後から登録された有効な買取 B
+        $a = $this->makeBuyRequest(null, ['price' => 1000, 'status' => 'expired', 'expires_at' => now()->subDay()]);
+        \App\Models\BuyRequest::where('id', $a->id)->update(['created_at' => now()->subHours(2)]);
+        $b = $this->makeBuyRequest(null, ['price' => 2000]);
+
+        // 値下げして再登録 → A が「新着扱い」で先頭へ
+        $this->actingAs($a->user, 'sanctum')
+            ->postJson("/api/buy-requests/{$a->id}/renew", ['price' => 500])
+            ->assertOk();
+
+        $this->assertNotNull($a->fresh()->bumped_at);
+        $ids = collect($this->getJson('/api/buy-requests')->json('data'))->pluck('id')->all();
+        $this->assertSame([$a->id, $b->id], array_slice($ids, 0, 2));
+    }
 }

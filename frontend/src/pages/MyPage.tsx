@@ -11,6 +11,7 @@ import { useDialog } from '../contexts/DialogContext'
 import { useTour } from '../tours/TourContext'
 import ChatThread from '../components/ChatThread'
 import EditTradeModal from '../components/EditTradeModal'
+import RenewTradeModal from '../components/RenewTradeModal'
 import type { Listing, BuyRequest, TradeChat, Server } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS } from '../utils/constants'
@@ -49,6 +50,8 @@ export default function MyPage() {
   const [activeSource, setActiveSource] = useState<SourceRecord | null>(null)
   // 出品・買取の編集モーダル対象
   const [editTarget, setEditTarget] = useState<{ kind: 'listing' | 'buy_request'; record: Listing | BuyRequest } | null>(null)
+  // 期限切れの再出品・再登録モーダル対象（価格・取引方法を設定し直す）
+  const [renewTarget, setRenewTarget] = useState<{ kind: 'listing' | 'buy_request'; record: Listing | BuyRequest } | null>(null)
 
   const startEditChars = () => {
     const draft: Record<string, string> = {}
@@ -195,6 +198,41 @@ export default function MyPage() {
     if (!(await confirm('買取を取り下げますか？', { title: '買取の取り下げ', confirmLabel: '取り下げる', danger: true }))) return
     setActioningId(id)
     try { await buyRequestsApi.cancel(id); fetchMyListings() } finally { setActioningId(null) }
+  }
+
+  const [bulkCancelling, setBulkCancelling] = useState(false)
+
+  // 期限切れの出品・買取をまとめて取り下げる。対象一覧を確認ダイアログに表示し、OKで全件取り下げる。
+  const handleCancelAllExpired = async () => {
+    if (bulkCancelling) return
+    const total = expired.length + expiredBuy.length
+    if (total === 0) return
+
+    const all = [
+      ...expired.map((l) => `・[出品] ${l.item.name}（${l.price.toLocaleString()} ${l.currency}）`),
+      ...expiredBuy.map((b) => `・[買取] ${b.item.name}（${b.price.toLocaleString()} ${b.currency}）`),
+    ]
+    // 件数が多いときはダイアログが縦に伸びすぎるため、先頭のみ表示して残りは件数で要約する。
+    const MAX_SHOWN = 12
+    const shown = all.slice(0, MAX_SHOWN).join('\n')
+    const rest = all.length > MAX_SHOWN ? `\n…ほか ${all.length - MAX_SHOWN}件` : ''
+
+    const ok = await confirm(
+      `以下の期限切れ ${total}件をすべて取り下げます。よろしいですか？\n\n${shown}${rest}`,
+      { title: '期限切れをすべて取下げ', confirmLabel: 'すべて取り下げる', danger: true }
+    )
+    if (!ok) return
+
+    setBulkCancelling(true)
+    try {
+      await Promise.all([
+        ...expired.map((l) => listingsApi.cancel(l.id)),
+        ...expiredBuy.map((b) => buyRequestsApi.cancel(b.id)),
+      ])
+      fetchMyListings()
+    } finally {
+      setBulkCancelling(false)
+    }
   }
 
   const openChat = (chat: TradeChat, source?: SourceRecord) => {
@@ -374,6 +412,13 @@ export default function MyPage() {
                 買取を確認
               </button>
             )}
+            <button
+              onClick={handleCancelAllExpired}
+              disabled={bulkCancelling}
+              className="text-xs bg-red-900/50 hover:bg-red-900/80 disabled:opacity-50 text-red-200 border border-red-700/50 px-3 py-1.5 rounded transition-colors"
+            >
+              {bulkCancelling ? '取り下げ中...' : '期限切れをすべて取下げ'}
+            </button>
           </div>
         </div>
       )}
@@ -571,7 +616,10 @@ export default function MyPage() {
                           <p className="font-medium text-white truncate">{l.item.name}</p>
                           <p className="text-sm text-gray-400">{l.price.toLocaleString()} {l.currency}</p>
                         </div>
-                        <button onClick={() => handleRenew(l.id)} disabled={actioningId === l.id} className="text-xs bg-primary-500/80 hover:bg-primary-500 disabled:opacity-50 text-white px-3 py-1 rounded transition-colors">{actioningId === l.id ? '処理中...' : '再出品'}</button>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button onClick={() => setRenewTarget({ kind: 'listing', record: l })} className="text-xs bg-primary-500/80 hover:bg-primary-500 text-white px-3 py-1 rounded transition-colors">再出品</button>
+                          <button onClick={() => handleCancel(l.id)} disabled={actioningId === l.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-3 py-1 rounded transition-colors">{actioningId === l.id ? '処理中...' : '取り下げ'}</button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -710,7 +758,10 @@ export default function MyPage() {
                           <p className="font-medium text-white truncate">{b.item.name}</p>
                           <p className="text-sm text-gray-400">買取 {b.price.toLocaleString()} {b.currency}</p>
                         </div>
-                        <button onClick={() => handleRenewBuy(b.id)} disabled={actioningId === b.id} className="text-xs bg-primary-500/80 hover:bg-primary-500 disabled:opacity-50 text-white px-3 py-1 rounded transition-colors">{actioningId === b.id ? '処理中...' : '再登録'}</button>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button onClick={() => setRenewTarget({ kind: 'buy_request', record: b })} className="text-xs bg-primary-500/80 hover:bg-primary-500 text-white px-3 py-1 rounded transition-colors">再登録</button>
+                          <button onClick={() => handleCancelBuy(b.id)} disabled={actioningId === b.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-3 py-1 rounded transition-colors">{actioningId === b.id ? '処理中...' : '取り下げ'}</button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -835,6 +886,16 @@ export default function MyPage() {
               )
             }
           }}
+        />
+      )}
+
+      {renewTarget && (
+        <RenewTradeModal
+          kind={renewTarget.kind}
+          record={renewTarget.record}
+          onClose={() => setRenewTarget(null)}
+          // 再出品・再登録で status/expires_at が変わり期限切れ→出品中へ移るため、一覧を再取得する
+          onSaved={() => fetchMyListings()}
         />
       )}
     </div>

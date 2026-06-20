@@ -55,21 +55,24 @@ class PromoTweetController extends Controller
         // 期間累計の上限は翌日0:00なので排他（<）、単日の上限は「現在」なので包含（<=）
         $endOp = $cumulative ? '<' : '<=';
 
+        // 「新着扱い」(bumped_at)＝値下げ/即決→交渉可で再出品された取引も新規と同様に宣伝対象に含める。
+        // bumped_at 未設定の通常出品は created_at と同じ挙動。$endOp は '<' / '<=' の固定値（ユーザー入力ではない）。
+        $freshness = 'COALESCE(bumped_at, created_at)';
         // 同一アイテム・同一価格の出品（一括出品由来など）は「×N」に集約する
         $listings = $this->aggregate(
             Listing::with('item:id,name')
-                ->where('created_at', '>=', $start)
-                ->where('created_at', $endOp, $end)
+                ->whereRaw("$freshness >= ?", [$start])
+                ->whereRaw("$freshness $endOp ?", [$end])
                 ->where('status', '!=', 'cancelled') // 取り下げ済みは宣伝しない
-                ->orderBy('created_at')
+                ->orderByRaw($freshness)
                 ->get()
         );
         $buyRequests = $this->aggregate(
             BuyRequest::with('item:id,name')
-                ->where('created_at', '>=', $start)
-                ->where('created_at', $endOp, $end)
+                ->whereRaw("$freshness >= ?", [$start])
+                ->whereRaw("$freshness $endOp ?", [$end])
                 ->where('status', '!=', 'cancelled')
-                ->orderBy('created_at')
+                ->orderByRaw($freshness)
                 ->get()
         );
 

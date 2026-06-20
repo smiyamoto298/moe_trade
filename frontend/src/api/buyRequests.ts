@@ -33,7 +33,9 @@ export const buyRequestsApi = {
 
   cancel: (id: number) => client.delete(`/buy-requests/${id}`),
 
-  renew: (id: number) => client.post(`/buy-requests/${id}/renew`),
+  // payload を渡すと再登録時に価格・取引方法を変更できる（省略時は現状維持で期限延長のみ）。
+  renew: (id: number, payload?: { price?: number; trade_type?: string }) =>
+    client.post(`/buy-requests/${id}/renew`, payload),
 
   // 売り手（相手側）が買取登録者へ取引希望を送る（なければ作成）
   createChat: (buyRequestId: number, server: string): Promise<{ data: TradeChat }> =>

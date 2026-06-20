@@ -28,15 +28,31 @@ class BuyRequest extends Model
             });
     }
 
+    /**
+     * 期限切れの買取に絞り込む。Listing::scopeExpired と対称。
+     */
+    public function scopeExpired(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->where('status', 'expired')
+              ->orWhere(function (Builder $q2) {
+                  $q2->where('status', 'active')
+                     ->whereNotNull('expires_at')
+                     ->where('expires_at', '<', now());
+              });
+        });
+    }
+
     protected $fillable = [
         'user_id', 'item_id', 'price', 'currency', 'quantity',
-        'trade_type', 'comment', 'status', 'expires_at',
+        'trade_type', 'comment', 'status', 'expires_at', 'bumped_at',
     ];
 
     protected function casts(): array
     {
         return [
             'expires_at' => 'datetime',
+            'bumped_at' => 'datetime',
             'price' => 'integer',
             'quantity' => 'integer',
         ];

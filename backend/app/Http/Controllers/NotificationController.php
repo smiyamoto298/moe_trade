@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\BoardPost;
 use App\Models\BonusValueLabel;
+use App\Models\BuyRequest;
 use App\Models\DismissedExcludedSuggestion;
 use App\Models\ExcludedItem;
 use App\Models\Item;
+use App\Models\Listing;
 use App\Models\ItemCategory;
 use App\Models\ReportedExcludedName;
 use App\Models\TradeChat;
@@ -197,8 +199,14 @@ class NotificationController extends Controller
             $excludedSuggestionCount = $dbNames->merge($deviceNames)->unique()->count();
         }
 
+        // ---- 期限切れの自分の出品・買取（再出品/再登録・取り下げを促す通知） ----
+        // 「マイ取引」に通知バッジを出すための件数。バッチ未確定の期限超過も含める。
+        $expiredCount = Listing::where('user_id', $user->id)->expired()->count()
+            + BuyRequest::where('user_id', $user->id)->expired()->count();
+
         return response()->json([
             'unread_chats' => $unreadChats,
+            'expired_count' => $expiredCount,
             'board' => $latestPost ? [
                 'latest_post_at' => $latestPost->created_at->toISOString(),
                 'thread_id'      => $latestPost->thread_id,

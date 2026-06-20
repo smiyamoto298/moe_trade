@@ -64,6 +64,8 @@ interface NotificationContextValue {
   requestNotifPermission: () => Promise<void>
   // 全未読数
   totalUnread: number
+  // 期限切れの自分の出品・買取の件数（再出品/再登録・取り下げを促す通知用）
+  expiredCount: number
   // 未確認アイテム数（editor / admin のみ。それ以外は 0）
   unverifiedEquipmentCount: number
   unverifiedTechniqueCount: number
@@ -107,6 +109,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [unverifiedItems, setUnverifiedItems] = useState<UnverifiedItems | null>(null)
   const [unorganizedLabelCount, setUnorganizedLabelCount] = useState(0)
   const [excludedSuggestionCount, setExcludedSuggestionCount] = useState(0)
+  const [expiredCount, setExpiredCount] = useState(0)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   // localStorage 更新を画面に反映させるためのバージョンカウンタ
   const [, setSeenVersion] = useState(0)
@@ -137,7 +140,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const check = async () => {
       try {
-        const res = await client.get<{ unread_chats: UnreadChat[]; board: BoardSummary | null; board_threads?: BoardThreadUnread[]; unverified_items?: UnverifiedItems | null; unorganized_label_count?: number; excluded_suggestion_count?: number }>(
+        const res = await client.get<{ unread_chats: UnreadChat[]; board: BoardSummary | null; board_threads?: BoardThreadUnread[]; unverified_items?: UnverifiedItems | null; unorganized_label_count?: number; excluded_suggestion_count?: number; expired_count?: number }>(
           '/notifications/summary'
         )
         const seen = loadChatSeen()
@@ -150,6 +153,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setUnverifiedItems(res.data.unverified_items ?? null)
         setUnorganizedLabelCount(res.data.unorganized_label_count ?? 0)
         setExcludedSuggestionCount(res.data.excluded_suggestion_count ?? 0)
+        setExpiredCount(res.data.expired_count ?? 0)
         summaryRef.current = res.data.unread_chats
 
         // ブラウザ通知（初回ポーリングは通知せずベースラインのみ記録）
@@ -258,6 +262,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       notifPermission,
       requestNotifPermission,
       totalUnread: unreadChatIds.size,
+      expiredCount,
       unverifiedEquipmentCount: unverifiedItems?.equipment ?? 0,
       unverifiedTechniqueCount: unverifiedItems?.technique ?? 0,
       unverifiedAssetCount: unverifiedItems?.asset ?? 0,

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Item;
 use App\Models\ItemCategory;
+use App\Models\Listing;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -456,6 +457,95 @@ class ListingApiTest extends TestCase
         $fresh = $listing->fresh();
         $this->assertSame('active', $fresh->status);
         $this->assertTrue($fresh->expires_at->gt(now()->addDays(6)));
+    }
+
+    public function test_renewで価格と取引方法を変更して再出品できる(): void
+    {
+        $seller  = $this->makeUser();
+        $listing = $this->makeListing($seller, null, [
+            'status'     => 'expired',
+            'expires_at' => now()->subDay(),
+            'price'      => 1000,
+            'trade_type' => 'fixed',
+        ]);
+
+        $this->actingAs($seller, 'sanctum')
+            ->postJson("/api/listings/{$listing->id}/renew", [
+                'price'      => 2500,
+                'trade_type' => 'negotiable',
+            ])
+            ->assertOk();
+
+        $fresh = $listing->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertSame(2500, $fresh->price);
+        $this->assertSame('negotiable', $fresh->trade_type);
+        $this->assertTrue($fresh->expires_at->gt(now()->addDays(6)));
+    }
+
+    public function test_renewの価格は1以上の整数のみ許可(): void
+    {
+        $seller  = $this->makeUser();
+        $listing = $this->makeListing($seller, null, [
+            'status'     => 'expired',
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($seller, 'sanctum')
+            ->postJson("/api/listings/{$listing->id}/renew", ['price' => 0])
+            ->assertStatus(422);
+    }
+
+    public function test_値下げ再出品は新着扱いになり新着順で先頭へ来る(): void
+    {
+        $seller = $this->makeUser();
+        // 期限切れの古い出品 A と、後から登録された有効な出品 B
+        $a = $this->makeListing($seller, null, ['price' => 1000, 'status' => 'expired', 'expires_at' => now()->subDay()]);
+        Listing::where('id', $a->id)->update(['created_at' => now()->subHours(2)]);
+        $b = $this->makeListing($seller, null, ['price' => 2000]);
+
+        // 値下げして再出品 → A が「新着扱い」で先頭へ
+        $this->actingAs($seller, 'sanctum')
+            ->postJson("/api/listings/{$a->id}/renew", ['price' => 500])
+            ->assertOk();
+
+        $this->assertNotNull($a->fresh()->bumped_at);
+        $ids = collect($this->getJson('/api/listings')->json('data'))->pluck('id')->all();
+        $this->assertSame([$a->id, $b->id], array_slice($ids, 0, 2));
+    }
+
+    public function test_即決から交渉可への再出品は新着扱いになる(): void
+    {
+        $seller = $this->makeUser();
+        $a = $this->makeListing($seller, null, ['price' => 1000, 'trade_type' => 'fixed', 'status' => 'expired', 'expires_at' => now()->subDay()]);
+        Listing::where('id', $a->id)->update(['created_at' => now()->subHours(2)]);
+        $b = $this->makeListing($seller, null, ['price' => 2000]);
+
+        // 価格据え置きでも 即決→交渉可 なら新着扱い
+        $this->actingAs($seller, 'sanctum')
+            ->postJson("/api/listings/{$a->id}/renew", ['price' => 1000, 'trade_type' => 'negotiable'])
+            ->assertOk();
+
+        $this->assertNotNull($a->fresh()->bumped_at);
+        $ids = collect($this->getJson('/api/listings')->json('data'))->pluck('id')->all();
+        $this->assertSame([$a->id, $b->id], array_slice($ids, 0, 2));
+    }
+
+    public function test_据え置き再出品は新着扱いにならない(): void
+    {
+        $seller = $this->makeUser();
+        $a = $this->makeListing($seller, null, ['price' => 1000, 'status' => 'expired', 'expires_at' => now()->subDay()]);
+        Listing::where('id', $a->id)->update(['created_at' => now()->subHours(2)]);
+        $b = $this->makeListing($seller, null, ['price' => 2000]);
+
+        // 同額で再出品（値下げでない）→ bumped されず、新着順は created_at 基準のまま
+        $this->actingAs($seller, 'sanctum')
+            ->postJson("/api/listings/{$a->id}/renew", ['price' => 1000])
+            ->assertOk();
+
+        $this->assertNull($a->fresh()->bumped_at);
+        $ids = collect($this->getJson('/api/listings')->json('data'))->pluck('id')->all();
+        $this->assertSame([$b->id, $a->id], array_slice($ids, 0, 2));
     }
 
     public function test_期限切れバッチで出品がexpiredになる(): void

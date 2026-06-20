@@ -24,15 +24,34 @@ class Listing extends Model
             });
     }
 
+    /**
+     * 期限切れの出品に絞り込む。
+     *
+     * status='expired'（バッチ確定済み）、または status='active' のまま expires_at が過去
+     * （バッチ未実行で期限超過）を対象にする。フロント MyPage の isExpired と対称。
+     */
+    public function scopeExpired(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->where('status', 'expired')
+              ->orWhere(function (Builder $q2) {
+                  $q2->where('status', 'active')
+                     ->whereNotNull('expires_at')
+                     ->where('expires_at', '<', now());
+              });
+        });
+    }
+
     protected $fillable = [
         'user_id', 'item_id', 'price', 'currency', 'quantity',
-        'trade_type', 'comment', 'is_worn', 'is_dyed', 'status', 'expires_at',
+        'trade_type', 'comment', 'is_worn', 'is_dyed', 'status', 'expires_at', 'bumped_at',
     ];
 
     protected function casts(): array
     {
         return [
             'expires_at' => 'datetime',
+            'bumped_at' => 'datetime',
             'price' => 'integer',
             'quantity' => 'integer',
             'is_worn' => 'boolean',

@@ -149,6 +149,31 @@ class PromoTweetApiTest extends TestCase
         $this->assertStringNotContainsString('5時間前の剣', $all);
     }
 
+    public function test_値下げ再出品で新着扱いになった出品は作成日が古くても宣伝対象に入る(): void
+    {
+        $admin  = $this->makeUserWithRole('admin');
+        $seller = $this->makeUser();
+
+        // 5時間前に作成された期限切れ出品（since=2時間前 では本来対象外）
+        $item = $this->makeItem(['name' => '値下げの剣']);
+        $old  = $this->makeListing($seller, $item, ['price' => 3000, 'status' => 'expired', 'expires_at' => now()->subDay()]);
+        Listing::where('id', $old->id)->update(['created_at' => now()->subHours(5)]);
+
+        // 値下げ再出品 → bumped_at が現在時刻になり「新着扱い」
+        $this->actingAs($seller, 'sanctum')
+            ->postJson("/api/listings/{$old->id}/renew", ['price' => 1500])
+            ->assertOk();
+
+        // since=2時間前。作成日(5時間前)は範囲外だが bumped_at(現在)で対象に含まれる
+        $since = \Carbon\CarbonImmutable::now('Asia/Tokyo')->subHours(2)->format('Y-m-d\TH:i');
+        $res   = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/promo-tweets?since=' . $since);
+
+        $res->assertOk()->assertJsonPath('listing_count', 1);
+        $all = implode("\n", array_column($res->json('tweets'), 'text'));
+        $this->assertStringContainsString('売)値下げの剣 1,500AC', $all);
+    }
+
     public function test_不正なsince形式は422(): void
     {
         $this->actingAs($this->makeUserWithRole('admin'), 'sanctum')

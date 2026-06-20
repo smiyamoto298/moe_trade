@@ -6,7 +6,7 @@ import VerifyEmailBanner from './VerifyEmailBanner'
 
 export default function Header() {
   const { user, logout } = useAuth()
-  const { totalUnread, hasNewBoard, unverifiedItemCount, unorganizedLabelCount, excludedSuggestionCount, announcements } = useNotification()
+  const { totalUnread, expiredCount, hasNewBoard, unverifiedItemCount, unorganizedLabelCount, excludedSuggestionCount, announcements } = useNotification()
   // 管理メニュー配下の通知合計（ドロップダウンを閉じていても気づけるよう「管理」にドット表示）
   const adminNotifCount = unorganizedLabelCount + excludedSuggestionCount
   const navigate = useNavigate()
@@ -126,6 +126,14 @@ export default function Header() {
                 {totalUnread > 0 && (
                   <span className="absolute -top-1.5 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none">
                     {totalUnread}
+                  </span>
+                )}
+                {expiredCount > 0 && (
+                  <span
+                    title={`期限切れの取引 ${expiredCount}件`}
+                    className="absolute -top-1.5 -left-3 bg-amber-500 text-white text-xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 leading-none"
+                  >
+                    {expiredCount}
                   </span>
                 )}
               </Link>
@@ -307,11 +315,21 @@ export default function Header() {
               <>
                 <Link to="/mypage" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
                   <span>マイ取引</span>
-                  {totalUnread > 0 && (
-                    <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
-                      {totalUnread}
-                    </span>
-                  )}
+                  <span className="flex items-center gap-1.5">
+                    {expiredCount > 0 && (
+                      <span
+                        title={`期限切れの取引 ${expiredCount}件`}
+                        className="bg-amber-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
+                      >
+                        {expiredCount}
+                      </span>
+                    )}
+                    {totalUnread > 0 && (
+                      <span className="bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                        {totalUnread}
+                      </span>
+                    )}
+                  </span>
                 </Link>
                 <Link to="/mypage/items" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
                   マイペ整理

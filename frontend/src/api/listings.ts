@@ -54,6 +54,7 @@ export const listingsApi = {
   cancel: (id: number) =>
     client.delete(`/listings/${id}`),
 
-  renew: (id: number) =>
-    client.post(`/listings/${id}/renew`),
+  // payload を渡すと再出品時に価格・取引方法を変更できる（省略時は現状維持で期限延長のみ）。
+  renew: (id: number, payload?: { price?: number; trade_type?: string }) =>
+    client.post(`/listings/${id}/renew`, payload),
 }

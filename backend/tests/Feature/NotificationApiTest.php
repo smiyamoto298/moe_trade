@@ -168,6 +168,38 @@ class NotificationApiTest extends TestCase
         );
     }
 
+    public function test_自分の期限切れ出品買取がexpired_countに数えられる(): void
+    {
+        $owner = $this->makeUser();
+        $other = $this->makeUser();
+
+        // status=expired（バッチ確定済み）
+        $this->makeListing($owner, null, ['status' => 'expired', 'expires_at' => now()->subDay()]);
+        // active のまま期限超過（バッチ未確定）も数える
+        $this->makeListing($owner, null, ['status' => 'active', 'expires_at' => now()->subHour()]);
+        // 有効な出品は数えない
+        $this->makeListing($owner, null, ['status' => 'active', 'expires_at' => now()->addDay()]);
+        // 期限切れの買取
+        \App\Models\BuyRequest::create([
+            'user_id' => $owner->id, 'item_id' => $this->makeItem()->id,
+            'price' => 500, 'currency' => 'AC', 'quantity' => 1, 'trade_type' => 'fixed',
+            'status' => 'expired', 'expires_at' => now()->subDay(),
+        ]);
+        // 他人の期限切れは自分の件数に含めない
+        $this->makeListing($other, null, ['status' => 'expired', 'expires_at' => now()->subDay()]);
+
+        // owner: 出品2 + 買取1 = 3
+        $this->assertSame(
+            3,
+            $this->actingAs($owner, 'sanctum')->getJson('/api/notifications/summary')->json('expired_count')
+        );
+        // other: 自分の期限切れ出品1件のみ
+        $this->assertSame(
+            1,
+            $this->actingAs($other, 'sanctum')->getJson('/api/notifications/summary')->json('expired_count')
+        );
+    }
+
     public function test_未ログインではアクセスできない(): void
     {
         $this->getJson('/api/notifications/summary')->assertStatus(401);

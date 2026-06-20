@@ -82,7 +82,8 @@ class BuyRequestController extends Controller
             match ($sort) {
                 'price_asc'  => $query->orderBy('price'),
                 'price_desc' => $query->orderByDesc('price'),
-                default      => $query->latest(),
+                // 新着順は「新着扱い」(bumped_at)優先・無ければ作成日時。値下げ/交渉可化した再登録が先頭に来る。
+                default      => $query->orderByRaw('COALESCE(buy_requests.bumped_at, buy_requests.created_at) DESC'),
             };
         }
 
@@ -247,10 +248,23 @@ class BuyRequestController extends Controller
     public function renew(Request $request, int $id)
     {
         $buyRequest = BuyRequest::where('user_id', $request->user()->id)->findOrFail($id);
-        $buyRequest->update([
+
+        // 再登録（期限切れ）時は価格・取引方法を任意で変更できる。
+        // 単なる期限更新（active のまま延長）ではこれらを省略すると現状維持。
+        $data = $request->validate([
+            'price'      => 'sometimes|integer|min:1',
+            'trade_type' => 'sometimes|in:fixed,negotiable',
+        ]);
+
+        $attrs = array_merge($data, [
             'status'     => 'active',
             'expires_at' => now()->addMonth(),
         ]);
+        // 値下げ、または即決→交渉可への変更は「新着扱い」にし、新着順・宣伝の対象を更新する。
+        if (\App\Support\TradeFreshness::isAttractiveChange($buyRequest, $data)) {
+            $attrs['bumped_at'] = now();
+        }
+        $buyRequest->update($attrs);
         return response()->json($buyRequest);
     }
 
