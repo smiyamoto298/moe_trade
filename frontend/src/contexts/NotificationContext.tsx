@@ -78,6 +78,8 @@ interface NotificationContextValue {
   excludedSuggestionCount: number
   // お知らせ（管理者がDBで設定。通知と同じ5秒間隔で更新）
   announcements: Announcement[]
+  // 指定ユーザー向けお知らせを既読にする（サーバー側で対象から外れ、0人で削除）
+  markAnnouncementRead: (id: number) => void
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null)
@@ -207,6 +209,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setSeenVersion((v) => v + 1)
   }
 
+  // 指定ユーザー向けお知らせを既読にする。楽観的に画面から消し、サーバーへ反映する。
+  const markAnnouncementRead = (id: number) => {
+    setAnnouncements((prev) => prev.filter((a) => a.id !== id))
+    announcementsApi.markRead(id).catch(() => {})
+  }
+
   const markBoardSeen = () => {
     localStorage.setItem(BOARD_SEEN_KEY, board?.latest_post_at ?? new Date().toISOString())
     setSeenVersion((v) => v + 1)
@@ -271,6 +279,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       unorganizedLabelCount,
       excludedSuggestionCount,
       announcements,
+      markAnnouncementRead,
     }}>
       {children}
     </NotificationContext.Provider>

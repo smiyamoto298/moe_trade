@@ -19,6 +19,8 @@ export interface AnnouncementPayload {
 export const announcementsApi = {
   // 公開: 表示中のお知らせ
   list: (): Promise<{ data: Announcement[] }> => client.get<Announcement[]>('/announcements'),
+  // 指定ユーザー向けお知らせを本人が既読にする（対象から外れ、0人で削除）
+  markRead: (id: number) => client.post(`/announcements/${id}/read`),
   // 管理: 全件
   adminList: (): Promise<{ data: Announcement[] }> => client.get<Announcement[]>('/admin/announcements'),
   create: (data: AnnouncementPayload) => client.post<Announcement>('/admin/announcements', data),

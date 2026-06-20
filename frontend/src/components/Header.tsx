@@ -6,7 +6,7 @@ import VerifyEmailBanner from './VerifyEmailBanner'
 
 export default function Header() {
   const { user, logout } = useAuth()
-  const { totalUnread, expiredCount, hasNewBoard, unverifiedItemCount, unorganizedLabelCount, excludedSuggestionCount, announcements } = useNotification()
+  const { totalUnread, expiredCount, hasNewBoard, unverifiedItemCount, unorganizedLabelCount, excludedSuggestionCount, announcements, markAnnouncementRead } = useNotification()
   // 管理メニュー配下の通知合計（ドロップダウンを閉じていても気づけるよう「管理」にドット表示）
   const adminNotifCount = unorganizedLabelCount + excludedSuggestionCount
   const navigate = useNavigate()
@@ -470,14 +470,25 @@ export default function Header() {
                     </>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => dismissAnnouncement(a)}
-                  title="このお知らせを表示しない"
-                  className="shrink-0 underline opacity-70 hover:opacity-100 hover:text-white transition-colors whitespace-nowrap"
-                >
-                  表示しない
-                </button>
+                {a.target_type === 'specific' ? (
+                  <button
+                    type="button"
+                    onClick={() => markAnnouncementRead(a.id)}
+                    title="このお知らせを既読にする（既読にすると削除されます）"
+                    className="shrink-0 underline opacity-70 hover:opacity-100 hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    既読にする
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => dismissAnnouncement(a)}
+                    title="このお知らせを表示しない"
+                    className="shrink-0 underline opacity-70 hover:opacity-100 hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    表示しない
+                  </button>
+                )}
               </div>
             </div>
           </div>

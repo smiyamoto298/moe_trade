@@ -67,6 +67,33 @@ class AnnouncementController extends Controller
         return response()->json(null, 204);
     }
 
+    /**
+     * 指定ユーザー向け（target_type=specific）のお知らせを、対象ユーザー本人が既読にする。
+     * 本人を target_user_ids から外し、残りが 0 人になったらお知らせ自体を削除する。
+     * 全員向け/スタッフ向けは既読の対象外（端末ごとの「表示しない」で対応）。
+     */
+    public function markRead(Request $request, int $id)
+    {
+        $user         = $request->user();
+        $announcement = Announcement::findOrFail($id);
+
+        // 指定ユーザー向け以外、または対象でないユーザーは操作できない。
+        $ids = $announcement->target_user_ids ?? [];
+        if ($announcement->target_type !== 'specific' || !in_array($user->id, $ids, true)) {
+            abort(403);
+        }
+
+        $remaining = array_values(array_filter($ids, fn ($uid) => (int) $uid !== $user->id));
+        if (count($remaining) === 0) {
+            $announcement->delete();
+        } else {
+            $announcement->target_user_ids = $remaining;
+            $announcement->save();
+        }
+
+        return response()->json(null, 204);
+    }
+
     /** パネルの並び替え: 受け取った id の順序で sort_order を 0,1,2... に振り直す。 */
     public function reorder(Request $request)
     {

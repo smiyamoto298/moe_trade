@@ -267,6 +267,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('buy-requests/{id}/chats',    [BuyRequestController::class, 'chats']);
     Route::post('buy-requests/{id}/chats',   [BuyRequestController::class, 'createChat']);
 
+    // 指定ユーザー向けお知らせの既読化（本人が target_user_ids から外れ、0人で削除）
+    Route::post('announcements/{id}/read', [AnnouncementController::class, 'markRead']);
+
     // 通知サマリー（5秒ポーリング用）
     Route::get('notifications/summary', [\App\Http\Controllers\NotificationController::class, 'summary']);
 
