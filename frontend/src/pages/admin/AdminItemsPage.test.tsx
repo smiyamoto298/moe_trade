@@ -232,6 +232,45 @@ describe('AdminItemsPage 装備セットを展開表示', () => {
   })
 })
 
+describe('AdminItemsPage 並び替え', () => {
+  // 表示順を検証するため、確認済みの通常アイテムを名前・作成日時・更新日時がそれぞれ別順になるよう用意する
+  const itemA = makeItem({ id: 1, name: 'あ剣', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-03-01T00:00:00Z' })
+  const itemB = makeItem({ id: 2, name: 'い盾', created_at: '2026-02-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' })
+  const itemC = makeItem({ id: 3, name: 'う槍', created_at: '2026-03-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z' })
+
+  // 表示中のアイテム名を、行（tr）の出現順で取り出す
+  const namesInOrder = () =>
+    screen.getAllByRole('row')
+      .map((tr) => within(tr).queryByText(/[あいう][剣盾槍]/)?.textContent)
+      .filter((n): n is string => !!n)
+
+  beforeEach(() => {
+    // APIは名前順（あいうえお順）で返す前提
+    mockedList.mockResolvedValue({ data: [itemA, itemB, itemC] })
+  })
+
+  it('既定はあいうえお順（名前順）で表示する', async () => {
+    renderPage()
+    await waitForLoaded()
+    expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('name')
+    expect(namesInOrder()).toEqual(['あ剣', 'い盾', 'う槍'])
+  })
+
+  it('新着順は作成日時の新しい順で表示する', async () => {
+    renderPage()
+    await waitForLoaded()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '並び替え' }), '新着順')
+    expect(namesInOrder()).toEqual(['う槍', 'い盾', 'あ剣'])
+  })
+
+  it('更新順は更新日時の新しい順で表示する', async () => {
+    renderPage()
+    await waitForLoaded()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '並び替え' }), '更新順')
+    expect(namesInOrder()).toEqual(['あ剣', 'う槍', 'い盾'])
+  })
+})
+
 describe('AdminItemsPage 取引情報の表示', () => {
   it('デフォルト（チェックあり）で各行に出品数・買取数を表示し、外すと非表示になる', async () => {
     const tradedItem = makeItem({ id: 1, name: '炎の大剣', active_listing_count: 3, active_buy_request_count: 2 })

@@ -13,6 +13,8 @@ import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/c
 
 type Filter = 'all' | 'unverified' | 'verified'
 type Mode = 'equipment' | 'skill' | 'asset' | 'other'
+// 並び替え: あいうえお順（名前・既定）/ 新着順（作成日時の新しい順）/ 更新順（更新日時の新しい順）
+type Sort = 'name' | 'newest' | 'updated'
 
 // 行操作のアイコンボタン（相場登録・編集・コピー・削除）。title と aria-label にラベルを設定する。
 function ActionIconButton({ label, onClick, disabled, className, children }: {
@@ -81,6 +83,8 @@ export default function AdminItemsPage() {
   const [mode, setMode] = useState<Mode>(initialMode)
   const [filter, setFilter] = useState<Filter>(initialFilter)
   const [search, setSearch] = useState('')
+  // 並び替え（クライアント側で適用。既定はあいうえお順＝名前順でAPIの返却順と一致）
+  const [sort, setSort] = useState<Sort>('name')
   // ハッシュタグでの絞り込み（チップのクリックで設定。クライアント側で適用）
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   // 装備セットを展開表示（装備品タブのみ）。
@@ -345,6 +349,22 @@ export default function AdminItemsPage() {
     return true
   })
 
+  // 並び替え（あいうえお順＝名前順 / 新着順＝作成日時の新しい順 / 更新順＝更新日時の新しい順）。
+  // 日時が欠落している場合は id の降順をフォールバックにする（新しいアイテムほど id が大きい）。
+  const byDateDesc = (key: 'created_at' | 'updated_at') => (a: Item, b: Item) => {
+    const av = a[key] ? Date.parse(a[key]!) : NaN
+    const bv = b[key] ? Date.parse(b[key]!) : NaN
+    if (!Number.isNaN(av) && !Number.isNaN(bv) && av !== bv) return bv - av
+    return b.id - a.id
+  }
+  const sorted = [...filtered].sort(
+    sort === 'newest'
+      ? byDateDesc('created_at')
+      : sort === 'updated'
+      ? byDateDesc('updated_at')
+      : (a, b) => a.name.localeCompare(b.name, 'ja'),
+  )
+
   const unverifiedCount = modeItems.filter((i) => i.verified_status === 'unverified').length
 
   return (
@@ -421,6 +441,17 @@ export default function AdminItemsPage() {
               )}
             </button>
           </div>
+          {/* 並び替え（あいうえお順・新着順・更新順。クライアント側で適用） */}
+          <select
+            aria-label="並び替え"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            className="bg-surface border border-surface-border rounded px-3 py-1.5 text-xs sm:text-sm text-white focus:outline-none focus:border-primary-500"
+          >
+            <option value="name">あいうえお順</option>
+            <option value="newest">新着順</option>
+            <option value="updated">更新順</option>
+          </select>
         </div>
         {isLoggedIn && (
           <Link
@@ -527,10 +558,10 @@ export default function AdminItemsPage() {
           <tbody className="divide-y divide-surface-border">
             {loading ? (
               <tr><td colSpan={showTrade ? 8 : 7} className="text-center py-10 text-gray-500">読み込み中...</td></tr>
-            ) : filtered.length === 0 ? (
+            ) : sorted.length === 0 ? (
               <tr><td colSpan={showTrade ? 8 : 7} className="text-center py-10 text-gray-500">アイテムが見つかりません</td></tr>
             ) : (
-              filtered.map((item) => (
+              sorted.map((item) => (
                 <tr
                   key={item.id}
                   className={`hover:bg-surface-border/30 transition-colors ${item.verified_status === 'unverified' ? 'bg-yellow-900/5' : ''}`}

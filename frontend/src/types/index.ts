@@ -103,6 +103,9 @@ export interface Item {
   // ---- 取引情報（一覧取得時に付与。募集中=active の件数） ----
   active_listing_count?: number      // 出品数
   active_buy_request_count?: number  // 買取数
+  // ---- タイムスタンプ（一覧の並び替え用。新着順=created_at / 更新順=updated_at） ----
+  created_at?: string
+  updated_at?: string
 }
 
 // ---- アセット ----
