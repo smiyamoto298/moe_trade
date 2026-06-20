@@ -36,12 +36,15 @@ export function BonusEffectList({ item }: { item: Item }) {
               <span className="ml-1 text-[10px] bg-amber-900/40 border border-amber-600/40 rounded px-1 py-px text-amber-200">専用技</span>
             )}
           </p>
-          {e.values?.map((v, i) => (
-            <p key={i} className="text-gray-400 whitespace-nowrap">
-              {v.label && <span>{v.label}：</span>}
-              <span className="text-gray-200">{formatBonusValueDisplay(v.value, v.value_unit)}</span>
-            </p>
-          ))}
+          {e.values?.map((v, i) => {
+            const disp = formatBonusValueDisplay(v.value, v.value_unit)
+            return (
+              <p key={i} className="text-gray-400 whitespace-nowrap">
+                {v.label && <span>{v.label}{disp && '：'}</span>}
+                {disp && <span className="text-gray-200">{disp}</span>}
+              </p>
+            )
+          })}
         </div>
       ))}
     </>

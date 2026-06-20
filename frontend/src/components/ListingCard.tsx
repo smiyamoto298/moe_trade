@@ -61,7 +61,7 @@ export default function ListingCard({ listing }: Props) {
                   {e.values?.length > 0 && (
                     <span className="text-gray-400 ml-1">
                       {e.values.map((v, i) => (
-                        <span key={i}>{i > 0 && '/'}{formatBonusValueDisplay(v.value, v.value_unit)}</span>
+                        <span key={i}>{i > 0 && '/'}{v.value_unit === 'none' ? v.label : formatBonusValueDisplay(v.value, v.value_unit)}</span>
                       ))}
                     </span>
                   )}

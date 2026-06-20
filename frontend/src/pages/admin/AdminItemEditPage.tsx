@@ -9,7 +9,7 @@ import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm,
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../../types'
 import { applyCopyRename, type CopyRename } from '../../utils/copyRename'
 import { parseHashtags, formatHashtags } from '../../utils/hashtags'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave } from '../../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 import { useBinderLabels } from '../../hooks/useBinderLabels'
 import { OTHER_PET, OTHER_RECIPE } from '../../utils/itemType'
@@ -430,7 +430,7 @@ export default function AdminItemEditPage() {
           .map((e) => ({
             effect_name: e.effect_name,
             values: e.values
-              .filter((v) => v.value_unit === 'checking' || v.value !== '')
+              .filter((v) => isLabelOnlyUnit(v.value_unit) || v.value !== '')
               .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
             is_exclusive: e.is_exclusive,
@@ -773,8 +773,8 @@ export default function AdminItemEditPage() {
                       placeholder="項目名（例: 物理ダメージ）"
                       className="bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
                     />
-                    {v.value_unit === 'checking' ? (
-                      <span className="text-xs text-gray-500 px-2 py-1.5 truncate" title="項目名のみ設定（値は確認中）">項目名のみ</span>
+                    {isLabelOnlyUnit(v.value_unit) ? (
+                      <span className="text-xs text-gray-500 px-2 py-1.5 truncate" title={v.value_unit === 'checking' ? '項目名のみ設定（値は確認中）' : '項目名のみ設定（値なし）'}>項目名のみ</span>
                     ) : (
                       <input
                         type={v.value_unit === 'text' ? 'text' : 'number'}
@@ -795,6 +795,7 @@ export default function AdminItemEditPage() {
                       <option value="per_min">毎分</option>
                       <option value="text">テキスト</option>
                       <option value="checking">確認中</option>
+                      <option value="none">なし</option>
                     </select>
                     {e.values.length > 1 && (
                       <button type="button" onClick={() => removeBonusValue(idx, vi)} className="text-red-400 hover:text-red-300 text-sm px-1">×</button>

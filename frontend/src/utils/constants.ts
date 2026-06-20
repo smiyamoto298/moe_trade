@@ -74,18 +74,26 @@ export function unitSuffix(unit?: string): string {
 // 付加効果の値1件の表示文字列。
 // value_unit === 'text'   … 数値ではなくテキストをそのまま表示（符号・単位なし）
 // value_unit === 'checking' … 値を持たず「確認中」と表示する（項目名のみ設定）
+// value_unit === 'none'   … 値を持たず空文字を返す（項目名のみ表示。呼び出し側で label だけ描画）
 // それ以外 … 符号付き数値＋単位（formatSignedValue + unitSuffix）
 export function formatBonusValueDisplay(value: number | string, unit?: string): string {
+  if (unit === 'none') return ''
   if (unit === 'checking') return '確認中'
   if (unit === 'text') return String(value)
   return `${formatSignedValue(value, unit)}${unitSuffix(unit)}`
 }
 
+// 値を持たず項目名（label）のみ設定する単位かどうか。
+// フォームでは値入力欄を出さず、表示は項目名のみになる。
+export function isLabelOnlyUnit(unit?: string): boolean {
+  return unit === 'checking' || unit === 'none'
+}
+
 // 付加効果の値（フォーム入力 string）をAPI送信用に整形する。
-// text … テキストのまま、checking … 値を持たない('')、それ以外 … 数値化。
+// text … テキストのまま、checking/none … 値を持たない('')、それ以外 … 数値化。
 export function bonusValueForSave(v: { value: string; value_unit: string }): number | string {
   if (v.value_unit === 'text') return v.value
-  if (v.value_unit === 'checking') return ''
+  if (isLabelOnlyUnit(v.value_unit)) return ''
   return Number(v.value)
 }
 

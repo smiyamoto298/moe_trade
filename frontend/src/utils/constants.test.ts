@@ -13,6 +13,7 @@ import {
   unitSuffix,
   formatBonusValueDisplay,
   bonusValueForSave,
+  isLabelOnlyUnit,
 } from './constants'
 
 // design.md のマスタ定義（追加効果キー・特殊条件・スキル・マスタリ・アセット選択肢）と
@@ -140,6 +141,11 @@ describe('formatBonusValueDisplay', () => {
     expect(formatBonusValueDisplay('', 'checking')).toBe('確認中')
     expect(formatBonusValueDisplay(15, 'checking')).toBe('確認中')
   })
+
+  it('none は値に関わらず空文字（項目名のみ表示のため値は出さない）', () => {
+    expect(formatBonusValueDisplay('', 'none')).toBe('')
+    expect(formatBonusValueDisplay(15, 'none')).toBe('')
+  })
 })
 
 describe('bonusValueForSave', () => {
@@ -154,6 +160,23 @@ describe('bonusValueForSave', () => {
 
   it('checking は値を持たない（空文字）', () => {
     expect(bonusValueForSave({ value: '999', value_unit: 'checking' })).toBe('')
+  })
+
+  it('none は値を持たない（空文字）', () => {
+    expect(bonusValueForSave({ value: '999', value_unit: 'none' })).toBe('')
+  })
+})
+
+describe('isLabelOnlyUnit', () => {
+  it('checking / none は項目名のみ単位', () => {
+    expect(isLabelOnlyUnit('checking')).toBe(true)
+    expect(isLabelOnlyUnit('none')).toBe(true)
+  })
+
+  it('値を持つ単位は false', () => {
+    expect(isLabelOnlyUnit('%')).toBe(false)
+    expect(isLabelOnlyUnit('text')).toBe(false)
+    expect(isLabelOnlyUnit(undefined)).toBe(false)
   })
 })
 

@@ -1,7 +1,7 @@
 import ComboInput from './ComboInput'
 import type { Item, ItemCategory } from '../types'
 import type { EquipmentSetPieceInput } from '../api/items'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, bonusValueForSave } from '../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
 
 // ───────────────────────────────────────────────────────────
 // 装備セットの構成部位エディタ。
@@ -152,7 +152,7 @@ export function formToPieces(form: EquipmentSetForm): EquipmentSetPieceInput[] {
         .map((e) => ({
           effect_name: e.effect_name,
           values: e.values
-            .filter((v) => v.value_unit === 'checking' || v.value !== '')
+            .filter((v) => isLabelOnlyUnit(v.value_unit) || v.value !== '')
             .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
           description: e.description,
           is_exclusive: e.is_exclusive,
@@ -444,8 +444,8 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                           placeholder="項目名"
                           className="bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
                         />
-                        {v.value_unit === 'checking' ? (
-                          <span className="text-xs text-gray-500 px-1 py-1 truncate" title="項目名のみ設定（値は確認中）">項目名のみ</span>
+                        {isLabelOnlyUnit(v.value_unit) ? (
+                          <span className="text-xs text-gray-500 px-1 py-1 truncate" title={v.value_unit === 'checking' ? '項目名のみ設定（値は確認中）' : '項目名のみ設定（値なし）'}>項目名のみ</span>
                         ) : (
                           <input type={v.value_unit === 'text' ? 'text' : 'number'}
                             placeholder={v.value_unit === 'text' ? 'テキスト' : '数値'}
@@ -462,6 +462,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                           <option value="per_min">毎分</option>
                           <option value="text">テキスト</option>
                           <option value="checking">確認中</option>
+                          <option value="none">なし</option>
                         </select>
                         {e.values.length > 1 && (
                           <button type="button" onClick={() => updateBonus(gi, { bonus_effects: g.bonus_effects.map((b, i) => i !== bi ? b : { ...b, values: b.values.filter((_, j) => j !== vi) }) })} className="text-red-400 text-sm">×</button>
