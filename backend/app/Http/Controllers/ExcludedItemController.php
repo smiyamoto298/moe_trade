@@ -18,14 +18,15 @@ class ExcludedItemController extends Controller
     /**
      * 公開: 共通除外アイテムと種別。貼り付け除外に使用（ローカル保存ユーザーも取得する）。
      *
-     * 戻り値: { types: [{ id, name, is_default, sort_order }], items: [{ name, type_id }] }。
+     * 戻り値: { types: [{ id, name, is_default, default_enabled, sort_order }], items: [{ name, type_id }] }。
      * クライアントは「適用する種別」（端末ローカル設定）で items を絞り込んで除外セットを作る。
+     * 未設定ユーザーは default_enabled=true の種別だけが既定で適用される。
      * type_id が null の行は既定種別 id に正規化する。
      */
     public function index()
     {
         $types = ExclusionType::orderBy('sort_order')->orderBy('name')
-            ->get(['id', 'name', 'is_default', 'sort_order']);
+            ->get(['id', 'name', 'is_default', 'default_enabled', 'sort_order']);
         $defaultId = $types->firstWhere('is_default', true)?->id;
 
         $items = ExcludedItem::orderBy('name')

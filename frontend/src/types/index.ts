@@ -404,6 +404,8 @@ export interface ExclusionType {
   id: number
   name: string
   is_default: boolean
+  // まだ設定をいじっていないユーザーに既定で適用するか（管理者が設定するデフォルトON/OFF）。
+  default_enabled: boolean
   sort_order: number
 }
 

@@ -144,7 +144,8 @@ export default function BulkListingPage() {
       // 「適用する種別」（端末ローカル設定・所有アイテム管理と共通）で共通除外を絞る。
       // その他はアイテム単位（disabledCommonNames でOFF）で絞る。
       const defaultTypeId = common.types.find((t) => t.is_default)?.id ?? null
-      const names = selectedCommonNames(common.items, getAppliedExclusionTypeIds(), defaultTypeId, getDisabledCommonNames())
+      const defaultEnabledTypeIds = common.types.filter((t) => !t.is_default && t.default_enabled).map((t) => t.id)
+      const names = selectedCommonNames(common.items, getAppliedExclusionTypeIds(), defaultTypeId, getDisabledCommonNames(), defaultEnabledTypeIds)
       setExclusionSet(buildExclusionSet(names, inv.exclusions))
     })
   }, [user])

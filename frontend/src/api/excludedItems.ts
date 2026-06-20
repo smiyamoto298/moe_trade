@@ -38,11 +38,12 @@ export const excludedItemsApi = {
   // ---- 種別（カテゴリ）管理（admin） ----
   typeList: (): Promise<{ data: ExclusionType[] }> => client.get<ExclusionType[]>('/admin/exclusion-types'),
 
-  createType: (name: string): Promise<{ data: ExclusionType }> =>
-    client.post<ExclusionType>('/admin/exclusion-types', { name }),
+  createType: (name: string, defaultEnabled = true): Promise<{ data: ExclusionType }> =>
+    client.post<ExclusionType>('/admin/exclusion-types', { name, default_enabled: defaultEnabled }),
 
-  updateType: (id: number, name: string): Promise<{ data: ExclusionType }> =>
-    client.put<ExclusionType>(`/admin/exclusion-types/${id}`, { name }),
+  // 種別の改名・既定ON/OFF（default_enabled）を部分更新
+  updateType: (id: number, patch: { name?: string; default_enabled?: boolean }): Promise<{ data: ExclusionType }> =>
+    client.put<ExclusionType>(`/admin/exclusion-types/${id}`, patch),
 
   removeType: (id: number): Promise<void> =>
     client.delete(`/admin/exclusion-types/${id}`).then(() => undefined),

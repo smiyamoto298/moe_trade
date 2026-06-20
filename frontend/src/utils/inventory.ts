@@ -23,15 +23,20 @@ export function normalizeExcludeName(name: string): string {
  *
  * - 既定種別「その他」（defaultTypeId）のアイテムは **アイテム単位** で適用する。
  *   disabledOtherNames に入っている名前だけ除外する（既定は空＝全適用＝オプトアウト方式）。
- * - それ以外の種別は **種別単位** で適用する。selectedTypeIds が null（未設定）なら全種別を適用する。
+ * - それ以外の種別は **種別単位** で適用する。selectedTypeIds が null（ユーザー未設定）なら、
+ *   管理者が「既定ON」にした種別（defaultEnabledTypeIds）だけを適用する。
+ *   defaultEnabledTypeIds が null（情報なし）の場合は従来どおり全種別を適用する（後方互換）。
  */
 export function selectedCommonNames(
   items: { name: string; type_id: number }[],
   selectedTypeIds: number[] | null,
   defaultTypeId: number | null = null,
-  disabledOtherNames: string[] = []
+  disabledOtherNames: string[] = [],
+  defaultEnabledTypeIds: number[] | null = null
 ): string[] {
-  const typeSet = selectedTypeIds == null ? null : new Set(selectedTypeIds)
+  const typeSet = selectedTypeIds != null
+    ? new Set(selectedTypeIds)
+    : (defaultEnabledTypeIds != null ? new Set(defaultEnabledTypeIds) : null)
   const disabled = new Set(disabledOtherNames)
   return items
     .filter((i) => {

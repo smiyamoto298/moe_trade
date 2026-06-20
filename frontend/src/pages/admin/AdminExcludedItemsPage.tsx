@@ -25,6 +25,8 @@ export default function AdminExcludedItemsPage() {
   const [addingType, setAddingType] = useState(false)
   const [message, setMessage] = useState('')
   const [search, setSearch] = useState('')
+  // 共通除外リストの表示を絞り込む種別タブ（'all' は全種別）
+  const [activeTypeId, setActiveTypeId] = useState<number | 'all'>('all')
   // ユーザー個別除外（DB保存分）の集計候補
   const [suggestions, setSuggestions] = useState<UserExclusionSuggestion[]>([])
   const [promotingName, setPromotingName] = useState<string | null>(null)
@@ -54,6 +56,13 @@ export default function AdminExcludedItemsPage() {
   }
   useEffect(load, [])
 
+  // 選択中のタブの種別が削除されたら「すべて」へ戻す
+  useEffect(() => {
+    if (activeTypeId !== 'all' && types.length > 0 && !types.some((t) => t.id === activeTypeId)) {
+      setActiveTypeId('all')
+    }
+  }, [types, activeTypeId])
+
   // 既定種別（その他）
   const defaultType = types.find((t) => t.is_default) ?? null
 
@@ -77,10 +86,20 @@ export default function AdminExcludedItemsPage() {
     const name = window.prompt('種別名', t.name)?.trim()
     if (!name || name === t.name) return
     try {
-      const res = await excludedItemsApi.updateType(t.id, name)
+      const res = await excludedItemsApi.updateType(t.id, { name })
       setTypes((p) => p.map((x) => (x.id === t.id ? res.data : x)))
     } catch {
       await alert('種別の改名に失敗しました（同名が既にある可能性があります）。', { title: 'エラー' })
+    }
+  }
+
+  // 種別のデフォルトON/OFF（未設定ユーザーに既定で適用するか）を切り替える
+  const toggleDefaultEnabled = async (t: ExclusionType) => {
+    try {
+      const res = await excludedItemsApi.updateType(t.id, { default_enabled: !t.default_enabled })
+      setTypes((p) => p.map((x) => (x.id === t.id ? res.data : x)))
+    } catch {
+      await alert('デフォルトON/OFFの変更に失敗しました。', { title: 'エラー' })
     }
   }
 
@@ -199,11 +218,26 @@ export default function AdminExcludedItemsPage() {
     }
   }
 
-  // 共通除外リストは あいうえお順（日本語ロケール）で表示する
+  // 行の実効種別ID（exclusion_type_id が null の行は既定種別とみなす）
+  const rowTypeId = (r: ExcludedItem) => r.exclusion_type_id ?? defaultType?.id ?? null
+
+  // 種別タブごとの件数（'all' は全件）
+  const typeCounts = useMemo(() => {
+    const m = new Map<number | 'all', number>()
+    m.set('all', rows.length)
+    for (const r of rows) {
+      const id = rowTypeId(r)
+      if (id != null) m.set(id, (m.get(id) ?? 0) + 1)
+    }
+    return m
+  }, [rows, defaultType])
+
+  // 共通除外リストは 種別タブ＋検索で絞り、あいうえお順（日本語ロケール）で表示する
   const filtered = useMemo(() => {
-    const list = search.trim() ? rows.filter((r) => r.name.includes(search.trim())) : rows
+    let list = activeTypeId === 'all' ? rows : rows.filter((r) => rowTypeId(r) === activeTypeId)
+    if (search.trim()) list = list.filter((r) => r.name.includes(search.trim()))
     return [...list].sort((a, b) => compareJa(a.name, b.name))
-  }, [rows, search])
+  }, [rows, search, activeTypeId, defaultType])
 
   // 表示中の行がすべて選択されているか
   const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
@@ -262,7 +296,10 @@ export default function AdminExcludedItemsPage() {
         <h2 className="text-sm font-semibold text-gray-300 mb-1">種別（カテゴリ）の管理</h2>
         <p className="text-xs text-gray-400 mb-3">
           共通除外を種別で分類できます。ユーザーはマイペ整理で適用する種別を選べます。
+          各種別の「既定ON/OFF」は、まだ設定をいじっていないユーザーにその種別を最初から適用するかどうかです
+          （ユーザーは個別に上書きできます）。
           「{defaultType?.name ?? 'その他'}」は既定種別で削除できません（種別を削除すると、その種別の除外アイテムは既定種別へ移動します）。
+          ※「{defaultType?.name ?? 'その他'}」はアイテムごとに適用するため既定ON/OFFの対象外です。
         </p>
         <div className="flex items-center gap-2 mb-3">
           <input
@@ -291,6 +328,17 @@ export default function AdminExcludedItemsPage() {
                   <span className="text-[10px] text-gray-500 border border-surface-border rounded px-1 py-0.5">既定</span>
                 ) : (
                   <>
+                    <button
+                      onClick={() => toggleDefaultEnabled(t)}
+                      title="まだ設定をいじっていないユーザーに、この種別を既定で適用するか"
+                      className={`text-[10px] rounded px-1.5 py-0.5 border transition-colors ${
+                        t.default_enabled
+                          ? 'border-emerald-600/50 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50'
+                          : 'border-surface-border text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      既定{t.default_enabled ? 'ON' : 'OFF'}
+                    </button>
                     <button onClick={() => renameType(t)} className="text-gray-400 hover:text-white">改名</button>
                     <button onClick={() => removeType(t)} className="text-red-400 hover:text-red-300">削除</button>
                   </>
@@ -366,8 +414,33 @@ export default function AdminExcludedItemsPage() {
         </div>
       )}
 
-      {/* 検索 */}
+      {/* 種別タブ＋検索 */}
       <h2 className="text-sm font-semibold text-gray-300 mb-2">共通除外リスト</h2>
+      <div className="flex flex-wrap gap-1.5 mb-3 border-b border-surface-border pb-2">
+        <button
+          onClick={() => setActiveTypeId('all')}
+          className={`text-xs px-3 py-1.5 rounded-t border-b-2 transition-colors ${
+            activeTypeId === 'all'
+              ? 'border-primary-500 text-white font-semibold'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          すべて <span className="text-gray-500">({typeCounts.get('all') ?? 0})</span>
+        </button>
+        {types.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTypeId(t.id)}
+            className={`text-xs px-3 py-1.5 rounded-t border-b-2 transition-colors ${
+              activeTypeId === t.id
+                ? 'border-primary-500 text-white font-semibold'
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {t.name} <span className="text-gray-500">({typeCounts.get(t.id) ?? 0})</span>
+          </button>
+        ))}
+      </div>
       <input
         type="text"
         value={search}
@@ -385,7 +458,7 @@ export default function AdminExcludedItemsPage() {
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <p className="text-xs text-gray-500">登録 {rows.length} 件{search.trim() && `（表示 ${filtered.length} 件）`}・あいうえお順</p>
+            <p className="text-xs text-gray-500">登録 {rows.length} 件{(activeTypeId !== 'all' || search.trim()) && `（表示 ${filtered.length} 件）`}・あいうえお順</p>
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
                 <input

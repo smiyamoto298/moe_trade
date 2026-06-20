@@ -21,30 +21,39 @@ class ExclusionTypeController extends Controller
         );
     }
 
-    /** 管理: 種別を追加（admin。`name`）。 */
+    /** 管理: 種別を追加（admin。`name`、任意で `default_enabled`）。default_enabled 省略時は既定ON。 */
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name' => 'required|string|max:100|unique:exclusion_types,name',
+            'name'            => 'required|string|max:100|unique:exclusion_types,name',
+            'default_enabled' => 'sometimes|boolean',
         ]);
 
         $type = ExclusionType::create([
-            'name'       => trim($data['name']),
-            'is_default' => false,
-            'sort_order' => (int) (ExclusionType::max('sort_order') ?? 0) + 1,
+            'name'            => trim($data['name']),
+            'is_default'      => false,
+            'default_enabled' => $data['default_enabled'] ?? true,
+            'sort_order'      => (int) (ExclusionType::max('sort_order') ?? 0) + 1,
         ]);
 
         return response()->json($type, 201);
     }
 
-    /** 管理: 種別の改名（admin）。既定種別も改名は可。is_default は変更しない。 */
+    /**
+     * 管理: 種別の更新（admin）。改名（`name`）と既定ON/OFF（`default_enabled`）を部分更新できる。
+     * 既定種別も改名・default_enabled 変更は可。is_default は変更しない。
+     */
     public function update(Request $request, int $id)
     {
         $type = ExclusionType::findOrFail($id);
         $data = $request->validate([
-            'name' => 'required|string|max:100|unique:exclusion_types,name,' . $type->id,
+            'name'            => 'sometimes|required|string|max:100|unique:exclusion_types,name,' . $type->id,
+            'default_enabled' => 'sometimes|boolean',
         ]);
-        $type->update(['name' => trim($data['name'])]);
+        if (array_key_exists('name', $data)) {
+            $data['name'] = trim($data['name']);
+        }
+        $type->update($data);
         return response()->json($type->fresh());
     }
 

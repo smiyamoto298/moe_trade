@@ -295,31 +295,41 @@ export default function OwnedItemsPage() {
   // ---- 貼り付け読込 ----
   // 既定種別「その他」（アイテム単位で適用）の id
   const defaultTypeId = useMemo(() => exclusionTypes.find((t) => t.is_default)?.id ?? null, [exclusionTypes])
+  // 管理者が「既定ON」にした種別（その他以外）。ユーザー未設定時の既定適用セット。
+  const defaultEnabledTypeIds = useMemo(
+    () => exclusionTypes.filter((t) => !t.is_default && t.default_enabled).map((t) => t.id),
+    [exclusionTypes]
+  )
 
-  // 適用する種別（appliedTypeIds が null なら全種別）で共通除外を絞り、個別除外とマージする。
+  // 適用する種別（appliedTypeIds が null なら管理者の既定ON）で共通除外を絞り、個別除外とマージする。
   // その他はアイテム単位（disabledOtherNames でOFF）で絞る。
   const exclusionSet = useMemo(
-    () => buildExclusionSet(selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames), inventory.exclusions),
-    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, inventory.exclusions]
+    () => buildExclusionSet(selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds), inventory.exclusions),
+    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds, inventory.exclusions]
   )
   // 適用中の共通除外件数
   const appliedCommonCount = useMemo(
-    () => selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames).length,
-    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames]
+    () => selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds).length,
+    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds]
   )
 
   // 種別の適用ON/OFFを切り替える（端末ローカルに保存）。その他以外の種別単位の制御。
-  // appliedTypeIds が null（全適用）のときは、全種別IDから当該種別を外した集合を新しい選択として確定する。
+  // appliedTypeIds が null（ユーザー未設定）のときは、管理者の既定ON（default_enabled）の集合を
+  // 起点にして、当該種別をトグルした集合を新しい選択として確定する。
   const toggleAppliedType = (typeId: number) => {
-    const allIds = exclusionTypes.map((t) => t.id)
-    const current = appliedTypeIds ?? allIds
+    const defaults = exclusionTypes.filter((t) => t.default_enabled).map((t) => t.id)
+    const current = appliedTypeIds ?? defaults
     const next = current.includes(typeId)
       ? current.filter((id) => id !== typeId)
       : [...current, typeId]
     setAppliedTypeIds(next)
     setAppliedExclusionTypeIds(next)
   }
-  const isTypeApplied = (typeId: number) => (appliedTypeIds == null ? true : appliedTypeIds.includes(typeId))
+  // 未設定時は管理者の既定ON/OFF（default_enabled）に従う。
+  const isTypeApplied = (typeId: number) =>
+    appliedTypeIds == null
+      ? (exclusionTypes.find((t) => t.id === typeId)?.default_enabled ?? true)
+      : appliedTypeIds.includes(typeId)
 
   // その他（既定種別）のアイテム単位ON/OFF。OFF（disabled）に入っていなければ適用。
   const persistDisabledOther = (next: string[]) => {
