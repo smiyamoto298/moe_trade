@@ -101,8 +101,15 @@ export default function Header() {
     </>
   )
 
+  // ローカル開発中（vite dev）は本番と取り違えないようヘッダーを黄色にする
+  const isLocal = import.meta.env.DEV
+
   return (
-    <header className="bg-surface-card border-b border-surface-border sticky top-0 z-50">
+    <header
+      className="bg-surface-card border-b border-surface-border sticky top-0 z-50"
+      // ローカルは不透明な暗いヘッダーの上に透過した黄色を重ね、文字の視認性を保ったまま色で区別する
+      style={isLocal ? { backgroundImage: 'linear-gradient(rgba(250,204,21,0.18), rgba(250,204,21,0.18))' } : undefined}
+    >
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
         <Link to="/" className="shrink-0">
           <img
