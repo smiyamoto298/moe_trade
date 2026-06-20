@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor, screen } from '@testing-library/react'
+import { render, waitFor, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import OwnedItemsPage from './OwnedItemsPage'
 import { itemsApi } from '../api/items'
@@ -125,6 +125,40 @@ describe('OwnedItemsPage 自動再紐づけ', () => {
 
     await waitFor(() => expect(mockedLoad).toHaveBeenCalled())
     expect(mockedMatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('OwnedItemsPage 表示切替タブ', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('アカウントごとのタブで表示を絞り込める（セレクトボックスからタブ化）', async () => {
+    const inv: InventoryData = {
+      accounts: [{ id: 'acc1', name: 'メイン' }, { id: 'acc2', name: 'サブ' }],
+      items: [
+        unlinkedRow({ id: 'r1', accountId: 'acc1', name: 'アイテムA' }),
+        unlinkedRow({ id: 'r2', accountId: 'acc2', name: 'アイテムB' }),
+      ],
+      exclusions: [],
+    }
+    mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    const { container } = renderPage()
+
+    // 取り込み先のピルとアカウント名が重複するため、表示切替タブはフィルタバー内に限定して検証する
+    await waitFor(() => expect(container.querySelector('[data-tour="owned-filter"]')).toBeTruthy())
+    const filterBar = container.querySelector('[data-tour="owned-filter"]') as HTMLElement
+
+    // 「すべて」と各アカウントのタブが描画され、初期は全件表示
+    expect(within(filterBar).getByRole('button', { name: /すべて/ })).toBeInTheDocument()
+    expect(within(filterBar).getByRole('button', { name: /メイン/ })).toBeInTheDocument()
+    expect(screen.getByText('アイテムA')).toBeInTheDocument()
+    expect(screen.getByText('アイテムB')).toBeInTheDocument()
+
+    // 「サブ」タブで acc2 のアイテムのみに絞り込む
+    fireEvent.click(within(filterBar).getByRole('button', { name: /サブ/ }))
+    expect(screen.queryByText('アイテムA')).not.toBeInTheDocument()
+    expect(screen.getByText('アイテムB')).toBeInTheDocument()
   })
 })
 

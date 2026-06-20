@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDialog } from '../contexts/DialogContext'
 import { usePageMeta } from '../hooks/usePageMeta'
@@ -72,6 +72,27 @@ export default function OwnedItemsPage() {
   const [exclusionModalOpen, setExclusionModalOpen] = useState(false)
   // 共通除外の「適用する種別」設定モーダル（個別除外リストとは別）
   const [commonExclusionModalOpen, setCommonExclusionModalOpen] = useState(false)
+
+  // ---- スクロール追従（表示切替バー・テーブルヘッダーを画面上部で固定） ----
+  // グローバルヘッダー（お知らせバナー込み）と表示切替バーの実測高さを基準に、
+  // sticky の top オフセットを算出する。バナーの有無やモバイルで高さが変わるため動的計測する。
+  const filterBarRef = useRef<HTMLDivElement>(null)
+  const [headerH, setHeaderH] = useState(56)
+  const [filterBarH, setFilterBarH] = useState(0)
+  useEffect(() => {
+    if (loading || typeof ResizeObserver === 'undefined') return
+    const headerEl = document.querySelector('header')
+    const barEl = filterBarRef.current
+    const measure = () => {
+      if (headerEl) setHeaderH(headerEl.getBoundingClientRect().height)
+      if (barEl) setFilterBarH(barEl.getBoundingClientRect().height)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (headerEl) ro.observe(headerEl)
+    if (barEl) ro.observe(barEl)
+    return () => ro.disconnect()
+  }, [loading])
 
   // ---- 保存状態・離脱ガード ----
   const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -586,6 +607,9 @@ export default function OwnedItemsPage() {
   const saveLabel =
     saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '✓ 保存済み' : saveState === 'error' ? '⚠ 保存に失敗' : ''
 
+  // テーブルヘッダーのセル共通クラス。lg 以上では画面上部（表示切替バーの直下）に sticky 固定する。
+  const thCls = 'border-b border-surface-border bg-surface-card lg:sticky lg:z-20 lg:top-[var(--thead-top)]'
+
   if (loading) {
     return <div className="max-w-6xl mx-auto px-4 py-6"><Spinner center /></div>
   }
@@ -706,24 +730,45 @@ export default function OwnedItemsPage() {
         </div>
       </div>
 
-      {/* フィルタ */}
-      <div data-tour="owned-filter" className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
+      {/* フィルタ（スクロール時は画面上部に固定） */}
+      <div
+        ref={filterBarRef}
+        data-tour="owned-filter"
+        className="flex flex-wrap items-center gap-3 sticky z-30 bg-surface/90 backdrop-blur px-4 py-2 rounded-lg"
+        style={{ top: headerH }}
+      >
+        {/* 表示切替（アカウントごとのタブ。セレクトボックスからタブ表示へ） */}
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-gray-400">表示</span>
-          <select
-            value={filterAccountId}
-            onChange={(e) => setFilterAccountId(e.target.value)}
-            className="bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-primary-500"
-          >
-            <option value="all">すべて ({inventory.items.length})</option>
-            {inventory.accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.name} ({inventory.items.filter((i) => i.accountId === a.id).length})</option>
-            ))}
-            {/* 旧データに未割り当てが残っている場合のみ表示（新規取り込みでは作られない） */}
-            {inventory.items.some((i) => i.accountId == null) && (
-              <option value="unassigned">未割り当て ({inventory.items.filter((i) => i.accountId == null).length})</option>
-            )}
-          </select>
+          {[
+            { id: 'all', label: 'すべて', count: inventory.items.length },
+            ...inventory.accounts.map((a) => ({
+              id: a.id,
+              label: a.name,
+              count: inventory.items.filter((i) => i.accountId === a.id).length,
+            })),
+            // 旧データに未割り当てが残っている場合のみ表示（新規取り込みでは作られない）
+            ...(inventory.items.some((i) => i.accountId == null)
+              ? [{ id: 'unassigned', label: '未割り当て', count: inventory.items.filter((i) => i.accountId == null).length }]
+              : []),
+          ].map((tab) => {
+            const active = filterAccountId === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilterAccountId(tab.id)}
+                aria-pressed={active}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                  active
+                    ? 'bg-primary-500 border-primary-500 text-white'
+                    : 'border-surface-border text-gray-300 hover:text-white hover:border-gray-500'
+                }`}
+              >
+                {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({tab.count})</span>
+              </button>
+            )
+          })}
         </div>
         <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
           <input type="checkbox" checked={markedOnly} onChange={(e) => setMarkedOnly(e.target.checked)} className="accent-amber-500 w-4 h-4" />
@@ -747,19 +792,25 @@ export default function OwnedItemsPage() {
       </div>
 
       {/* 一覧 */}
-      <div className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
+      {/* lg 以上では overflow を visible にして、ヘッダー行を画面（ビューポート）上部に sticky 固定する。
+          overflow-x-auto は overflow-y も auto 扱いとなりスクロールコンテナ化して sticky が効かないため、
+          横スクロールが不要になる lg 以上でのみ visible に切り替える。--thead-top はヘッダー＋表示切替バーの高さ。 */}
+      <div
+        className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto lg:overflow-visible"
+        style={{ '--thead-top': `${headerH + filterBarH}px` } as CSSProperties}
+      >
         <table className="w-full min-w-[820px] text-sm">
           <thead>
-            <tr className="border-b border-surface-border text-xs text-gray-400">
-              <th className="px-2 py-3 text-center w-10">★</th>
-              <th className="px-4 py-3 text-left">アイテム</th>
-              {filterAccountId === 'all' && <th className="px-3 py-3 text-left">アカウント</th>}
-              <th className="px-3 py-3 text-right">個数</th>
-              <th className="px-2 py-3 text-center">削れ</th>
-              <th className="px-2 py-3 text-center">染色</th>
-              <th className="px-3 py-3 text-left">メモ</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap">買取中</th>
-              <th className="px-4 py-3" />
+            <tr className="text-xs text-gray-400">
+              <th className={`${thCls} px-2 py-3 text-center w-10`}>★</th>
+              <th className={`${thCls} px-4 py-3 text-left`}>アイテム</th>
+              {filterAccountId === 'all' && <th className={`${thCls} px-3 py-3 text-left`}>アカウント</th>}
+              <th className={`${thCls} px-3 py-3 text-right`}>個数</th>
+              <th className={`${thCls} px-2 py-3 text-center`}>削れ</th>
+              <th className={`${thCls} px-2 py-3 text-center`}>染色</th>
+              <th className={`${thCls} px-3 py-3 text-left`}>メモ</th>
+              <th className={`${thCls} px-3 py-3 text-right whitespace-nowrap`}>買取中</th>
+              <th className={`${thCls} px-4 py-3`} />
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border">
