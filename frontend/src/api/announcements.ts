@@ -10,6 +10,10 @@ export interface AnnouncementPayload {
   is_active?: boolean
   // 表示期間（日数）。null = 無期限。
   display_days?: number | null
+  // 表示対象。all=全員 / staff=管理・編集者のみ / specific=指定ユーザーのみ。
+  target_type?: 'all' | 'staff' | 'specific'
+  // target_type='specific' のときの対象ユーザーID配列。
+  target_user_ids?: number[] | null
 }
 
 export const announcementsApi = {

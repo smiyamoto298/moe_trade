@@ -8,16 +8,24 @@ use Illuminate\Support\Facades\DB;
 
 class AnnouncementController extends Controller
 {
-    /** 公開用: 表示中のお知らせ一覧（sort_order 昇順 → 新しい順）。期限切れは除外。 */
-    public function index()
+    /**
+     * 公開用: 表示中のお知らせ一覧（sort_order 昇順 → 新しい順）。期限切れは除外。
+     * 認証不要だが、Bearer トークンがあれば対象ユーザー（target_type）の絞り込みに使う。
+     */
+    public function index(Request $request)
     {
+        // 公開ルートのため auth ミドルウェアは無いが、トークンがあれば sanctum ガードで解決する。
+        $user = $request->user('sanctum');
+
         $items = Announcement::where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })
             ->orderBy('sort_order')
             ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->filter(fn (Announcement $a) => $a->isVisibleTo($user))
+            ->values();
 
         return response()->json($items);
     }
@@ -78,15 +86,30 @@ class AnnouncementController extends Controller
 
     private function validateData(Request $request): array
     {
-        return $request->validate([
-            'message'      => 'required|string|max:2000',
-            'level'        => 'nullable|in:info,warning,error',
-            'link_url'     => 'nullable|url|max:500',
-            'link_label'   => 'nullable|string|max:100',
-            'link_new_tab' => 'nullable|boolean',
-            'is_active'    => 'nullable|boolean',
+        $data = $request->validate([
+            'message'          => 'required|string|max:2000',
+            'level'            => 'nullable|in:info,warning,error',
+            'link_url'         => 'nullable|url|max:500',
+            'link_label'       => 'nullable|string|max:100',
+            'link_new_tab'     => 'nullable|boolean',
+            'is_active'        => 'nullable|boolean',
             // 表示期間（日数）。null/未指定 = 無期限。
-            'display_days' => 'nullable|integer|min:1|max:3650',
+            'display_days'     => 'nullable|integer|min:1|max:3650',
+            // 表示対象。all=全員 / staff=管理・編集者のみ / specific=指定ユーザーのみ。
+            'target_type'      => 'nullable|in:all,staff,specific',
+            'target_user_ids'  => 'nullable|array',
+            'target_user_ids.*' => 'integer|exists:users,id',
         ]);
+
+        // 対象種別を正規化。specific 以外は対象ユーザーIDを保持しない。
+        $data['target_type'] = $data['target_type'] ?? 'all';
+        if ($data['target_type'] === 'specific') {
+            // 重複を除いた整数配列にする（空なら誰にも表示されない指定として許容）。
+            $data['target_user_ids'] = array_values(array_unique(array_map('intval', $data['target_user_ids'] ?? [])));
+        } else {
+            $data['target_user_ids'] = null;
+        }
+
+        return $data;
     }
 }

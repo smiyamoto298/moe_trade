@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react'
 import { announcementsApi } from '../../api/announcements'
-import type { Announcement, AnnouncementLevel } from '../../types'
+import { usersApi } from '../../api/users'
+import type { Announcement, AnnouncementLevel, AnnouncementTargetType, User } from '../../types'
 import { useDialog } from '../../contexts/DialogContext'
 import { useDragReorder } from '../../hooks/useDragReorder'
+import { SERVER_COLORS } from '../../utils/constants'
+
+// メールはハッシュ保存でAPIから返らないため、登録キャラクター名でユーザーを識別する。
+const userCharLabel = (u: User): string =>
+  u.characters && u.characters.length > 0
+    ? u.characters.map((c) => `${c.server}: ${c.character_name}`).join(' / ')
+    : `キャラクター未登録（#${u.id}）`
 
 interface Draft {
   id: number | null
@@ -14,6 +22,8 @@ interface Draft {
   is_active: boolean
   display_days: number | null
   expires_at: string | null
+  target_type: AnnouncementTargetType
+  target_user_ids: number[]
 }
 
 const toDraft = (a: Announcement): Draft => ({
@@ -26,6 +36,8 @@ const toDraft = (a: Announcement): Draft => ({
   is_active: a.is_active,
   display_days: a.display_days ?? null,
   expires_at: a.expires_at ?? null,
+  target_type: a.target_type ?? 'all',
+  target_user_ids: a.target_user_ids ?? [],
 })
 
 const newDraft = (): Draft => ({
@@ -38,6 +50,8 @@ const newDraft = (): Draft => ({
   is_active: true,
   display_days: null,
   expires_at: null,
+  target_type: 'all',
+  target_user_ids: [],
 })
 
 const LEVELS: { value: AnnouncementLevel; label: string }[] = [
@@ -45,6 +59,106 @@ const LEVELS: { value: AnnouncementLevel; label: string }[] = [
   { value: 'warning', label: '注意（黄）' },
   { value: 'error', label: '警告（赤）' },
 ]
+
+const TARGET_TYPES: { value: AnnouncementTargetType; label: string }[] = [
+  { value: 'all', label: '全員' },
+  { value: 'staff', label: '管理・編集者のみ' },
+  { value: 'specific', label: '指定ユーザーのみ' },
+]
+
+// 「指定ユーザーのみ」の対象ユーザーを選ぶピッカー。
+// メールはハッシュ保存で表示できないため、登録キャラクター名（とユーザーID）で検索・選択する。
+function UserPicker({
+  users,
+  selected,
+  onChange,
+}: {
+  users: User[]
+  selected: number[]
+  onChange: (ids: number[]) => void
+}) {
+  const [q, setQ] = useState('')
+  const term = q.trim().toLowerCase()
+  const filtered = term
+    ? users.filter(
+        (u) =>
+          String(u.id) === term ||
+          u.characters?.some((c) => c.character_name.toLowerCase().includes(term)),
+      )
+    : users
+  const toggle = (id: number) =>
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
+
+  const selectedUsers = users.filter((u) => selected.includes(u.id))
+
+  // 各サーバーのキャラ名を色付きチップで表示する（キャラ未登録は #id を出す）。
+  const renderChars = (u: User) =>
+    u.characters && u.characters.length > 0 ? (
+      <span className="flex flex-wrap gap-1">
+        {u.characters.map((c) => (
+          <span key={c.id} className={`text-xs px-1.5 py-0.5 rounded ${SERVER_COLORS[c.server]}`}>
+            {c.server}: {c.character_name}
+          </span>
+        ))}
+      </span>
+    ) : (
+      <span className="text-xs text-gray-500">キャラクター未登録（#{u.id}）</span>
+    )
+
+  return (
+    <div className="space-y-2">
+      {selectedUsers.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selectedUsers.map((u) => (
+            <span
+              key={u.id}
+              className="inline-flex items-center gap-1 bg-primary-500/20 text-primary-200 text-xs px-2 py-0.5 rounded"
+            >
+              {userCharLabel(u)}
+              <button
+                type="button"
+                onClick={() => toggle(u.id)}
+                className="text-primary-300 hover:text-white leading-none"
+                title="対象から外す"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        type="text"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="キャラクター名 / ユーザーID で検索"
+        className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+      />
+      <div className="max-h-44 overflow-y-auto border border-surface-border rounded divide-y divide-surface-border">
+        {filtered.length === 0 ? (
+          <p className="text-xs text-gray-500 px-3 py-2">該当するユーザーがいません。</p>
+        ) : (
+          filtered.slice(0, 100).map((u) => (
+            <label
+              key={u.id}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-200 hover:bg-surface cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(u.id)}
+                onChange={() => toggle(u.id)}
+                className="accent-primary-500 shrink-0"
+              />
+              {renderChars(u)}
+              {u.role !== 'user' && <span className="text-xs text-gray-500 shrink-0">（{u.role}）</span>}
+            </label>
+          ))
+        )}
+      </div>
+      <p className="text-xs text-gray-500">{selected.length} 人を選択中</p>
+    </div>
+  )
+}
 
 const fmtDate = (iso: string | null): string => {
   if (!iso) return ''
@@ -59,6 +173,12 @@ export default function AnnouncementsAdminPage() {
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [loading, setLoading] = useState(true)
   const [savingIdx, setSavingIdx] = useState<number | null>(null)
+  // 「指定ユーザーのみ」の対象選択用。メールアドレスで選ぶ。
+  const [users, setUsers] = useState<User[]>([])
+
+  useEffect(() => {
+    usersApi.list().then((r) => setUsers(r.data)).catch(() => {})
+  }, [])
 
   const { dragIdx, onDragStart, onDragOver, onDrop } = useDragReorder<Draft>(setDrafts, async (items) => {
     const ids = items.map((d) => d.id).filter((id): id is number => id != null)
@@ -91,6 +211,10 @@ export default function AnnouncementsAdminPage() {
       await alert('本文を入力してください。', { title: '入力エラー' })
       return
     }
+    if (d.target_type === 'specific' && d.target_user_ids.length === 0) {
+      await alert('「指定ユーザーのみ」を選んだ場合は対象ユーザーを1人以上選択してください。', { title: '入力エラー' })
+      return
+    }
     const payload = {
       message: d.message,
       level: d.level,
@@ -99,6 +223,8 @@ export default function AnnouncementsAdminPage() {
       link_new_tab: d.link_new_tab,
       is_active: d.is_active,
       display_days: d.display_days && d.display_days > 0 ? d.display_days : null,
+      target_type: d.target_type,
+      target_user_ids: d.target_type === 'specific' ? d.target_user_ids : null,
     }
     setSavingIdx(idx)
     try {
@@ -260,6 +386,31 @@ export default function AnnouncementsAdminPage() {
                       : '空欄で無期限表示'}
                   </p>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">表示対象</label>
+                <select
+                  value={d.target_type}
+                  onChange={(e) => setField(idx, { target_type: e.target.value as AnnouncementTargetType })}
+                  className="w-full sm:w-64 bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+                >
+                  {TARGET_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                {d.target_type === 'staff' && (
+                  <p className="mt-1 text-xs text-gray-500">管理者・編集者でログイン中のユーザーにのみ表示されます。</p>
+                )}
+                {d.target_type === 'specific' && (
+                  <div className="mt-2">
+                    <UserPicker
+                      users={users}
+                      selected={d.target_user_ids}
+                      onChange={(ids) => setField(idx, { target_user_ids: ids })}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-1">

@@ -2,24 +2,41 @@
 
 namespace App\Models;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
 class Announcement extends Model
 {
     protected $fillable = [
         'message', 'level', 'link_url', 'link_label', 'link_new_tab', 'is_active', 'sort_order',
-        'display_days', 'expires_at',
+        'display_days', 'expires_at', 'target_type', 'target_user_ids',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_active'    => 'boolean',
-            'link_new_tab' => 'boolean',
-            'sort_order'   => 'integer',
-            'display_days' => 'integer',
-            'expires_at'   => 'datetime',
+            'is_active'       => 'boolean',
+            'link_new_tab'    => 'boolean',
+            'sort_order'      => 'integer',
+            'display_days'    => 'integer',
+            'expires_at'      => 'datetime',
+            'target_user_ids' => 'array',
         ];
+    }
+
+    /**
+     * このお知らせを指定ユーザー（未ログインは null）に表示してよいか。
+     * - all      : 全員に表示
+     * - staff    : 管理・編集者のみ
+     * - specific : target_user_ids に含まれるユーザーのみ
+     */
+    public function isVisibleTo(?User $user): bool
+    {
+        return match ($this->target_type) {
+            'staff'    => $user !== null && $user->isEditor(),
+            'specific' => $user !== null && in_array($user->id, $this->target_user_ids ?? [], true),
+            default    => true,
+        };
     }
 
     /**

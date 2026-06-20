@@ -51,4 +51,94 @@ class AnnouncementApiTest extends TestCase
 
         $this->assertDatabaseHas('announcements', ['id' => $a->id, 'link_new_tab' => false]);
     }
+
+    public function test_target_type未指定ならallがデフォルトになる(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/announcements', [
+            'message' => '全員向け',
+        ])->assertCreated()
+            ->assertJsonPath('target_type', 'all')
+            ->assertJsonPath('target_user_ids', null);
+    }
+
+    public function test_specificは対象ユーザーIDを保存しall_staffではnullに正規化される(): void
+    {
+        $admin  = $this->makeUserWithRole('admin');
+        $target = $this->makeUserWithRole('user');
+
+        // specific: 対象ユーザーIDを保存する
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/announcements', [
+            'message'         => '指定ユーザー向け',
+            'target_type'     => 'specific',
+            'target_user_ids' => [$target->id, $target->id], // 重複は除去される
+        ])->assertCreated()
+            ->assertJsonPath('target_type', 'specific')
+            ->assertJsonPath('target_user_ids', [$target->id]);
+
+        // staff: target_user_ids を渡しても null に正規化される
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/announcements', [
+            'message'         => 'スタッフ向け',
+            'target_type'     => 'staff',
+            'target_user_ids' => [$target->id],
+        ])->assertCreated()
+            ->assertJsonPath('target_type', 'staff')
+            ->assertJsonPath('target_user_ids', null);
+    }
+
+    public function test_存在しないユーザーIDはバリデーションで弾かれる(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/announcements', [
+            'message'         => '指定ユーザー向け',
+            'target_type'     => 'specific',
+            'target_user_ids' => [999999],
+        ])->assertStatus(422);
+    }
+
+    public function test_specificは対象ユーザーにのみ公開一覧で表示される(): void
+    {
+        // マイグレーションが投入する初期お知らせ（target_type=all）を除いた状態で検証する。
+        Announcement::query()->delete();
+        $target = $this->makeUserWithRole('user');
+        $other  = $this->makeUserWithRole('user');
+        Announcement::create(['message' => '指定向け', 'target_type' => 'specific', 'target_user_ids' => [$target->id]]);
+
+        // 対象ユーザー → 見える
+        $this->actingAs($target, 'sanctum')->getJson('/api/announcements')
+            ->assertOk()->assertJsonCount(1);
+
+        // 対象外ユーザー → 見えない
+        $this->actingAs($other, 'sanctum')->getJson('/api/announcements')
+            ->assertOk()->assertJsonCount(0);
+
+        // 未ログイン → 見えない
+        $this->getJson('/api/announcements')->assertOk()->assertJsonCount(0);
+    }
+
+    public function test_staffは管理編集者にのみ公開一覧で表示される(): void
+    {
+        Announcement::query()->delete();
+        $admin  = $this->makeUserWithRole('admin');
+        $editor = $this->makeUserWithRole('editor');
+        $user   = $this->makeUserWithRole('user');
+        Announcement::create(['message' => 'スタッフ向け', 'target_type' => 'staff']);
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/announcements')->assertOk()->assertJsonCount(1);
+        $this->actingAs($editor, 'sanctum')->getJson('/api/announcements')->assertOk()->assertJsonCount(1);
+        $this->actingAs($user, 'sanctum')->getJson('/api/announcements')->assertOk()->assertJsonCount(0);
+        $this->getJson('/api/announcements')->assertOk()->assertJsonCount(0);
+    }
+
+    public function test_allは未ログイン含む全員に表示される(): void
+    {
+        Announcement::query()->delete();
+        $user = $this->makeUserWithRole('user');
+        Announcement::create(['message' => '全員向け', 'target_type' => 'all']);
+
+        $this->getJson('/api/announcements')->assertOk()->assertJsonCount(1);
+        $this->actingAs($user, 'sanctum')->getJson('/api/announcements')->assertOk()->assertJsonCount(1);
+    }
 }

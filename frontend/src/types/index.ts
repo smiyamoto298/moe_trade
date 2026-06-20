@@ -443,6 +443,9 @@ export interface BuyPriceInfo {
 // ---- お知らせ ----
 export type AnnouncementLevel = 'info' | 'warning' | 'error'
 
+// 表示対象。all=全員 / staff=管理・編集者のみ / specific=指定ユーザーのみ。
+export type AnnouncementTargetType = 'all' | 'staff' | 'specific'
+
 export interface Announcement {
   id: number
   message: string
@@ -454,6 +457,9 @@ export interface Announcement {
   sort_order: number
   display_days: number | null
   expires_at: string | null
+  target_type: AnnouncementTargetType
+  // target_type='specific' のときの対象ユーザーID配列。それ以外は null。
+  target_user_ids: number[] | null
   created_at: string
   updated_at: string
 }
