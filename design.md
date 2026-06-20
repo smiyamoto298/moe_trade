@@ -118,6 +118,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 現在の出品価格一覧（買い相場タブでは現在の買取募集価格一覧）
 - **募集価格一覧の各行に詳細導線リンクを表示**：総合・売り相場タブは各行に「出品を見る →」を出しその出品の詳細（`/listings/:id`）へ、買い相場タブは「買取を見る →」でその買取の詳細（`/buy-requests/:id`）へリンクする。リンク先 id は `price-analytics` レスポンスの `recent_listings[].id` / `sell.recent_offers[].id` / `buy.recent_offers[].id` で返す（id を持たない古いレスポンスではリンク非表示）
 - 取引履歴が無いアイテムでも 0 埋めの統計と現在出品を返し、画面が落ちないよう防御的に実装
+- **「Xで検索」ボタン**：右上に表示し、クリックでアイテム名を X（旧Twitter）で検索する新規ウィンドウ（`https://x.com/search?q=<アイテム名>&src=typed_query`・`target="_blank"` / `rel="noopener noreferrer"`）を開く。アイテム名はモーダルの `itemName` プロップ／出品・買取・アイテム詳細ページの `item.name` から `PriceAnalytics`（経由は `PriceAnalyticsAsync`）に渡す（未指定時は非表示）
 - 表示は共通モーダル `frontend/src/components/PriceAnalyticsModal.tsx`（出品登録・一括出品の「相場情報」ボタンから利用）と出品詳細ページで共有
 
 #### 他サイト相場の手動登録（admin）
@@ -1415,7 +1416,7 @@ docker compose exec php vendor/bin/phpunit
 | `src/pages/RegisterPage.test.tsx` | 利用規約同意フロー（モーダル自動表示・同意までボタン無効・同意しない→トップ遷移・パスワード不一致・登録成功/失敗） |
 | `src/pages/ListingsPage.test.tsx` | 出品一覧のタブ・絞り込み（装備品/テクニック/アセットの `item_type` と列見出し切替、アイテム名・種別＋装備セットを含める・追加効果＋数値範囲・サーバー・取引方法・価格帯・削れあり・取引完了・ソート、必要スキル＋`skill_match`/マスタリ込み、アセットの設置個所/特殊機能/ストレージ、未ログイン時の「+ 出品する」「取引」非表示） |
 | `src/components/TermsModal.test.tsx` | 規約モーダル（第1〜6条表示・同意/非同意コールバック） |
-| `src/components/PriceAnalytics.test.tsx` | 価格解析（0埋め時の「—」表示・「相場対象外」「他サイト」バッジ・売り/買い相場タブ切替） |
+| `src/components/PriceAnalytics.test.tsx` | 価格解析（0埋め時の「—」表示・「相場対象外」「他サイト」バッジ・売り/買い相場タブ切替・Xで検索リンク） |
 | `src/api/client.test.ts` | 認証トークンの保存・取得・削除（localStorage） |
 | `src/api/items.test.ts` | `itemsApi.list` の全ページ結合（複数ページ走査・1ページ完結・0件。1ページ目のみ取得で51件目以降が消える不具合の回帰防止） |
 | `src/pages/admin/AdminItemsPage.test.tsx` | アイテム管理の「装備セットを展開表示」（OFF=セット本体のみ/ON=構成部位のみ・通常アイテムは常に表示・件数タブ連動・装備品タブ限定表示）・セット行は出品一覧と同じ表示（アイテム名下の部位チップ・構成部位から組み立てた追加効果/付加効果・本体の旧base_stats非表示）・行操作アイコンの権限別表示（相場登録/削除=admin・編集/コピー=editor以上・一般ユーザーは自分の未確認のみ編集可・未ログインは非表示）・コピーの名前変更ダイアログ（セット名/各部位名のプレビュー・置換行の追加/削除と複数置換の順次適用・`?copy=<id>`＋`copyRename` state での遷移） |

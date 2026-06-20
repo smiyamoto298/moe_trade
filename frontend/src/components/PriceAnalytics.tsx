@@ -10,6 +10,8 @@ import {
 
 interface Props {
   analytics: ItemPriceAnalytics
+  /** 指定するとアイテム名を X で検索するボタンを表示する */
+  itemName?: string
 }
 
 function fmt(n: number) { return n.toLocaleString() }
@@ -25,7 +27,7 @@ type View = 'overall' | 'sell' | 'buy'
 
 const EMPTY_STATS: PriceStats = { min: 0, max: 0, avg: 0, median: 0, deal_count: 0, listing_count: 0 }
 
-export default function PriceAnalytics({ analytics }: Props) {
+export default function PriceAnalytics({ analytics, itemName }: Props) {
   const [view, setView] = useState<View>('overall')
 
   const hasSell = !!analytics?.sell
@@ -94,29 +96,50 @@ export default function PriceAnalytics({ analytics }: Props) {
 
   return (
     <div className="space-y-5">
-      {/* 売り相場 / 買い相場 切替 */}
-      {tabs.length > 1 && (
+      {/* 売り相場 / 買い相場 切替 ＋ アイテム名を X で検索するボタン（同じ行に並べる） */}
+      {(tabs.length > 1 || itemName) && (
         <div>
-          <div className="inline-flex rounded-lg border border-surface-border bg-surface p-0.5">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setView(t.key)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  view === t.key ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
-                }`}
+          <div className="flex items-center gap-3">
+            {tabs.length > 1 && (
+              <div className="inline-flex rounded-lg border border-surface-border bg-surface p-0.5">
+                {tabs.map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => setView(t.key)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      view === t.key ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* アイテム名を X（旧Twitter）で検索（新規ウィンドウ）。常に行の右端に配置 */}
+            {itemName && (
+              <a
+                href={`https://x.com/search?q=${encodeURIComponent(itemName)}&src=typed_query`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="アイテム名を X で検索"
+                className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-surface-border bg-surface text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
               >
-                {t.label}
-              </button>
-            ))}
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                Xで検索
+              </a>
+            )}
           </div>
-          <p className="text-xs text-gray-500 mt-1.5">
-            {view === 'sell'
-              ? '出品（売りたい）由来の成立価格・出品中の価格です。'
-              : view === 'buy'
-              ? '買取（買いたい）由来の成立価格・買取募集中の価格です。'
-              : '出品・買取・他サイト相場をまとめた相場です。'}
-          </p>
+          {tabs.length > 1 && (
+            <p className="text-xs text-gray-500 mt-1.5">
+              {view === 'sell'
+                ? '出品（売りたい）由来の成立価格・出品中の価格です。'
+                : view === 'buy'
+                ? '買取（買いたい）由来の成立価格・買取募集中の価格です。'
+                : '出品・買取・他サイト相場をまとめた相場です。'}
+            </p>
+          )}
         </div>
       )}
 

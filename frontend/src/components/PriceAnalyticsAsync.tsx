@@ -6,10 +6,10 @@ import type { ItemPriceAnalytics } from '../types'
 // 価格解析が実際に表示されるまで読み込まない。利用側はこのラッパーを import する。
 const PriceAnalytics = lazy(() => import('./PriceAnalytics'))
 
-export default function PriceAnalyticsAsync({ analytics }: { analytics: ItemPriceAnalytics }) {
+export default function PriceAnalyticsAsync({ analytics, itemName }: { analytics: ItemPriceAnalytics; itemName?: string }) {
   return (
     <Suspense fallback={<Spinner />}>
-      <PriceAnalytics analytics={analytics} />
+      <PriceAnalytics analytics={analytics} itemName={itemName} />
     </Suspense>
   )
 }

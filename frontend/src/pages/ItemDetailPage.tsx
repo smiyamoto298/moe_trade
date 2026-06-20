@@ -107,7 +107,7 @@ export default function ItemDetailPage() {
       {analytics && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">相場・取引履歴</h2>
-          <PriceAnalyticsComp analytics={analytics} />
+          <PriceAnalyticsComp analytics={analytics} itemName={item.name} />
         </div>
       )}
 

@@ -45,7 +45,7 @@ export default function PriceAnalyticsModal({ itemId, itemName, onClose }: Props
         ) : !analytics ? (
           <Spinner center />
         ) : (
-          <PriceAnalytics analytics={analytics} />
+          <PriceAnalytics analytics={analytics} itemName={itemName} />
         )}
       </div>
     </div>

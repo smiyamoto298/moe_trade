@@ -173,7 +173,7 @@ export default function BuyRequestDetailPage() {
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-5">
             価格データ解析
           </h2>
-          <PriceAnalyticsComp analytics={analytics} />
+          <PriceAnalyticsComp analytics={analytics} itemName={buyRequest.item.name} />
         </div>
       )}
     </div>

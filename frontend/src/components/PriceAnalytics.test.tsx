@@ -168,4 +168,20 @@ describe('PriceAnalytics', () => {
     )
     expect(screen.queryByRole('link', { name: /出品を見る/ })).not.toBeInTheDocument()
   })
+
+  it('itemName を渡すと、その名前を X で検索する新規ウィンドウ用リンクを表示する', () => {
+    render(<PriceAnalytics analytics={base()} itemName="精霊の剣" />)
+    const link = screen.getByRole('link', { name: /Xで検索/ })
+    expect(link).toHaveAttribute(
+      'href',
+      `https://x.com/search?q=${encodeURIComponent('精霊の剣')}&src=typed_query`
+    )
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  it('itemName が無ければ X 検索リンクを表示しない', () => {
+    render(<PriceAnalytics analytics={base()} />)
+    expect(screen.queryByRole('link', { name: /Xで検索/ })).not.toBeInTheDocument()
+  })
 })
