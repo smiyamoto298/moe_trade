@@ -874,14 +874,14 @@ export default function MyPage() {
               const u = updated as Listing
               setListings((prev) =>
                 prev.map((l) =>
-                  l.id === u.id ? { ...l, trade_type: u.trade_type, comment: u.comment, is_worn: u.is_worn, is_dyed: u.is_dyed, servers: u.servers } : l
+                  l.id === u.id ? { ...l, price: u.price, trade_type: u.trade_type, comment: u.comment, is_worn: u.is_worn, is_dyed: u.is_dyed, servers: u.servers } : l
                 )
               )
             } else {
               const u = updated as BuyRequest
               setBuyRequests((prev) =>
                 prev.map((b) =>
-                  b.id === u.id ? { ...b, trade_type: u.trade_type, comment: u.comment, servers: u.servers } : b
+                  b.id === u.id ? { ...b, price: u.price, trade_type: u.trade_type, comment: u.comment, servers: u.servers } : b
                 )
               )
             }

@@ -420,14 +420,49 @@ class ListingApiTest extends TestCase
         $other   = $this->makeUser();
         $listing = $this->makeListing($seller);
 
+        // 出品の編集は値下げのみ可能（既定価格 1000 → 800）
         $this->actingAs($seller, 'sanctum')
-            ->putJson("/api/listings/{$listing->id}", ['price' => 2000])
+            ->putJson("/api/listings/{$listing->id}", ['price' => 800])
             ->assertOk()
-            ->assertJsonPath('price', 2000);
+            ->assertJsonPath('price', 800);
 
         $this->actingAs($other, 'sanctum')
             ->putJson("/api/listings/{$listing->id}", ['price' => 1])
             ->assertStatus(403);
+    }
+
+    public function test_出品の編集は値下げのみ可能_値上げは弾かれ新着扱いになる(): void
+    {
+        $seller  = $this->makeUser();
+        $listing = $this->makeListing($seller, null, ['price' => 1000]);
+
+        // 値上げは 422 で拒否され価格・bumped_at は変わらない
+        $this->actingAs($seller, 'sanctum')
+            ->putJson("/api/listings/{$listing->id}", ['price' => 1500])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('price');
+        $this->assertSame(1000, $listing->fresh()->price);
+        $this->assertNull($listing->fresh()->bumped_at);
+
+        // 値下げは通り「新着扱い」(bumped_at)になる
+        $this->actingAs($seller, 'sanctum')
+            ->putJson("/api/listings/{$listing->id}", ['price' => 800])
+            ->assertOk();
+        $fresh = $listing->fresh();
+        $this->assertSame(800, $fresh->price);
+        $this->assertNotNull($fresh->bumped_at);
+    }
+
+    public function test_出品の編集で価格据え置きなら新着扱いにならない(): void
+    {
+        $seller  = $this->makeUser();
+        $listing = $this->makeListing($seller, null, ['price' => 1000]);
+
+        // 価格を変えずコメントだけ編集 → bumped_at は付かない
+        $this->actingAs($seller, 'sanctum')
+            ->putJson("/api/listings/{$listing->id}", ['price' => 1000, 'comment' => 'メモ'])
+            ->assertOk();
+        $this->assertNull($listing->fresh()->bumped_at);
     }
 
     public function test_本人は出品を取り下げできる(): void

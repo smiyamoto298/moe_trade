@@ -16,6 +16,8 @@ interface Props {
 // 出品・買取の一部項目（即決/交渉可・対象サーバー・コメント・削れ[出品のみ]）を編集するモーダル。
 export default function EditTradeModal({ kind, record, onClose, onSaved }: Props) {
   const { user } = useAuth()
+  // 出品は値下げのみ・買取は値上げのみ可能。価格を変更すると新着扱いになる。
+  const [price, setPrice] = useState<string>(String(record.price))
   const [tradeType, setTradeType] = useState<string>(record.trade_type)
   const [comment, setComment] = useState<string>(record.comment ?? '')
   const [isWorn, setIsWorn] = useState<boolean>(kind === 'listing' ? !!(record as Listing).is_worn : false)
@@ -36,6 +38,19 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
       setError('取引可能サーバーを1つ以上選択してください。')
       return
     }
+    const priceNum = Number(price)
+    if (!Number.isInteger(priceNum) || priceNum < 1) {
+      setError('価格は1以上の整数で入力してください。')
+      return
+    }
+    if (kind === 'listing' && priceNum > record.price) {
+      setError('出品の編集では値下げのみ可能です。値上げするには取り下げて再出品してください。')
+      return
+    }
+    if (kind === 'buy_request' && priceNum < record.price) {
+      setError('買取の編集では値上げのみ可能です。値下げするには取り下げて再登録してください。')
+      return
+    }
     setSaving(true)
     setError('')
     try {
@@ -43,7 +58,7 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
         const char = user?.characters?.find((c) => c.server === s)
         return { server: s, character_id: char?.id ?? null }
       })
-      const base = { trade_type: tradeType, comment, servers: serverPayload }
+      const base = { price: priceNum, trade_type: tradeType, comment, servers: serverPayload }
 
       const res =
         kind === 'listing'
@@ -64,6 +79,28 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
         <div>
           <h3 className="text-base font-bold text-white">{kind === 'listing' ? '出品' : '買取'}の編集</h3>
           <p className="text-xs text-gray-400 mt-0.5 truncate">{record.item?.name}</p>
+        </div>
+
+        {/* 価格（出品は値下げのみ・買取は値上げのみ） */}
+        <div>
+          <p className="text-sm text-gray-300 mb-1.5">
+            {kind === 'listing' ? '販売価格' : '買取価格'}
+            <span className="text-xs text-gray-400">
+              （現在 {record.price.toLocaleString()} {record.currency}・{kind === 'listing' ? '値下げ' : '値上げ'}のみ可能）
+            </span>
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={kind === 'buy_request' ? record.price : 1}
+              max={kind === 'listing' ? record.price : undefined}
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="flex-1 bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+            />
+            <span className="text-sm text-gray-400 shrink-0">{record.currency}</span>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-1">価格を変更すると新着扱いになり、新着順の先頭に表示されます。</p>
         </div>
 
         {/* 取引方法 */}

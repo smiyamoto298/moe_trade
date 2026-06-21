@@ -483,7 +483,12 @@ class ListingController extends Controller
         $this->authorize('update', $listing);
 
         $data = $request->validate([
-            'price'      => 'sometimes|integer|min:1',
+            // 出品の編集では値下げのみ可能（値上げするには取り下げて再出品する）
+            'price'      => ['sometimes', 'integer', 'min:1', function ($attr, $value, $fail) use ($listing) {
+                if ((int) $value > (int) $listing->price) {
+                    $fail('出品の編集では値下げのみ可能です。値上げするには一度取り下げて再出品してください。');
+                }
+            }],
             'quantity'   => 'sometimes|integer|min:1',
             'trade_type' => 'sometimes|in:fixed,negotiable',
             'comment'    => 'nullable|string|max:1000',
@@ -495,7 +500,12 @@ class ListingController extends Controller
         ]);
 
         DB::transaction(function () use ($listing, $data) {
-            $listing->update(collect($data)->except('servers')->toArray());
+            $attrs = collect($data)->except('servers')->toArray();
+            // 値下げ（価格変更）した場合は、期限切れ再出品の値下げと同様に「新着扱い」にする
+            if (array_key_exists('price', $attrs) && (int) $attrs['price'] !== (int) $listing->price) {
+                $attrs['bumped_at'] = now();
+            }
+            $listing->update($attrs);
 
             if (isset($data['servers'])) {
                 $listing->servers()->delete();

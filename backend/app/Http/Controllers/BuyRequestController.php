@@ -205,7 +205,12 @@ class BuyRequestController extends Controller
         $this->authorize('update', $buyRequest);
 
         $data = $request->validate([
-            'price'      => 'sometimes|integer|min:1',
+            // 買取の編集では値上げのみ可能（値下げするには取り下げて再登録する）
+            'price'      => ['sometimes', 'integer', 'min:1', function ($attr, $value, $fail) use ($buyRequest) {
+                if ((int) $value < (int) $buyRequest->price) {
+                    $fail('買取の編集では値上げのみ可能です。値下げするには一度取り下げて再登録してください。');
+                }
+            }],
             'quantity'   => 'sometimes|integer|min:1',
             'trade_type' => 'sometimes|in:fixed,negotiable',
             'comment'    => 'nullable|string|max:1000',
@@ -215,7 +220,12 @@ class BuyRequestController extends Controller
         ]);
 
         DB::transaction(function () use ($buyRequest, $data) {
-            $buyRequest->update(collect($data)->except('servers')->toArray());
+            $attrs = collect($data)->except('servers')->toArray();
+            // 値上げ（価格変更）した場合は、期限切れ再登録の値上げと同様に「新着扱い」にする
+            if (array_key_exists('price', $attrs) && (int) $attrs['price'] !== (int) $buyRequest->price) {
+                $attrs['bumped_at'] = now();
+            }
+            $buyRequest->update($attrs);
 
             if (isset($data['servers'])) {
                 $buyRequest->servers()->delete();

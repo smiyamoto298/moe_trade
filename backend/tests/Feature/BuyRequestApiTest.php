@@ -150,4 +150,36 @@ class BuyRequestApiTest extends TestCase
         $ids = collect($this->getJson('/api/buy-requests')->json('data'))->pluck('id')->all();
         $this->assertSame([$a->id, $b->id], array_slice($ids, 0, 2));
     }
+
+    public function test_買取の編集は値上げのみ可能_値下げは弾かれ新着扱いになる(): void
+    {
+        $buyRequest = $this->makeBuyRequest(null, ['price' => 1000]);
+
+        // 値下げは 422 で拒否され価格・bumped_at は変わらない
+        $this->actingAs($buyRequest->user, 'sanctum')
+            ->putJson("/api/buy-requests/{$buyRequest->id}", ['price' => 800])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('price');
+        $this->assertSame(1000, $buyRequest->fresh()->price);
+        $this->assertNull($buyRequest->fresh()->bumped_at);
+
+        // 値上げは通り「新着扱い」(bumped_at)になる
+        $this->actingAs($buyRequest->user, 'sanctum')
+            ->putJson("/api/buy-requests/{$buyRequest->id}", ['price' => 1500])
+            ->assertOk();
+        $fresh = $buyRequest->fresh();
+        $this->assertSame(1500, $fresh->price);
+        $this->assertNotNull($fresh->bumped_at);
+    }
+
+    public function test_買取の編集で価格据え置きなら新着扱いにならない(): void
+    {
+        $buyRequest = $this->makeBuyRequest(null, ['price' => 1000]);
+
+        // 価格を変えずコメントだけ編集 → bumped_at は付かない
+        $this->actingAs($buyRequest->user, 'sanctum')
+            ->putJson("/api/buy-requests/{$buyRequest->id}", ['price' => 1000, 'comment' => 'メモ'])
+            ->assertOk();
+        $this->assertNull($buyRequest->fresh()->bumped_at);
+    }
 }
