@@ -825,7 +825,7 @@ export default function AdminItemsPage() {
       {/* 削除確認モーダル */}
       {deleteTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 !mt-0"
           onClick={closeDelete}
         >
           <div
@@ -959,7 +959,7 @@ export default function AdminItemsPage() {
       {/* コピーして編集モーダル：アイテム名の置換・末尾追加を入力してプレビューを確認してから編集画面へ */}
       {copyTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 !mt-0"
           onClick={closeCopy}
         >
           <div
@@ -1060,7 +1060,7 @@ export default function AdminItemsPage() {
       {/* 相場登録モーダル */}
       {marketTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 !mt-0"
           onClick={closeMarketPrice}
         >
           <div

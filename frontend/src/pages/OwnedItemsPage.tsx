@@ -989,7 +989,7 @@ export default function OwnedItemsPage() {
 
       {/* 新規アイテム登録モーダル */}
       {newItemRow && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0">
           <div className="bg-surface-card border border-yellow-700/50 rounded-lg p-5 max-w-2xl w-full my-8">
             <NewItemForm
               initialName={newItemInitialName}
@@ -1018,7 +1018,7 @@ export default function OwnedItemsPage() {
 
       {/* アカウント管理モーダル */}
       {accountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto" onClick={() => setAccountModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setAccountModalOpen(false)}>
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white">MoE アカウントの管理</h3>
@@ -1047,7 +1047,7 @@ export default function OwnedItemsPage() {
 
       {/* 個別除外リスト管理モーダル */}
       {exclusionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto" onClick={() => setExclusionModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setExclusionModalOpen(false)}>
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div>
               <h3 className="text-base font-bold text-white">自分の除外リスト</h3>
@@ -1083,7 +1083,7 @@ export default function OwnedItemsPage() {
 
       {/* 共通除外の設定（適用する種別を選ぶ・個別除外リストとは別） */}
       {commonExclusionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto" onClick={() => setCommonExclusionModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setCommonExclusionModalOpen(false)}>
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div>
               <h3 className="text-base font-bold text-white">共通除外の設定</h3>
@@ -1186,7 +1186,7 @@ export default function OwnedItemsPage() {
 
       {/* 数が減った同名アイテムのうち、どれ（どのステータス）を残すか確認 */}
       {pendingReduction && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto" onClick={() => setPendingReduction(null)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setPendingReduction(null)}>
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div>
               <h3 className="text-base font-bold text-white">残すアイテムの確認</h3>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { itemsApi } from '../api/items'
 import PriceAnalytics from './PriceAnalyticsAsync'
 import Spinner from './Spinner'
@@ -23,7 +24,8 @@ export default function PriceAnalyticsModal({ itemId, itemName, onClose }: Props
       .catch(() => setError(true))
   }, [itemId])
 
-  return (
+  // 親の space-y-* による margin-top で fixed オーバーレイが下にずれ、上端（ヘッダー）が暗幕で覆われないのを防ぐため body 直下に描画する
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
       onClick={onClose}
@@ -48,6 +50,7 @@ export default function PriceAnalyticsModal({ itemId, itemName, onClose }: Props
           <PriceAnalytics analytics={analytics} itemName={itemName} />
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

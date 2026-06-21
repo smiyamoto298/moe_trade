@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { listingsApi } from '../api/listings'
 import { buyRequestsApi } from '../api/buyRequests'
 import { useAuth } from '../contexts/AuthContext'
@@ -73,7 +74,8 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
     }
   }
 
-  return (
+  // 親の space-y-* による margin-top で fixed オーバーレイが下にずれ、上端（ヘッダー）が暗幕で覆われないのを防ぐため body 直下に描画する
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
       <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4">
         <div>
@@ -226,6 +228,7 @@ export default function EditTradeModal({ kind, record, onClose, onSaved }: Props
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

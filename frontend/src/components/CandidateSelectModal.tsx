@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { itemsApi } from '../api/items'
 import Spinner from './Spinner'
 import { compareJa } from '../utils/collator'
@@ -43,7 +44,8 @@ export default function CandidateSelectModal({ baseName, originalName, onSelect,
     }
   }, [keyword])
 
-  return (
+  // 親の space-y-* による margin-top で fixed オーバーレイが下にずれ、上端（ヘッダー）が暗幕で覆われないのを防ぐため body 直下に描画する
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
       <div className="bg-surface-card border border-sky-700/50 rounded-lg p-5 max-w-xl w-full my-8">
         <div className="flex items-center justify-between mb-3">
@@ -107,6 +109,7 @@ export default function CandidateSelectModal({ baseName, originalName, onSelect,
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
