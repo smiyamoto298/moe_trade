@@ -200,6 +200,69 @@ class NotificationApiTest extends TestCase
         );
     }
 
+    /**
+     * テクニック/アセット/その他のトップカテゴリを取得する。
+     * アセット・その他はマイグレーションでseed済み、テクニックは makeCategoryTree で作る。
+     */
+    private function topCategory(string $name): \App\Models\ItemCategory
+    {
+        return \App\Models\ItemCategory::whereNull('parent_id')->where('name', $name)->firstOrFail();
+    }
+
+    public function test_未確認アイテム件数はカテゴリ別に分かれeditor_adminにのみ返る(): void
+    {
+        // 武器>刀剣・テクニック>ノアピース を作成（アセット・その他はマイグレーションでseed済み）
+        $cats   = $this->makeCategoryTree();
+        $weapon = $cats['sword'];          // 装備品（武器>刀剣）
+        $noah   = $cats['noah'];           // テクニック>ノアピース
+        $asset  = $this->topCategory('アセット');
+        $other  = $this->topCategory('その他');
+
+        // 装備品: 確認中2件・確認済み1件（確認済みは数えない）
+        $this->makeItem(['category_id' => $weapon->id, 'verified_status' => 'unverified']);
+        $this->makeItem(['category_id' => $weapon->id, 'verified_status' => 'unverified']);
+        $this->makeItem(['category_id' => $weapon->id, 'verified_status' => 'verified']);
+        // テクニック: 確認中1件 / アセット: 確認中1件 / その他: 確認中1件
+        $this->makeItem(['category_id' => $noah->id, 'verified_status' => 'unverified']);
+        $this->makeItem(['category_id' => $asset->id, 'verified_status' => 'unverified']);
+        $this->makeItem(['category_id' => $other->id, 'verified_status' => 'unverified']);
+
+        $editor = $this->makeUserWithRole('editor');
+        $res = $this->actingAs($editor, 'sanctum')->getJson('/api/notifications/summary');
+        $this->assertSame(2, $res->json('unverified_items.equipment'));
+        $this->assertSame(1, $res->json('unverified_items.technique'));
+        $this->assertSame(1, $res->json('unverified_items.asset'));
+        $this->assertSame(1, $res->json('unverified_items.other'));
+        $this->assertSame(5, $res->json('unverified_items.total'));
+
+        // 一般ユーザーには露出させない
+        $this->assertNull(
+            $this->actingAs($this->makeUser(), 'sanctum')->getJson('/api/notifications/summary')->json('unverified_items')
+        );
+    }
+
+    public function test_装備品の未確認件数は装備セットの構成部位を除外する(): void
+    {
+        $cats   = $this->makeCategoryTree();
+        $weapon = $cats['sword'];
+        $setCat = $this->topCategory('装備セット');   // マイグレーションでseed済み
+
+        // セット本体（確認中）と、その構成部位2件（確認中）。本体だけを数え、構成部位は除外する。
+        $set    = $this->makeItem(['category_id' => $setCat->id, 'verified_status' => 'unverified', 'is_equipment_set' => true]);
+        $piece1 = $this->makeItem(['category_id' => $weapon->id, 'verified_status' => 'unverified']);
+        $piece2 = $this->makeItem(['category_id' => $weapon->id, 'verified_status' => 'unverified']);
+        $set->setMembers()->attach([$piece1->id => ['sort_order' => 0], $piece2->id => ['sort_order' => 1]]);
+
+        // セットに属さない通常の確認中装備品は数える
+        $this->makeItem(['category_id' => $weapon->id, 'verified_status' => 'unverified']);
+
+        // 期待値: セット本体1 + 通常装備品1 = 2（構成部位の piece1/piece2 は除外）
+        $editor = $this->makeUserWithRole('editor');
+        $res = $this->actingAs($editor, 'sanctum')->getJson('/api/notifications/summary');
+        $this->assertSame(2, $res->json('unverified_items.equipment'));
+        $this->assertSame(2, $res->json('unverified_items.total'));
+    }
+
     public function test_未ログインではアクセスできない(): void
     {
         $this->getJson('/api/notifications/summary')->assertStatus(401);

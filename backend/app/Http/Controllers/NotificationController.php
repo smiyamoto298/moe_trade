@@ -161,6 +161,9 @@ class NotificationController extends Controller
                 ->when(count($techIds) > 0, fn ($q) => $q->whereNotIn('category_id', $techIds))
                 ->when(count($assetIds) > 0, fn ($q) => $q->whereNotIn('category_id', $assetIds))
                 ->when(count($otherIds) > 0, fn ($q) => $q->whereNotIn('category_id', $otherIds))
+                // 装備セットの構成部位（piece）は、アイテム管理の既定ビュー（「装備セットを展開表示」OFF）
+                // でセット本体に畳まれて非表示になるため、画面の確認中件数と一致するようバッジ件数からも除外する。
+                ->whereNotIn('id', fn ($q) => $q->select('piece_item_id')->from('equipment_set_members'))
                 ->count();
 
             $unverifiedItems = [
