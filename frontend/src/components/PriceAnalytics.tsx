@@ -16,6 +16,15 @@ interface Props {
 
 function fmt(n: number) { return n.toLocaleString() }
 
+// X（旧Twitter）で検索する際の検索語を整形する。
+// 「秘伝の書 [ ○○ ]」「ノアピース [ ○○ ]」は中身（○○）だけを取り出し、
+// 検索ノイズになる空白（全角・半角）はすべて除去する。
+function toXSearchQuery(itemName: string) {
+  return itemName
+    .replace(/^(?:秘伝の書|ノアピース)\s*\[\s*(.*?)\s*\]$/, '$1')
+    .replace(/\s+/g, '')
+}
+
 function relativeDate(iso: string) {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
   if (diff === 0) return '今日'
@@ -118,7 +127,7 @@ export default function PriceAnalytics({ analytics, itemName }: Props) {
             {/* アイテム名を X（旧Twitter）で検索（新規ウィンドウ）。常に行の右端に配置 */}
             {itemName && (
               <a
-                href={`https://x.com/search?q=${encodeURIComponent(itemName)}&src=typed_query`}
+                href={`https://x.com/search?q=${encodeURIComponent(toXSearchQuery(itemName))}&src=typed_query`}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="アイテム名を X で検索"

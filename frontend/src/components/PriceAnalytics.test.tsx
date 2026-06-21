@@ -180,6 +180,30 @@ describe('PriceAnalytics', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
+  it('「秘伝の書 [ ○○ ]」「ノアピース [ ○○ ]」は括弧内だけを取り出して X 検索する', () => {
+    const { rerender } = render(
+      <PriceAnalytics analytics={base()} itemName="秘伝の書 [ 精霊の剣 ]" />
+    )
+    expect(screen.getByRole('link', { name: /Xで検索/ })).toHaveAttribute(
+      'href',
+      `https://x.com/search?q=${encodeURIComponent('精霊の剣')}&src=typed_query`
+    )
+
+    rerender(<PriceAnalytics analytics={base()} itemName="ノアピース [ 炎の鎧 ]" />)
+    expect(screen.getByRole('link', { name: /Xで検索/ })).toHaveAttribute(
+      'href',
+      `https://x.com/search?q=${encodeURIComponent('炎の鎧')}&src=typed_query`
+    )
+  })
+
+  it('X 検索語からは空白（全角・半角）を除去する', () => {
+    render(<PriceAnalytics analytics={base()} itemName="精霊 の　剣" />)
+    expect(screen.getByRole('link', { name: /Xで検索/ })).toHaveAttribute(
+      'href',
+      `https://x.com/search?q=${encodeURIComponent('精霊の剣')}&src=typed_query`
+    )
+  })
+
   it('itemName が無ければ X 検索リンクを表示しない', () => {
     render(<PriceAnalytics analytics={base()} />)
     expect(screen.queryByRole('link', { name: /Xで検索/ })).not.toBeInTheDocument()
