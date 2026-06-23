@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BatchRun;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 
 class AdminController extends Controller
 {
@@ -72,5 +73,27 @@ class AdminController extends Controller
             'runs'     => $runs,
             'commands' => $commands,
         ]);
+    }
+
+    /**
+     * 本番データをマスキングしてローカルDBへ取り込む（db:pull-prod を実行）。
+     *
+     * ローカルDBを破壊的に上書きするため **ローカル環境専用**。本番では 403 を返す。
+     * 実行結果（要約・件数・ローカルログイン情報）は batch_runs に記録され、
+     * その最新行をレスポンスで返す。
+     */
+    public function pullProdData()
+    {
+        if (app()->environment('production')) {
+            abort(403, '本番環境では実行できません。');
+        }
+
+        $exit = Artisan::call('db:pull-prod');
+        $run  = BatchRun::where('command', 'db:pull-prod')->orderByDesc('started_at')->first();
+
+        return response()->json([
+            'ok'  => $exit === 0,
+            'run' => $run,
+        ], $exit === 0 ? 200 : 500);
     }
 }

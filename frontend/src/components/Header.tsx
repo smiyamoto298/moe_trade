@@ -2,6 +2,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
+import { useDialog } from '../contexts/DialogContext'
+import { devApi } from '../api/dev'
 import VerifyEmailBanner from './VerifyEmailBanner'
 
 export default function Header() {
@@ -9,9 +11,11 @@ export default function Header() {
   const { totalUnread, expiredCount, hasNewBoard, unverifiedItemCount, unorganizedLabelCount, excludedSuggestionCount, announcements, markAnnouncementRead } = useNotification()
   // 管理メニュー配下の通知合計（ドロップダウンを閉じていても気づけるよう「管理」にドット表示）
   const adminNotifCount = unorganizedLabelCount + excludedSuggestionCount
+  const { confirm, alert } = useDialog()
   const navigate = useNavigate()
   const [adminOpen, setAdminOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [pullingProd, setPullingProd] = useState(false)
   const adminRef = useRef<HTMLDivElement>(null)
 
   // ユーザーが「表示しない」にしたお知らせ（端末ごとに localStorage で保持）。
@@ -64,6 +68,34 @@ export default function Header() {
     setMobileOpen(false)
     await logout()
     navigate('/auth/login')
+  }
+
+  // 本番データのローカル取込（ローカル環境専用）。ローカルDBを破壊的に上書きする。
+  const handlePullProd = async () => {
+    setAdminOpen(false)
+    setMobileOpen(false)
+    const ok = await confirm(
+      '本番データ（IP・キャラ名・ログイン情報はマスキング済み）をローカルDBへ取り込みます。',
+      {
+        title: '本番データ取込',
+        danger: true,
+        confirmLabel: '取り込む',
+        highlight: 'ローカルDBの現在のデータはすべて削除され、置き換えられます。',
+      }
+    )
+    if (!ok) return
+    setPullingProd(true)
+    try {
+      const res = await devApi.pullProd()
+      await alert(res.data.run?.summary ?? '取込が完了しました。', { title: '取込完了' })
+    } catch {
+      await alert('取込に失敗しました。バッチ実行履歴で詳細を確認してください。', {
+        title: 'エラー',
+        danger: true,
+      })
+    } finally {
+      setPullingProd(false)
+    }
   }
 
   // デスクトップ・モバイル共通で使うナビリンク群
@@ -228,6 +260,17 @@ export default function Header() {
                       >
                         バッチ実行履歴
                       </Link>
+                      {/* ローカル開発専用: 本番データの取込（本番では非表示） */}
+                      {isLocal && (
+                        <button
+                          type="button"
+                          onClick={handlePullProd}
+                          disabled={pullingProd}
+                          className="w-full text-left px-4 py-2.5 text-sm text-amber-300 border-t border-surface-border hover:bg-amber-500/10 hover:text-amber-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {pullingProd ? '本番データ取込中…' : '本番データ取込'}
+                        </button>
+                      )}
                       <Link
                         to="/admin/excluded-items"
                         onClick={() => setAdminOpen(false)}
@@ -399,6 +442,17 @@ export default function Header() {
                     >
                       バッチ実行履歴
                     </Link>
+                    {/* ローカル開発専用: 本番データの取込（本番では非表示） */}
+                    {isLocal && (
+                      <button
+                        type="button"
+                        onClick={handlePullProd}
+                        disabled={pullingProd}
+                        className="w-full text-left py-3 border-b border-surface-border text-amber-300 hover:text-amber-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {pullingProd ? '本番データ取込中…' : '本番データ取込'}
+                      </button>
+                    )}
                     <Link
                       to="/admin/excluded-items"
                       onClick={closeMobile}

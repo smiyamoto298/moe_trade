@@ -325,6 +325,9 @@ Route::middleware('auth:sanctum')->group(function () {
         // バッチ（Artisanコマンド）の実行履歴
         Route::get('admin/batch-runs', [AdminController::class, 'batchRuns']);
 
+        // 本番データのローカル取込（ローカル環境専用・本番では 403）
+        Route::post('admin/dev/pull-prod', [AdminController::class, 'pullProdData']);
+
         // X宣伝ツイート文面の生成
         Route::get('admin/promo-tweets', [PromoTweetController::class, 'index']);
         // 「Xでポスト」押下時に前回ツイート時刻を記録（単日モードの集計開始時刻になる）

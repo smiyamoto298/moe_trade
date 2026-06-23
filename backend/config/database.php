@@ -64,6 +64,28 @@ return [
             ]) : [],
         ],
 
+        // 本番DBの読み取り専用接続（ローカル開発でのみ使用）。
+        // `php artisan db:pull-prod` が本番データをマスキングしてローカルへ複製する際に参照する。
+        // 本番環境にはこの接続情報（PROD_DB_*）を置かないこと。
+        'prod' => [
+            'driver' => 'mysql',
+            'host' => env('PROD_DB_HOST'),
+            'port' => env('PROD_DB_PORT', '3306'),
+            'database' => env('PROD_DB_DATABASE'),
+            'username' => env('PROD_DB_USERNAME'),
+            'password' => env('PROD_DB_PASSWORD'),
+            'charset' => env('PROD_DB_CHARSET', 'utf8mb4'),
+            'collation' => env('PROD_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            // 本番は誤って書き込まないよう strict・FK 制約に依存しない読み取り用途
+            'strict' => false,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                Mysql::ATTR_SSL_CA => env('PROD_DB_SSL_CA'),
+            ]) : [],
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
