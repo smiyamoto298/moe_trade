@@ -38,10 +38,23 @@ export function BonusEffectList({ item }: { item: Item }) {
           </p>
           {e.values?.map((v, i) => {
             const disp = formatBonusValueDisplay(v.value, v.value_unit)
+            // テキスト値が長い（5文字以上）場合は一覧では [詳細] とし、ホバーで全文をポップアップ表示する。
+            const isLongText = v.value_unit === 'text' && disp.length >= 5
             return (
               <p key={i} className="text-gray-400 whitespace-nowrap">
                 {v.label && <span>{v.label}{disp && '：'}</span>}
-                {disp && <span className="text-gray-200">{disp}</span>}
+                {disp && (
+                  isLongText ? (
+                    <span className="group relative inline-block cursor-help focus:outline-none" tabIndex={0}>
+                      <span className="text-[10px] bg-blue-900/40 border border-blue-600/40 rounded px-1 py-px text-blue-200">詳細</span>
+                      <span className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block group-focus:block w-64 bg-surface-card border border-blue-600/40 rounded-md px-3 py-2 text-xs text-gray-200 shadow-xl whitespace-normal normal-case">
+                        {disp}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-gray-200">{disp}</span>
+                  )
+                )}
               </p>
             )
           })}
