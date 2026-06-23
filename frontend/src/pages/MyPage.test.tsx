@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import MyPage from './MyPage'
 
@@ -12,6 +12,8 @@ import MyPage from './MyPage'
 const mockData = vi.hoisted(() => ({
   listings: [] as any[],
   buyRequests: [] as any[],
+  buyingChats: [] as any[],
+  sellingOffers: [] as any[],
 }))
 
 vi.mock('../api/client', () => ({
@@ -25,6 +27,12 @@ vi.mock('../api/client', () => ({
       }
       if (url === '/mypage/selling-chats' || url === '/mypage/buy-request-chats') {
         return Promise.resolve({ data: {} })
+      }
+      if (url === '/mypage/chats') {
+        return Promise.resolve({ data: mockData.buyingChats })
+      }
+      if (url === '/mypage/selling-offers') {
+        return Promise.resolve({ data: mockData.sellingOffers })
       }
       return Promise.resolve({ data: [] })
     }),
@@ -83,6 +91,8 @@ describe('MyPage', () => {
   beforeEach(() => {
     mockData.listings = []
     mockData.buyRequests = []
+    mockData.buyingChats = []
+    mockData.sellingOffers = []
   })
 
   it('一覧＋チャットのグリッドは minmax(0,1fr) で左カラムの広がりを防ぐ', async () => {
@@ -129,6 +139,37 @@ describe('MyPage', () => {
     })
     // 「残り-N日」の出品中カードは出さない
     expect(queryByText(/残り-?\d+日/)).toBeNull()
+  })
+
+  it('取引希望チャット一覧に出品の取引金額を表示する', async () => {
+    mockData.buyingChats = [{
+      id: 1,
+      listing_id: 5,
+      buyer_id: 10,
+      server: 'P',
+      status: 'open',
+      updated_at: new Date().toISOString(),
+      messages: [],
+      listing: {
+        id: 5,
+        price: 12345,
+        currency: 'AC',
+        item: { id: 5, name: 'テスト剣', category: { name: '武器' } },
+        servers: [],
+      },
+    }]
+
+    const { getByText } = render(
+      <MemoryRouter>
+        <MyPage />
+      </MemoryRouter>
+    )
+    // 取引希望タブへ切り替え
+    fireEvent.click(getByText('取引希望'))
+    await waitFor(() => {
+      expect(getByText('テスト剣')).toBeTruthy()
+      expect(getByText(/12,345 AC/)).toBeTruthy()
+    })
   })
 
   it('期限切れが無ければ通知バナーを表示しない', async () => {

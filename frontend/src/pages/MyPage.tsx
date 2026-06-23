@@ -659,7 +659,10 @@ export default function MyPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               {isUnread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
-                              <p className="text-sm font-medium text-white truncate">{chatListing?.item?.name ?? `出品 #${c.listing_id}`}</p>
+                              <p className="text-sm font-medium text-white truncate">
+                                {chatListing?.item?.name ?? `出品 #${c.listing_id}`}
+                                {chatListing && <span className="text-primary-500 ml-2">{chatListing.price?.toLocaleString?.() ?? chatListing.price} {chatListing.currency}</span>}
+                              </p>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
