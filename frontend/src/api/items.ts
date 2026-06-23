@@ -16,6 +16,7 @@ export interface EquipmentSetPieceInput {
     values: { value: number | string; value_unit: string; label?: string }[]
     description: string
     is_exclusive?: boolean
+    no_warage_effect?: boolean
   }[]
 }
 
@@ -98,6 +99,7 @@ export const itemsApi = {
       values: { value: number | string; value_unit: string; label?: string }[]
       description: string
       is_exclusive?: boolean
+      no_warage_effect?: boolean
     }[]
     // 固定ハッシュタグ（admin/editor のみ反映）
     fixed_hashtags?: string[]
@@ -163,6 +165,7 @@ export const itemsApi = {
       values: { value: number | string; value_unit: string; label?: string }[]
       description: string
       is_exclusive?: boolean
+      no_warage_effect?: boolean
     }[]
     // 固定ハッシュタグ（admin/editor のみ反映）
     fixed_hashtags?: string[]

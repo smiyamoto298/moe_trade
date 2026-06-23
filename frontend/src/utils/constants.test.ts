@@ -14,6 +14,8 @@ import {
   formatBonusValueDisplay,
   bonusValueForSave,
   isLabelOnlyUnit,
+  formatBonusEffectDescription,
+  NO_WARAGE_EFFECT_NOTE,
 } from './constants'
 
 // design.md のマスタ定義（追加効果キー・特殊条件・スキル・マスタリ・アセット選択肢）と
@@ -177,6 +179,27 @@ describe('isLabelOnlyUnit', () => {
     expect(isLabelOnlyUnit('%')).toBe(false)
     expect(isLabelOnlyUnit('text')).toBe(false)
     expect(isLabelOnlyUnit(undefined)).toBe(false)
+  })
+})
+
+describe('formatBonusEffectDescription', () => {
+  it('フラグが無ければ説明をそのまま返す', () => {
+    expect(formatBonusEffectDescription({ description: '攻撃力アップ' })).toBe('攻撃力アップ')
+    expect(formatBonusEffectDescription({ description: '攻撃力アップ', no_warage_effect: false })).toBe('攻撃力アップ')
+  })
+
+  it('フラグが立つと説明末尾に注記を付ける', () => {
+    expect(formatBonusEffectDescription({ description: '攻撃力アップ', no_warage_effect: true }))
+      .toBe(`攻撃力アップ ${NO_WARAGE_EFFECT_NOTE}`)
+  })
+
+  it('説明が空でもフラグが立てば注記のみ返す', () => {
+    expect(formatBonusEffectDescription({ description: '', no_warage_effect: true })).toBe(NO_WARAGE_EFFECT_NOTE)
+    expect(formatBonusEffectDescription({ no_warage_effect: true })).toBe(NO_WARAGE_EFFECT_NOTE)
+  })
+
+  it('注記文は「※WarAgeでは効果がない」', () => {
+    expect(NO_WARAGE_EFFECT_NOTE).toBe('※WarAgeでは効果がない')
   })
 })
 

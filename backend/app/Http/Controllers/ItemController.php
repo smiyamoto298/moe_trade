@@ -165,6 +165,7 @@ class ItemController extends Controller
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
             'bonus_effects.*.is_exclusive' => 'nullable|boolean',
+            'bonus_effects.*.no_warage_effect' => 'nullable|boolean',
             // 固定ハッシュタグ（admin/editor のみ反映。一般ユーザーが送っても無視される）
             'fixed_hashtags'           => 'nullable|array',
             'fixed_hashtags.*'         => 'string|max:50',
@@ -292,6 +293,7 @@ class ItemController extends Controller
             'bonus_effects.*.values'      => 'nullable|array',
             'bonus_effects.*.description' => 'nullable|string',
             'bonus_effects.*.is_exclusive' => 'nullable|boolean',
+            'bonus_effects.*.no_warage_effect' => 'nullable|boolean',
             // 固定ハッシュタグ（admin/editor のみ反映。一般ユーザーが送っても無視される）
             'fixed_hashtags'           => 'nullable|array',
             'fixed_hashtags.*'         => 'string|max:50',
@@ -466,6 +468,7 @@ class ItemController extends Controller
             'pieces.*.bonus_effects.*.values'      => 'nullable|array',
             'pieces.*.bonus_effects.*.description' => 'nullable|string',
             'pieces.*.bonus_effects.*.is_exclusive' => 'nullable|boolean',
+            'pieces.*.bonus_effects.*.no_warage_effect' => 'nullable|boolean',
         ];
     }
 

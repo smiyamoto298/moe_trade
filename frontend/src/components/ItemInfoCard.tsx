@@ -1,5 +1,5 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, formatBonusEffectDescription } from '../utils/constants'
 import { OTHER_RECIPE } from '../utils/itemType'
 import EquipmentSetBreakdown from './EquipmentSetBreakdown'
 
@@ -134,8 +134,8 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
                     ))}
                   </span>
                 )}
-                {e.description && (
-                  <span className="text-gray-500 ml-2 text-xs">— {e.description}</span>
+                {formatBonusEffectDescription(e) && (
+                  <span className="text-gray-500 ml-2 text-xs">— {formatBonusEffectDescription(e)}</span>
                 )}
               </div>
             ))}

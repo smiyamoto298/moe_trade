@@ -21,10 +21,11 @@ interface BonusEffectForm {
   values: BonusValueForm[]
   description: string
   is_exclusive: boolean // この付加効果が専用技か
+  no_warage_effect: boolean // WarAgeでは効果がない付加効果か
 }
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
-const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false })
+const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false })
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 
@@ -140,6 +141,9 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const setBonusExclusive = (i: number, val: boolean) =>
     setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, is_exclusive: val } : e))
 
+  const setBonusNoWarage = (i: number, val: boolean) =>
+    setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, no_warage_effect: val } : e))
+
   const setBonusVal = (bi: number, vi: number, key: keyof BonusValueForm, val: string) =>
     setBonusEffects((prev) => prev.map((e, i) => i !== bi ? e : {
       ...e, values: e.values.map((v, j) => j === vi ? { ...v, [key]: val } : v),
@@ -212,6 +216,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
               .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
             is_exclusive: e.is_exclusive,
+            no_warage_effect: e.no_warage_effect,
           })) : [],
         // editor/admin が選んだ確認状態（一般ユーザーは undefined）
         ...(verified !== undefined && { verified }),
@@ -611,6 +616,10 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
                   <label className="flex items-center gap-1.5 cursor-pointer text-xs text-amber-200 select-none">
                     <input type="checkbox" checked={e.is_exclusive} onChange={(ev) => setBonusExclusive(idx, ev.target.checked)} className="accent-amber-500" />
                     専用技
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs text-sky-200 select-none">
+                    <input type="checkbox" checked={e.no_warage_effect} onChange={(ev) => setBonusNoWarage(idx, ev.target.checked)} className="accent-sky-500" />
+                    WarAge無効
                   </label>
                   <button type="button" onClick={() => setBonusEffects((p) => p.filter((_, i) => i !== idx))} className="text-xs text-red-400 hover:text-red-300">削除</button>
                 </div>

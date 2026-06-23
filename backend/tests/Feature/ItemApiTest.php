@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Item;
+use App\Models\ItemBonusEffect;
 use App\Models\ItemCategory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -103,6 +104,80 @@ class ItemApiTest extends TestCase
             ->assertJsonPath('bonus_effects.0.is_exclusive', true);
 
         $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手', 'is_exclusive' => true]);
+    }
+
+    public function test_付加効果のWarAge無効フラグを保存して取得できる(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'WarAge無効の剣',
+            'bonus_effects' => [
+                [
+                    'effect_name'      => '炎の魔剣',
+                    'description'      => '攻撃時に炎ダメージ',
+                    'no_warage_effect' => true,
+                    'values'           => [['value' => 15, 'value_unit' => '%', 'label' => '物理ダメージ']],
+                ],
+            ],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('bonus_effects.0.no_warage_effect', true)
+            // 文言は説明本文には保存せず、表示時にフラグから付与する
+            ->assertJsonPath('bonus_effects.0.description', '攻撃時に炎ダメージ');
+
+        $this->assertDatabaseHas('item_bonus_effects', [
+            'effect_name'      => '炎の魔剣',
+            'no_warage_effect' => true,
+            'description'      => '攻撃時に炎ダメージ',
+        ]);
+    }
+
+    public function test_マイグレーションは説明内のWarAge文言を抽出してフラグ化する(): void
+    {
+        $item = $this->makeItem();
+
+        // 旧データ: 文言が説明本文に直接入っており、フラグは未設定
+        $withNote = ItemBonusEffect::create([
+            'item_id'          => $item->id,
+            'effect_name'      => '旧データ効果',
+            'values'           => [],
+            'description'      => '攻撃力アップ ※WarAgeでは効果がない',
+            'no_warage_effect' => false,
+        ]);
+        // 文言のみの説明（前後の空白も除去される）
+        $noteOnly = ItemBonusEffect::create([
+            'item_id'          => $item->id,
+            'effect_name'      => '文言のみ効果',
+            'values'           => [],
+            'description'      => '※WarAgeでは効果がない',
+            'no_warage_effect' => false,
+        ]);
+        // 文言を含まない説明は変更されない
+        $plain = ItemBonusEffect::create([
+            'item_id'          => $item->id,
+            'effect_name'      => '通常効果',
+            'values'           => [],
+            'description'      => '防御力アップ',
+            'no_warage_effect' => false,
+        ]);
+
+        // バックフィル（列は既に存在するので追加はスキップされ、データ整形のみ走る）
+        $migration = require base_path('database/migrations/2026_06_23_000001_add_no_warage_effect_to_item_bonus_effects.php');
+        $migration->up();
+
+        $this->assertDatabaseHas('item_bonus_effects', [
+            'id' => $withNote->id, 'description' => '攻撃力アップ', 'no_warage_effect' => true,
+        ]);
+        $this->assertDatabaseHas('item_bonus_effects', [
+            'id' => $noteOnly->id, 'description' => '', 'no_warage_effect' => true,
+        ]);
+        $this->assertDatabaseHas('item_bonus_effects', [
+            'id' => $plain->id, 'description' => '防御力アップ', 'no_warage_effect' => false,
+        ]);
     }
 
     public function test_付加効果の値はテキスト_確認中の単位で保存できる(): void

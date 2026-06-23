@@ -97,6 +97,19 @@ export function bonusValueForSave(v: { value: string; value_unit: string }): num
   return Number(v.value)
 }
 
+// 「WarAgeでは効果がない」付加効果に末尾追記する注記文。
+export const NO_WARAGE_EFFECT_NOTE = '※WarAgeでは効果がない'
+
+// 付加効果の説明の表示文を組み立てる。no_warage_effect が true のときは
+// 説明の末尾に NO_WARAGE_EFFECT_NOTE を付ける（説明が空でも注記は表示する）。
+export function formatBonusEffectDescription(
+  e: { description?: string; no_warage_effect?: boolean },
+): string {
+  const base = (e.description ?? '').trim()
+  if (!e.no_warage_effect) return base
+  return base ? `${base} ${NO_WARAGE_EFFECT_NOTE}` : NO_WARAGE_EFFECT_NOTE
+}
+
 // キーの定義順がセレクトボックス等の選択肢の表示順になる（STAT_INPUT_COLUMNS の1列目→2列目→3列目と同順）
 export const BASE_STAT_LABELS: Record<string, string> = {
   max_hp:     '最大HP',

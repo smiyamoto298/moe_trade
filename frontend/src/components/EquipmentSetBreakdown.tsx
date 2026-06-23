@@ -1,5 +1,5 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, formatBonusEffectDescription } from '../utils/constants'
 import { groupPiecesByPerformance } from '../utils/equipmentSet'
 
 // 装備セットの構成部位（set_members）を、部位ごとの名前・追加効果・付加効果・特殊条件つきで表示する。
@@ -61,7 +61,7 @@ export default function EquipmentSetBreakdown({ members }: { members?: Item[] })
                           {formatBonusValueDisplay(v.value, v.value_unit)}
                         </span>
                       ))}
-                      {e.description && <span className="text-gray-500 ml-1">— {e.description}</span>}
+                      {formatBonusEffectDescription(e) && <span className="text-gray-500 ml-1">— {formatBonusEffectDescription(e)}</span>}
                     </div>
                   ))}
                 </div>

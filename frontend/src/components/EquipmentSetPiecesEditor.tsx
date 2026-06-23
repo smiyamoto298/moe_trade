@@ -29,6 +29,7 @@ interface BonusEffectForm {
   values: BonusValueForm[]
   description: string
   is_exclusive: boolean // この付加効果が専用技か
+  no_warage_effect: boolean // WarAgeでは効果がない付加効果か
 }
 export interface BaseStatsGroupForm {
   partCategoryIds: number[] // この設定を適用する部位（グループ[0]は空＝残り全部位）
@@ -48,7 +49,7 @@ export interface EquipmentSetForm {
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
-const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false })
+const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false })
 const emptyBaseGroup = (): BaseStatsGroupForm => ({
   partCategoryIds: [], base_stats: {}, special_conditions: [],
 })
@@ -71,7 +72,7 @@ function baseKey(m: Item): string {
 function bonusKey(m: Item): string {
   return JSON.stringify(
     (m.bonus_effects ?? []).map((e) => ({
-      effect_name: e.effect_name, values: e.values, description: e.description, is_exclusive: !!e.is_exclusive,
+      effect_name: e.effect_name, values: e.values, description: e.description, is_exclusive: !!e.is_exclusive, no_warage_effect: !!e.no_warage_effect,
     }))
   )
 }
@@ -121,6 +122,7 @@ export function membersToForm(members: Item[]): EquipmentSetForm {
       values: e.values.map((v) => ({ value: String(v.value), value_unit: v.value_unit, label: v.label ?? '' })),
       description: e.description ?? '',
       is_exclusive: !!e.is_exclusive,
+      no_warage_effect: !!e.no_warage_effect,
     })),
   }), emptyBonusGroup)
   return { parts, baseStatsGroups, bonusGroups }
@@ -156,6 +158,7 @@ export function formToPieces(form: EquipmentSetForm): EquipmentSetPieceInput[] {
             .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
           description: e.description,
           is_exclusive: e.is_exclusive,
+          no_warage_effect: e.no_warage_effect,
         })),
     }
   })
@@ -238,6 +241,8 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
     updateBonus(gi, { bonus_effects: bonusGroups[gi].bonus_effects.map((e, i) => (i === bi ? { ...e, [key]: val } : e)) })
   const setBonusExclusive = (gi: number, bi: number, val: boolean) =>
     updateBonus(gi, { bonus_effects: bonusGroups[gi].bonus_effects.map((e, i) => (i === bi ? { ...e, is_exclusive: val } : e)) })
+  const setBonusNoWarage = (gi: number, bi: number, val: boolean) =>
+    updateBonus(gi, { bonus_effects: bonusGroups[gi].bonus_effects.map((e, i) => (i === bi ? { ...e, no_warage_effect: val } : e)) })
   const setBonusVal = (gi: number, bi: number, vi: number, key: keyof BonusValueForm, val: string) =>
     updateBonus(gi, {
       bonus_effects: bonusGroups[gi].bonus_effects.map((e, i) => i !== bi ? e : {
@@ -425,6 +430,10 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                       <label className="flex items-center gap-1.5 cursor-pointer text-xs text-amber-200 select-none">
                         <input type="checkbox" checked={e.is_exclusive} onChange={(ev) => setBonusExclusive(gi, bi, ev.target.checked)} className="accent-amber-500" />
                         専用技
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-sky-200 select-none">
+                        <input type="checkbox" checked={e.no_warage_effect} onChange={(ev) => setBonusNoWarage(gi, bi, ev.target.checked)} className="accent-sky-500" />
+                        WarAge無効
                       </label>
                       <button type="button" onClick={() => updateBonus(gi, { bonus_effects: g.bonus_effects.filter((_, i) => i !== bi) })} className="text-xs text-red-400 hover:text-red-300">削除</button>
                     </div>

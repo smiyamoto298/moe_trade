@@ -28,11 +28,12 @@ interface BonusEffectForm {
   values: BonusValueForm[]
   description: string
   is_exclusive: boolean // この付加効果が専用技か
+  no_warage_effect: boolean // WarAgeでは効果がない付加効果か
 }
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
 const emptyBonus = (): BonusEffectForm => ({
-  effect_name: '', values: [emptyValue()], description: '', is_exclusive: false,
+  effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false,
 })
 
 const isEquipmentSetCategory = (cat: ItemCategory) =>
@@ -146,6 +147,7 @@ export default function AdminItemEditPage() {
           : [emptyValue()],
         description: e.description ?? '',
         is_exclusive: !!e.is_exclusive,
+        no_warage_effect: !!e.no_warage_effect,
       })))
     }
 
@@ -249,6 +251,7 @@ export default function AdminItemEditPage() {
               values: e.values.map((v) => ({ value: v.value, value_unit: v.value_unit, label: v.label })),
               description: e.description,
               is_exclusive: e.is_exclusive,
+              no_warage_effect: e.no_warage_effect,
             })),
         },
         ...equipSetForm.bonusGroups.slice(1),
@@ -297,6 +300,7 @@ export default function AdminItemEditPage() {
         values: e.values.length > 0 ? e.values.map((v) => ({ ...v })) : [emptyValue()],
         description: e.description,
         is_exclusive: e.is_exclusive,
+        no_warage_effect: e.no_warage_effect,
       })))
       return
     }
@@ -336,6 +340,9 @@ export default function AdminItemEditPage() {
 
   const setBonusExclusive = (idx: number, val: boolean) =>
     setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, is_exclusive: val } : e))
+
+  const setBonusNoWarage = (idx: number, val: boolean) =>
+    setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, no_warage_effect: val } : e))
 
   const setBonusValue = (bonusIdx: number, valIdx: number, key: keyof BonusValueForm, val: string) =>
     setBonusEffects((prev) => prev.map((e, i) =>
@@ -434,6 +441,7 @@ export default function AdminItemEditPage() {
               .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
             is_exclusive: e.is_exclusive,
+            no_warage_effect: e.no_warage_effect,
           })) : [],
         // ハッシュタグ（admin/editor は固定タグ・通常タグの両方を編集可。固定は権限をバックエンドでも再チェック）
         ...(isEditor ? { fixed_hashtags: parseHashtags(fixedTagsText), user_hashtags: parseHashtags(userTagsText) } : {}),
@@ -733,6 +741,15 @@ export default function AdminItemEditPage() {
                       className="accent-amber-500"
                     />
                     専用技
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs text-sky-200 select-none">
+                    <input
+                      type="checkbox"
+                      checked={e.no_warage_effect}
+                      onChange={(ev) => setBonusNoWarage(idx, ev.target.checked)}
+                      className="accent-sky-500"
+                    />
+                    WarAge無効
                   </label>
                   <button
                     type="button" onClick={() => removeBonus(idx)}
