@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 interface DialogOptions {
   title?: string
@@ -13,13 +13,21 @@ interface DialogOptions {
   onCheckbox?: (checked: boolean) => void
 }
 
+interface PromptOptions extends DialogOptions {
+  /** 入力欄の初期値。 */
+  defaultValue?: string
+  /** 入力欄のプレースホルダ。 */
+  placeholder?: string
+}
+
 interface DialogState {
   open: boolean
   message: string
-  kind: 'confirm' | 'alert'
-  options: DialogOptions
+  kind: 'confirm' | 'alert' | 'prompt'
+  options: PromptOptions
   checked: boolean
-  resolve: ((v: boolean) => void) | null
+  input: string
+  resolve: ((v: boolean | string | null) => void) | null
 }
 
 interface DialogContextValue {
@@ -27,11 +35,13 @@ interface DialogContextValue {
   confirm: (message: string, options?: DialogOptions) => Promise<boolean>
   /** 通知ダイアログ。OK で閉じる */
   alert: (message: string, options?: DialogOptions) => Promise<void>
+  /** 入力ダイアログ。OK で入力文字列、キャンセル/閉じるで null を返す */
+  prompt: (message: string, options?: PromptOptions) => Promise<string | null>
 }
 
 const DialogContext = createContext<DialogContextValue | null>(null)
 
-const INITIAL: DialogState = { open: false, message: '', kind: 'confirm', options: {}, checked: false, resolve: null }
+const INITIAL: DialogState = { open: false, message: '', kind: 'confirm', options: {}, checked: false, input: '', resolve: null }
 
 /**
  * window.confirm / window.alert の代替。
@@ -44,7 +54,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const confirm = useCallback(
     (message: string, options: DialogOptions = {}) =>
       new Promise<boolean>((resolve) => {
-        setState({ open: true, message, kind: 'confirm', options, checked: options.checkbox?.defaultChecked ?? false, resolve })
+        setState({ open: true, message, kind: 'confirm', options, checked: options.checkbox?.defaultChecked ?? false, input: '', resolve: (v) => resolve(Boolean(v)) })
       }),
     []
   )
@@ -52,21 +62,47 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const alert = useCallback(
     (message: string, options: DialogOptions = {}) =>
       new Promise<void>((resolve) => {
-        setState({ open: true, message, kind: 'alert', options, checked: options.checkbox?.defaultChecked ?? false, resolve: () => resolve() })
+        setState({ open: true, message, kind: 'alert', options, checked: options.checkbox?.defaultChecked ?? false, input: '', resolve: () => resolve() })
+      }),
+    []
+  )
+
+  const prompt = useCallback(
+    (message: string, options: PromptOptions = {}) =>
+      new Promise<string | null>((resolve) => {
+        setState({
+          open: true,
+          message,
+          kind: 'prompt',
+          options,
+          checked: options.checkbox?.defaultChecked ?? false,
+          input: options.defaultValue ?? '',
+          resolve: (v) => resolve(typeof v === 'string' ? v : null),
+        })
       }),
     []
   )
 
   const close = (result: boolean) => {
     state.options.onCheckbox?.(state.checked)
-    state.resolve?.(result)
+    // prompt は OK で入力文字列、キャンセル/閉じるで null を返す
+    state.resolve?.(state.kind === 'prompt' ? (result ? state.input : null) : result)
     setState(INITIAL)
   }
 
-  const { open, message, kind, options, checked } = state
+  const inputRef = useRef<HTMLInputElement>(null)
+  // prompt を開いたら入力欄へフォーカスし、初期値を全選択しておく
+  useEffect(() => {
+    if (state.open && state.kind === 'prompt') {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [state.open, state.kind])
+
+  const { open, message, kind, options, checked, input } = state
 
   return (
-    <DialogContext.Provider value={{ confirm, alert }}>
+    <DialogContext.Provider value={{ confirm, alert, prompt }}>
       {children}
       {open && (
         <div
@@ -79,6 +115,20 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           >
             {options.title && <h2 className="text-base font-bold text-white">{options.title}</h2>}
             <p className="text-sm text-gray-300 whitespace-pre-line">{message}</p>
+            {kind === 'prompt' && (
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                placeholder={options.placeholder}
+                onChange={(e) => setState((s) => ({ ...s, input: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') close(true)
+                  else if (e.key === 'Escape') close(false)
+                }}
+                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+              />
+            )}
             {options.highlight && (
               <p className="text-sm font-medium text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded px-3 py-2 whitespace-pre-line">
                 {options.highlight}
@@ -96,7 +146,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               </label>
             )}
             <div className="flex justify-end gap-2">
-              {kind === 'confirm' && (
+              {kind !== 'alert' && (
                 <button
                   onClick={() => close(false)}
                   className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors"

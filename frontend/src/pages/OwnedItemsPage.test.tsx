@@ -32,7 +32,7 @@ vi.mock('../utils/inventoryStore', () => ({
 }))
 vi.mock('../hooks/usePageMeta', () => ({ usePageMeta: vi.fn() }))
 vi.mock('../contexts/DialogContext', () => ({
-  useDialog: () => ({ confirm: vi.fn(), alert: vi.fn() }),
+  useDialog: () => ({ confirm: vi.fn(), alert: vi.fn(), prompt: vi.fn() }),
 }))
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { role: 'user' } }),

@@ -26,7 +26,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function OwnedItemsPage() {
   usePageMeta('アイテムボックス', '公式サイトのアイテムボックスを貼り付けて、所持アイテムを管理できます。')
-  const { confirm, alert } = useDialog()
+  const { confirm, alert, prompt } = useDialog()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const navigate = useNavigate()
@@ -330,9 +330,9 @@ export default function OwnedItemsPage() {
     if (filterAccountId === id) setFilterAccountId('all')
   }
 
-  // 簡易プロンプト（DialogContext には prompt が無いため window.prompt を使う）
+  // アカウント名の入力。ブラウザ標準の prompt ではなくダイアログ内のテキストボックスで受け取る。
   const promptName = (label: string, initial = ''): Promise<string | null> =>
-    Promise.resolve(window.prompt(label, initial))
+    prompt(label, { title: 'MoE アカウント', defaultValue: initial, confirmLabel: '決定' })
 
   // ---- 表示種別（ジャンル）の分類 ----
   // 既定種別「その他」の id（ユーザー割当 type_id=null はこの種別とみなす）
