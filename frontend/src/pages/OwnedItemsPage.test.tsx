@@ -191,6 +191,69 @@ describe('OwnedItemsPage 表示切替タブ', () => {
   })
 })
 
+describe('OwnedItemsPage 重複を確認', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('異なる取り込み先で同名のアイテムを一覧表示する（取引可能以外も対象・種別「未登録」のみ対象外）', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    const item = makeItem({ id: 12, name: '炎の大剣' })
+    const inv: InventoryData = {
+      accounts: [{ id: 'acc1', name: 'メイン' }, { id: 'acc2', name: 'サブ' }],
+      items: [
+        // ① 取引可能（登録アイテム）を両アカウントで所持 → 重複
+        unlinkedRow({ id: 'r1', accountId: 'acc1', name: '炎の大剣', itemId: 12, item: item, count: 2 }),
+        unlinkedRow({ id: 'r2', accountId: 'acc2', name: '炎の大剣', itemId: 12, item: item, count: 3 }),
+        // ② 未紐づけだが種別割当あり（取引可能以外）を両アカウントで所持 → 重複（対象）
+        unlinkedRow({ id: 'r3', accountId: 'acc1', name: '光の杖', itemId: null, item: null }),
+        unlinkedRow({ id: 'r4', accountId: 'acc2', name: '光の杖', itemId: null, item: null }),
+        // ③ 種別「未登録」（itemId=null かつ種別未割当）は対象外
+        unlinkedRow({ id: 'r5', accountId: 'acc1', name: '謎の薬', itemId: null, item: null }),
+        unlinkedRow({ id: 'r6', accountId: 'acc2', name: '謎の薬', itemId: null, item: null }),
+      ],
+      // '光の杖' にユーザー種別を割り当て（unset ではなくなる）
+      exclusions: [{ name: '光の杖', exclusion_type_id: 5 }],
+    }
+    mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    const dupBtn = await screen.findByRole('button', { name: /重複を確認/ })
+    // バッジ件数は2（炎の大剣・光の杖。謎の薬は未登録で除外）
+    expect(dupBtn).toHaveTextContent('重複を確認 (2)')
+    fireEvent.click(dupBtn)
+
+    const dialog = await screen.findByText('重複の確認')
+    const modal = dialog.closest('div')!.parentElement as HTMLElement
+    expect(within(modal).getByText('炎の大剣')).toBeInTheDocument()
+    expect(within(modal).getByText('光の杖')).toBeInTheDocument()
+    expect(within(modal).getAllByText(/メイン/).length).toBeGreaterThan(0)
+    expect(within(modal).getAllByText(/サブ/).length).toBeGreaterThan(0)
+    // 種別「未登録」の「謎の薬」は重複一覧に出ない
+    expect(within(modal).queryByText('謎の薬')).not.toBeInTheDocument()
+  })
+
+  it('同名でも取り込み先が1つだけなら重複としない', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    const item = makeItem({ id: 12, name: '炎の大剣' })
+    const inv: InventoryData = {
+      accounts: [{ id: 'acc1', name: 'メイン' }],
+      items: [
+        unlinkedRow({ id: 'r1', accountId: 'acc1', name: '炎の大剣', itemId: 12, item, worn: false }),
+        unlinkedRow({ id: 'r2', accountId: 'acc1', name: '炎の大剣', itemId: 12, item, worn: true }),
+      ],
+      exclusions: [],
+    }
+    mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    const dupBtn = await screen.findByRole('button', { name: /重複を確認/ })
+    expect(dupBtn).toHaveTextContent('重複を確認 (0)')
+  })
+})
+
 describe('OwnedItemsPage 未紐づけ行のボタン表示', () => {
   beforeEach(() => vi.clearAllMocks())
 

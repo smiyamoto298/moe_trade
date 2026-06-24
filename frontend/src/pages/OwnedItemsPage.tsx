@@ -81,6 +81,8 @@ export default function OwnedItemsPage() {
   // サーバ登録対象外の設定モーダル
   const [serverExcludedModalOpen, setServerExcludedModalOpen] = useState(false)
   const [serverExcludedInput, setServerExcludedInput] = useState('')
+  // 重複確認モーダル（異なる取り込み先で同名の登録アイテムを所持している場合に一覧表示）
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false)
 
   // ---- スクロール追従（表示切替バー・テーブルヘッダーを画面上部で固定） ----
   // グローバルヘッダー（お知らせバナー込み）と表示切替バーの実測高さを基準に、
@@ -634,6 +636,26 @@ export default function OwnedItemsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory.items, filterAccountId, markedOnly, commonMap, userMap, defaultTypeId])
 
+  // 重複（異なる取り込み先で同名のアイテムを所持）。取引可能（登録アイテム）に限らず、
+  // 種別が割り当てられた行も対象とし、名称（表示名）でまとめる。実効種別が「未登録」（unset）の
+  // 行のみ対象外。取り込み先（アカウント）が2件以上にまたがる名称を抽出し、各アカウントの所持個数を併記する。
+  const duplicates = useMemo(() => {
+    const byName = new Map<string, { name: string; accounts: Map<string, number> }>()
+    for (const i of inventory.items) {
+      if (i.accountId == null) continue
+      if (rowType(i) === 'unset') continue
+      const key = normalizeName(displayName(i))
+      let e = byName.get(key)
+      if (!e) { e = { name: displayName(i), accounts: new Map() }; byName.set(key, e) }
+      e.accounts.set(i.accountId, (e.accounts.get(i.accountId) ?? 0) + i.count)
+    }
+    return [...byName.values()]
+      .filter((e) => e.accounts.size >= 2)
+      .sort((a, b) => compareJa(a.name, b.name))
+    // rowType は commonMap/userMap/defaultTypeId に依存（下記の依存で網羅）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory.items, commonMap, userMap, defaultTypeId])
+
   const markedCount = inventory.items.filter((i) => i.marked).length
   const newItemRow = inventory.items.find((i) => i.id === newItemRowId) ?? null
   const candidateRow = inventory.items.find((i) => i.id === candidateRowId) ?? null
@@ -817,6 +839,13 @@ export default function OwnedItemsPage() {
             title="サーバーに保存しない（端末のみ）アイテムを設定する"
           >
             サーバ登録対象外 ({serverExcludedSet.size})
+          </button>
+          <button
+            onClick={() => setDuplicateModalOpen(true)}
+            className="text-xs px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 text-gray-300 transition-colors"
+            title="異なる取り込み先で同じ名称のアイテムを所持しているものを確認する（種別「未登録」は対象外）"
+          >
+            重複を確認 ({duplicates.length})
           </button>
         </div>
 
@@ -1270,6 +1299,46 @@ export default function OwnedItemsPage() {
 
             <div className="flex justify-end">
               <button onClick={() => setServerExcludedModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重複確認（異なる取り込み先で同名の登録アイテムを所持しているものを一覧表示） */}
+      {duplicateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setDuplicateModalOpen(false)}>
+          <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-lg w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="text-base font-bold text-white">重複の確認</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                異なる取り込み先（MoE アカウント）で同じ名称のアイテムを所持しているものを一覧表示します。
+                各取り込み先の所持個数を併記します。種別が「未登録」のアイテムは対象外です（取引可能・その他の種別は対象）。
+              </p>
+            </div>
+
+            {duplicates.length === 0 ? (
+              <p className="text-sm text-gray-500 py-6 text-center">複数の取り込み先にまたがる重複アイテムはありません。</p>
+            ) : (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {duplicates.map((d) => (
+                  <div key={d.name} className="border border-surface-border rounded-lg p-3">
+                    <p className="text-sm text-white font-medium">{d.name}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {[...d.accounts.entries()]
+                        .sort((a, b) => compareJa(accountName(a[0]), accountName(b[0])))
+                        .map(([accId, cnt]) => (
+                          <span key={accId} className="text-[11px] bg-surface border border-surface-border text-gray-200 rounded px-2 py-0.5 whitespace-nowrap">
+                            {accountName(accId)} <span className="text-gray-500">×{cnt}</span>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button onClick={() => setDuplicateModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
             </div>
           </div>
         </div>
