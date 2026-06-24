@@ -12,6 +12,12 @@ const todayStr = (): string => {
 // Web Intent（投稿画面を開くだけ。API不要・無料で使える）
 const intentUrl = (text: string) => `https://x.com/intent/post?text=${encodeURIComponent(text)}`
 
+// X公式アプリの投稿画面を開くディープリンク（スマホ向け）
+const appPostUrl = (text: string) => `twitter://post?message=${encodeURIComponent(text)}`
+
+// スマホ（iOS / Android）判定。スマホではX公式アプリで開く
+const isMobile = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+
 type Mode = 'day' | 'range'
 
 export default function PromoTweetsPage() {
@@ -46,6 +52,23 @@ export default function PromoTweetsPage() {
     promoTweetsApi.markPosted().catch(() => {
       // 記録に失敗しても投稿フロー自体は妨げない（次回は手動で開始時刻を調整可能）
     })
+  }
+
+  // 「Xでポスト」押下。デスクトップは <a href> の通常動作（Web Intentを新規タブで開く）。
+  // スマホはX公式アプリの投稿画面をディープリンクで開き、未インストール等で開けない場合は
+  // Web Intentにフォールバックする（アプリが開いてページが非表示になればフォールバックを止める）。
+  const openPost = (e: React.MouseEvent<HTMLAnchorElement>, text: string) => {
+    markPosted()
+    if (!isMobile()) return
+    e.preventDefault()
+    const fallback = window.setTimeout(() => {
+      window.location.href = intentUrl(text)
+    }, 1500)
+    const cancelFallback = () => {
+      if (document.hidden) window.clearTimeout(fallback)
+    }
+    document.addEventListener('visibilitychange', cancelFallback, { once: true })
+    window.location.href = appPostUrl(text)
   }
 
   const copy = async (text: string, idx: number) => {
@@ -120,6 +143,7 @@ export default function PromoTweetsPage() {
       <p className="text-sm text-gray-400 mb-5">
         {mode === 'day' ? '前回ツイート時刻から現在まで' : '指定した期間（累計）'}の「新規出品」「新規買取」「取引成立件数」「現在の登録数」をX（旧Twitter）の文字数制限内に分割した文面です。
         「Xでポスト」を押すと投稿画面が開くので、内容を確認して順番に投稿してください（API不要・無料）。
+        スマホではX公式アプリで開きます（アプリが無い場合はブラウザの投稿画面が開きます）。
         {mode === 'day' && '「Xでポスト」を押した時刻が前回ツイート時刻として自動記録され、次回はその時刻からの集計になります（開始時刻は手動で変更も可能）。'}
         複数に分かれた場合、<span className="text-gray-300">2通目以降は1通目への返信として投稿</span>してください（スレッドとしてつながり、サイトリンクは1通目にのみ付きます）。
       </p>
@@ -164,7 +188,7 @@ export default function PromoTweetsPage() {
                     href={intentUrl(t.text)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={markPosted}
+                    onClick={(e) => openPost(e, t.text)}
                     className="text-sm bg-primary-500 hover:bg-primary-600 text-white px-5 py-1.5 rounded-md transition-colors"
                   >
                     Xでポスト
