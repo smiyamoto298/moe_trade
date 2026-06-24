@@ -79,11 +79,23 @@ class ExcludedItemController extends Controller
         $names = $dbCounts->keys()->merge($deviceNames)->unique();
         $deviceSet = $deviceNames->flip();
 
+        // 各名前について、ユーザーが最も多く割り当てた種別（共通化時の既定種別の候補）を求める。
+        // 種別未指定（null=その他）はカウントせず、明示的に種別を選んだものから最頻値を採る。
+        $suggestedType = UserExcludedItem::query()
+            ->whereNotNull('exclusion_type_id')
+            ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
+            ->selectRaw('name, exclusion_type_id, COUNT(*) as c')
+            ->groupBy('name', 'exclusion_type_id')
+            ->get()
+            ->groupBy('name')
+            ->map(fn($g) => $g->sortByDesc('c')->first()->exclusion_type_id);
+
         $rows = $names
             ->map(fn($name) => [
-                'name'        => $name,
-                'user_count'  => (int) ($dbCounts[$name] ?? 0),
-                'from_device' => $deviceSet->has($name),
+                'name'              => $name,
+                'user_count'        => (int) ($dbCounts[$name] ?? 0),
+                'from_device'       => $deviceSet->has($name),
+                'suggested_type_id' => $suggestedType[$name] ?? null,
             ])
             // user_count 降順 → name 昇順
             ->sortBy([['user_count', 'desc'], ['name', 'asc']])
@@ -175,6 +187,9 @@ class ExcludedItemController extends Controller
                 'exclusion_type_id' => $typeId,
             ]);
         }
+
+        // 共通種別として登録された名前は、ユーザー個別の種別割当から削除する（共通が優先・重複排除）。
+        UserExcludedItem::whereIn('name', $names)->delete();
 
         return response()->json([
             'created'      => $created,

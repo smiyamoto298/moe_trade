@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDialog } from '../contexts/DialogContext'
+import { useAuth } from '../contexts/AuthContext'
 import { usePageMeta } from '../hooks/usePageMeta'
 import { itemsApi } from '../api/items'
 import { buyRequestsApi } from '../api/buyRequests'
-import { excludedItemsApi } from '../api/excludedItems'
+import { excludedItemsApi, serverExcludedItemsApi } from '../api/excludedItems'
 import client from '../api/client'
 import NewItemForm from '../components/NewItemForm'
 import CandidateSelectModal from '../components/CandidateSelectModal'
@@ -13,9 +14,9 @@ import Spinner from '../components/Spinner'
 import { BaseStatBadges } from '../components/equipmentCells'
 import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts, ExclusionType } from '../types'
 import { parseItemBox, isTransferNg, isTruncatedName, truncatedBase } from '../utils/itemBoxPaste'
-import { newLocalId, emptyInventory, buildExclusionSet, isExcluded, selectedCommonNames } from '../utils/inventory'
+import { newLocalId, emptyInventory, effectiveTypeId, normalizeName, type EffectiveType } from '../utils/inventory'
 import { compareJa } from '../utils/collator'
-import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getSkipExcludeConfirm, setSkipExcludeConfirm, getAppliedExclusionTypeIds, setAppliedExclusionTypeIds, getDisabledCommonNames, setDisabledCommonNames } from '../utils/inventoryStore'
+import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getDisplayType, setDisplayType, getServerExcludedNames, setServerExcludedNames, type DisplayType } from '../utils/inventoryStore'
 
 const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 1\tアイネの抱っこぬいぐるみ\t中級者レア\t○\t1
@@ -24,8 +25,10 @@ const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function OwnedItemsPage() {
-  usePageMeta('マイペ整理', '公式サイトのアイテムボックスを貼り付けて、所持アイテムを管理できます。')
+  usePageMeta('アイテムボックス', '公式サイトのアイテムボックスを貼り付けて、所持アイテムを管理できます。')
   const { confirm, alert } = useDialog()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const navigate = useNavigate()
 
   // ---- 保存先・台帳データ ----
@@ -33,14 +36,15 @@ export default function OwnedItemsPage() {
   const [inventory, setInventory] = useState<InventoryData>(emptyInventory())
   const [loading, setLoading] = useState(true)
 
-  // ---- 除外（共通＋個別） ----
-  // 共通除外（管理者）はアイテム名＋種別IDで保持し、「適用する種別」で絞り込む。
+  // ---- 表示種別（ジャンル）の分類データ ----
+  // 共通の種別割当（管理者）はアイテム名→種別IDで保持する。
   const [commonItems, setCommonItems] = useState<{ name: string; type_id: number }[]>([])
   const [exclusionTypes, setExclusionTypes] = useState<ExclusionType[]>([])
-  // ユーザーが適用する種別ID（端末ローカル設定）。null は全種別を適用（既定）。
-  const [appliedTypeIds, setAppliedTypeIds] = useState<number[] | null>(() => getAppliedExclusionTypeIds())
-  // 既定種別「その他」のうち個別にOFFにした共通除外アイテム名（端末ローカル設定）。
-  const [disabledOtherNames, setDisabledOtherNames] = useState<string[]>(() => getDisabledCommonNames())
+  // 現在選択中の表示種別タブ（端末ローカル設定）。既定は取引可能のみ表示。
+  const [displayType, setDisplayTypeState] = useState<DisplayType>(() => getDisplayType())
+  // 「サーバ登録対象外」: システム共通分（API）と、ユーザー指定分（端末ローカル）。
+  const [serverCommonNames, setServerCommonNames] = useState<string[]>([])
+  const [userServerExcluded, setUserServerExcluded] = useState<string[]>(() => getServerExcludedNames())
 
   // ---- 貼り付け ----
   const [raw, setRaw] = useState('')
@@ -69,9 +73,14 @@ export default function OwnedItemsPage() {
   const [candidateRowId, setCandidateRowId] = useState<string | null>(null)
   const [analyticsItem, setAnalyticsItem] = useState<{ id: number; name: string } | null>(null)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
-  const [exclusionModalOpen, setExclusionModalOpen] = useState(false)
-  // 共通除外の「適用する種別」設定モーダル（個別除外リストとは別）
-  const [commonExclusionModalOpen, setCommonExclusionModalOpen] = useState(false)
+  // 「対象外種別」ダイアログ（未登録かつ未設定の行に種別を割り当てる）。対象の行IDを保持。
+  const [typeDialogRowId, setTypeDialogRowId] = useState<string | null>(null)
+  // 管理者が種別ダイアログから新規種別を登録するための入力
+  const [newTypeName, setNewTypeName] = useState('')
+  const [addingType, setAddingType] = useState(false)
+  // サーバ登録対象外の設定モーダル
+  const [serverExcludedModalOpen, setServerExcludedModalOpen] = useState(false)
+  const [serverExcludedInput, setServerExcludedInput] = useState('')
 
   // ---- スクロール追従（表示切替バー・テーブルヘッダーを画面上部で固定） ----
   // グローバルヘッダー（お知らせバナー込み）と表示切替バーの実測高さを基準に、
@@ -103,6 +112,14 @@ export default function OwnedItemsPage() {
   latestRef.current = inventory
   modeRef.current = mode
 
+  // サーバ登録対象外の集合（システム共通 ∪ ユーザー指定）。保存時の分割保存に使う。
+  const serverExcludedSet = useMemo(
+    () => new Set([...serverCommonNames, ...userServerExcluded].map((n) => normalizeName(n))),
+    [serverCommonNames, userServerExcluded]
+  )
+  const serverExcludedRef = useRef(serverExcludedSet)
+  serverExcludedRef.current = serverExcludedSet
+
   // ---- 初期ロード ----
   useEffect(() => {
     let active = true
@@ -112,13 +129,15 @@ export default function OwnedItemsPage() {
       // これにより、ある端末で「サーバー」を選べば別端末でも同じ保存先が適用される。
       loadInitialInventory().catch(() => ({ mode: getStorageMode(), data: emptyInventory() })),
       excludedItemsApi.list().then((r) => r.data).catch(() => ({ types: [], items: [] })),
-    ]).then(([{ mode: loadedMode, data: inv }, common]) => {
+      serverExcludedItemsApi.list().then((r) => r.data).catch(() => [] as string[]),
+    ]).then(([{ mode: loadedMode, data: inv }, common, serverCommon]) => {
       if (!active) return
       setMode(loadedMode)
       modeRef.current = loadedMode
       setInventory(inv)
       setCommonItems(common.items)
       setExclusionTypes(common.types)
+      setServerCommonNames(serverCommon)
       // 既定の貼り付け先は先頭アカウント
       setPasteAccountId(inv.accounts[0]?.id ?? null)
       setLoading(false)
@@ -198,7 +217,7 @@ export default function OwnedItemsPage() {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     if (!dirtyRef.current) return
     try {
-      await saveInventory(modeRef.current, latestRef.current)
+      await saveInventory(modeRef.current, latestRef.current, serverExcludedRef.current)
       dirtyRef.current = false
       setSaveState('saved')
     } catch {
@@ -225,7 +244,7 @@ export default function OwnedItemsPage() {
     return () => {
       window.removeEventListener('beforeunload', handler)
       // アンマウント時に保留中の保存を確定する
-      if (dirtyRef.current) void saveInventory(modeRef.current, latestRef.current)
+      if (dirtyRef.current) void saveInventory(modeRef.current, latestRef.current, serverExcludedRef.current)
     }
   }, [])
 
@@ -253,7 +272,7 @@ export default function OwnedItemsPage() {
         confirmLabel: '切り替える',
         cancelLabel: 'キャンセル',
         ...(next === 'db'
-          ? { highlight: '※DBに保存する場合、アカウント名はゲームIDではなくニックネームの使用を推奨します！' }
+          ? { highlight: '※DBに保存する場合、アカウント名はゲームIDではなくニックネームの使用を推奨します！\n\n※サーバーに保存したくないアイテムは「端末のみ」のロックをONにしてください。' }
           : {}),
       }
     )
@@ -261,7 +280,7 @@ export default function OwnedItemsPage() {
     try {
       // 現在の内容を新しい保存先へ書き出してから切り替える（移行）。
       // その後、保存先モードをユーザー単位でサーバーに記録する（他端末にも反映される）。
-      await saveInventory(next, latestRef.current)
+      await saveInventory(next, latestRef.current, serverExcludedRef.current)
       await persistStorageMode(next)
       setMode(next)
       modeRef.current = next
@@ -313,56 +332,43 @@ export default function OwnedItemsPage() {
   const promptName = (label: string, initial = ''): Promise<string | null> =>
     Promise.resolve(window.prompt(label, initial))
 
-  // ---- 貼り付け読込 ----
-  // 既定種別「その他」（アイテム単位で適用）の id
+  // ---- 表示種別（ジャンル）の分類 ----
+  // 既定種別「その他」の id（ユーザー割当 type_id=null はこの種別とみなす）
   const defaultTypeId = useMemo(() => exclusionTypes.find((t) => t.is_default)?.id ?? null, [exclusionTypes])
-  // 管理者が「既定ON」にした種別（その他以外）。ユーザー未設定時の既定適用セット。
-  const defaultEnabledTypeIds = useMemo(
-    () => exclusionTypes.filter((t) => !t.is_default && t.default_enabled).map((t) => t.id),
-    [exclusionTypes]
+  // 共通の種別割当（管理者）: name → type_id
+  const commonMap = useMemo(
+    () => new Map(commonItems.map((i) => [normalizeName(i.name), i.type_id])),
+    [commonItems]
   )
+  // ユーザーの種別割当: name → type_id|null
+  const userMap = useMemo(
+    () => new Map(inventory.exclusions.map((e) => [normalizeName(e.name), e.exclusion_type_id])),
+    [inventory.exclusions]
+  )
+  // 種別名の解決（表示用）
+  const typeName = (id: number) => exclusionTypes.find((t) => t.id === id)?.name ?? '種別'
+  // 行の実効種別
+  const rowType = (row: OwnedItem): EffectiveType => effectiveTypeId(row, commonMap, userMap, defaultTypeId)
 
-  // 適用する種別（appliedTypeIds が null なら管理者の既定ON）で共通除外を絞り、個別除外とマージする。
-  // その他はアイテム単位（disabledOtherNames でOFF）で絞る。
-  const exclusionSet = useMemo(
-    () => buildExclusionSet(selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds), inventory.exclusions),
-    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds, inventory.exclusions]
-  )
-  // 適用中の共通除外件数
-  const appliedCommonCount = useMemo(
-    () => selectedCommonNames(commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds).length,
-    [commonItems, appliedTypeIds, defaultTypeId, disabledOtherNames, defaultEnabledTypeIds]
-  )
-
-  // 種別の適用ON/OFFを切り替える（端末ローカルに保存）。その他以外の種別単位の制御。
-  // appliedTypeIds が null（ユーザー未設定）のときは、管理者の既定ON（default_enabled）の集合を
-  // 起点にして、当該種別をトグルした集合を新しい選択として確定する。
-  const toggleAppliedType = (typeId: number) => {
-    const defaults = exclusionTypes.filter((t) => t.default_enabled).map((t) => t.id)
-    const current = appliedTypeIds ?? defaults
-    const next = current.includes(typeId)
-      ? current.filter((id) => id !== typeId)
-      : [...current, typeId]
-    setAppliedTypeIds(next)
-    setAppliedExclusionTypeIds(next)
+  // 表示種別タブの切替（端末ローカルに保存）
+  const selectDisplayType = (t: DisplayType) => {
+    setDisplayTypeState(t)
+    setDisplayType(t)
   }
-  // 未設定時は管理者の既定ON/OFF（default_enabled）に従う。
-  const isTypeApplied = (typeId: number) =>
-    appliedTypeIds == null
-      ? (exclusionTypes.find((t) => t.id === typeId)?.default_enabled ?? true)
-      : appliedTypeIds.includes(typeId)
 
-  // その他（既定種別）のアイテム単位ON/OFF。OFF（disabled）に入っていなければ適用。
-  const persistDisabledOther = (next: string[]) => {
-    setDisabledOtherNames(next)
-    setDisabledCommonNames(next)
+  // ---- サーバ登録対象外（ユーザー指定分の操作） ----
+  const isServerExcludedName = (name: string) => serverExcludedSet.has(normalizeName(name))
+  const persistUserServerExcluded = (next: string[]) => {
+    setUserServerExcluded(next)
+    setServerExcludedNames(next)
+    // 保存先がサーバーのとき、対象の振り分け（分割保存）を反映させるため保存を予約する
+    if (modeRef.current === 'db') scheduleSave()
   }
-  const isOtherItemApplied = (name: string) => !disabledOtherNames.includes(name)
-  const toggleOtherItem = (name: string) => {
-    persistDisabledOther(
-      disabledOtherNames.includes(name)
-        ? disabledOtherNames.filter((n) => n !== name)
-        : [...disabledOtherNames, name]
+  const toggleUserServerExcluded = (name: string) => {
+    const n = name.trim()
+    if (!n) return
+    persistUserServerExcluded(
+      userServerExcluded.includes(n) ? userServerExcluded.filter((x) => x !== n) : [...userServerExcluded, n]
     )
   }
 
@@ -371,7 +377,6 @@ export default function OwnedItemsPage() {
     accountId: string
     kept: ReturnType<typeof parseItemBox>['rows']
     map: Record<string, Item>
-    excludedByList: number
     prevByName: Map<string, OwnedItem[]>
     groups: { name: string; newCount: number; existing: OwnedItem[] }[]
   } | null>(null)
@@ -434,11 +439,8 @@ export default function OwnedItemsPage() {
     setPasteResult(null)
     try {
       const { rows: parsed } = parseItemBox(raw)
-      // 転送×（トレード不可）は取り込まない
-      const tradable = parsed.filter((r) => !isTransferNg(r.tenso))
-      // 共通＋個別除外に一致する行を除外
-      const kept = tradable.filter((r) => !isExcluded(r.name, exclusionSet))
-      const excludedByList = tradable.length - kept.length
+      // 転送×（トレード不可）以外は全件取り込む（除外はせず、種別で表示を切り替える方式）
+      const kept = parsed.filter((r) => !isTransferNg(r.tenso))
 
       // 登録アイテムと照合（末尾「...」の省略名は自動設定しない）
       const names = Array.from(new Set(kept.filter((r) => !isTruncatedName(r.name)).map((r) => r.name)))
@@ -466,7 +468,7 @@ export default function OwnedItemsPage() {
         const init: Record<string, string[]> = {}
         for (const g of groups) init[g.name] = g.existing.slice(0, g.newCount).map((e) => e.id)
         setReductionKeep(init)
-        setPendingReduction({ accountId, kept, map, excludedByList, prevByName, groups })
+        setPendingReduction({ accountId, kept, map, prevByName, groups })
         return
       }
 
@@ -476,7 +478,7 @@ export default function OwnedItemsPage() {
         items: [...p.items.filter((i) => i.accountId !== accountId), ...newItems],
       }))
       setRaw('')
-      setPasteResult(`${newItems.length}件を取り込みました。${excludedByList > 0 ? `（除外リストにより${excludedByList}件を除外）` : ''}`)
+      setPasteResult(`${newItems.length}件を取り込みました。`)
     } finally {
       setParsing(false)
     }
@@ -485,7 +487,7 @@ export default function OwnedItemsPage() {
   // 「残すアイテム」を確定して取り込みを完了する
   const applyReduction = () => {
     if (!pendingReduction) return
-    const { accountId, kept, map, excludedByList, prevByName, groups } = pendingReduction
+    const { accountId, kept, map, prevByName, groups } = pendingReduction
     // 選択した id を既存の並び順で OwnedItem[] に変換
     const selections = new Map<string, OwnedItem[]>()
     for (const g of groups) {
@@ -498,7 +500,7 @@ export default function OwnedItemsPage() {
       items: [...p.items.filter((i) => i.accountId !== accountId), ...newItems],
     }))
     setRaw('')
-    setPasteResult(`${newItems.length}件を取り込みました。${excludedByList > 0 ? `（除外リストにより${excludedByList}件を除外）` : ''}`)
+    setPasteResult(`${newItems.length}件を取り込みました。`)
     setPendingReduction(null)
   }
 
@@ -544,40 +546,44 @@ export default function OwnedItemsPage() {
     openNewItemForm(id, keyword)
   }
 
-  // 「除外時の確認を今後表示しない」設定（端末ごと・localStorage）
-  const [hideExcludeConfirm, setHideExcludeConfirm] = useState(getSkipExcludeConfirm())
-
-  // 個別除外に追加（その行のアイテムを除外し、台帳からも取り除く）
-  const addPersonalExclusion = async (name: string) => {
-    const doAdd = () => {
-      commit((p) => ({
-        ...p,
-        exclusions: p.exclusions.includes(name) ? p.exclusions : [...p.exclusions, name],
-        items: p.items.filter((i) => i.name !== name),
-      }))
-      // 端末保存の場合は除外名がサーバーに残らないため、共通除外の検討用に匿名で報告する
-      // （誰が除外したかは記録されない）。DB保存時は自動保存で user_excluded_items に入るため不要。
-      if (modeRef.current === 'local') {
-        excludedItemsApi.report([name]).catch(() => {})
-      }
+  // ユーザーの種別割当を付与/更新する（アイテム名単位。同名の全行に効く）。
+  // 取り込み済みの行は削除しない（表示種別で切り替える方式）。
+  const assignUserType = (name: string, typeId: number | null) => {
+    commit((p) => ({
+      ...p,
+      exclusions: [
+        ...p.exclusions.filter((e) => e.name !== name),
+        { name, exclusion_type_id: typeId },
+      ],
+    }))
+    // 端末保存の場合は種別割当がサーバーに残らないため、共通種別化の検討用に匿名で名前を報告する
+    // （誰が分類したかは記録されない）。DB保存時は自動保存で user_excluded_items に入るため不要。
+    if (modeRef.current === 'local') {
+      excludedItemsApi.report([name]).catch(() => {})
     }
-
-    // 「今後表示しない」が設定済みなら確認を省略して追加
-    if (hideExcludeConfirm) { doAdd(); return }
-
-    let dontShowAgain = false
-    const ok = await confirm(`「${name}」を自分の除外リストに追加します。今後この名前は貼り付け時に除外されます。よろしいですか？`, {
-      title: '除外リストに追加', confirmLabel: '追加する', cancelLabel: 'キャンセル',
-      checkbox: { label: '今後除外するときにメッセージを表示しない' },
-      onCheckbox: (c) => { dontShowAgain = c },
-    })
-    if (!ok) return
-    if (dontShowAgain) { setSkipExcludeConfirm(true); setHideExcludeConfirm(true) }
-    doAdd()
   }
 
-  const removePersonalExclusion = (name: string) =>
-    commit((p) => ({ ...p, exclusions: p.exclusions.filter((n) => n !== name) }))
+  // ユーザーの種別割当を解除する（未設定に戻す）
+  const clearUserType = (name: string) =>
+    commit((p) => ({ ...p, exclusions: p.exclusions.filter((e) => e.name !== name) }))
+
+  // 管理者が種別ダイアログから新しい種別を登録し、その種別を当該アイテムへ割り当てる。
+  const createTypeAndAssign = async (name: string) => {
+    const tn = newTypeName.trim()
+    if (!tn) return
+    setAddingType(true)
+    try {
+      const res = await excludedItemsApi.createType(tn)
+      setExclusionTypes((p) => [...p, res.data])
+      assignUserType(name, res.data.id)
+      setNewTypeName('')
+      setTypeDialogRowId(null)
+    } catch {
+      await alert('種別の追加に失敗しました（同名が既にある可能性があります）。', { title: 'エラー' })
+    } finally {
+      setAddingType(false)
+    }
+  }
 
   // ---- 派生 ----
   const accountName = (id: string | null) =>
@@ -586,6 +592,12 @@ export default function OwnedItemsPage() {
   // 表示名（登録アイテム名があればそれ、無ければ貼り付け名）。並び替えの基準に使う。
   const displayName = (i: OwnedItem) => i.item?.name ?? i.name
 
+  // 行が現在の表示種別タブに合致するか
+  const matchesDisplayType = (i: OwnedItem) => {
+    if (displayType === 'all') return true
+    return rowType(i) === displayType
+  }
+
   const visibleItems = useMemo(() => {
     return inventory.items
       .filter((i) => {
@@ -593,16 +605,39 @@ export default function OwnedItemsPage() {
         else if (filterAccountId === 'unassigned') { if (i.accountId != null) return false }
         else if (i.accountId !== filterAccountId) return false
         if (markedOnly && !i.marked) return false
+        if (!matchesDisplayType(i)) return false
         return true
       })
       // 常にあいうえお順（日本語ロケール）で表示する。
       // 共有コレーター（compareJa）を使い、大きな一覧でもソートが重くならないようにする。
       .sort((a, b) => compareJa(displayName(a), displayName(b)))
-  }, [inventory.items, filterAccountId, markedOnly])
+    // matchesDisplayType は commonMap/userMap/displayType に依存（下記の依存で網羅）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory.items, filterAccountId, markedOnly, displayType, commonMap, userMap, defaultTypeId])
+
+  // 表示種別タブごとの件数（アカウント・マーク絞り込みは反映、種別だけを変えた件数）
+  const typeCounts = useMemo(() => {
+    const base = inventory.items.filter((i) => {
+      if (filterAccountId === 'all') { /* all */ }
+      else if (filterAccountId === 'unassigned') { if (i.accountId != null) return false }
+      else if (i.accountId !== filterAccountId) return false
+      if (markedOnly && !i.marked) return false
+      return true
+    })
+    const counts = new Map<DisplayType, number>()
+    counts.set('all', base.length)
+    for (const i of base) {
+      const t = rowType(i)
+      counts.set(t, (counts.get(t) ?? 0) + 1)
+    }
+    return counts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory.items, filterAccountId, markedOnly, commonMap, userMap, defaultTypeId])
 
   const markedCount = inventory.items.filter((i) => i.marked).length
   const newItemRow = inventory.items.find((i) => i.id === newItemRowId) ?? null
   const candidateRow = inventory.items.find((i) => i.id === candidateRowId) ?? null
+  const typeDialogRow = inventory.items.find((i) => i.id === typeDialogRowId) ?? null
 
   const saveLabel =
     saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '✓ 保存済み' : saveState === 'error' ? '⚠ 保存に失敗' : ''
@@ -619,7 +654,7 @@ export default function OwnedItemsPage() {
       {/* ヘッダー */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">マイペ整理</h1>
+          <h1 className="text-xl font-bold text-white">アイテムボックス</h1>
           <p className="text-xs text-gray-400 mt-0.5">
             公式サイトのアイテムボックスを貼り付けて、所持アイテムを記録・管理できます。
             保存先は「この端末（ローカル）」か「サーバー（DB）」を選べます（既定はこの端末）。
@@ -734,30 +769,73 @@ export default function OwnedItemsPage() {
       <div
         ref={filterBarRef}
         data-tour="owned-filter"
-        className="flex flex-wrap items-center gap-3 sticky z-30 bg-surface/90 backdrop-blur px-4 py-2 rounded-lg"
+        className="flex flex-col gap-2 sticky z-30 bg-surface/90 backdrop-blur px-4 py-2 rounded-lg"
         style={{ top: headerH }}
       >
-        {/* 表示切替（アカウントごとのタブ。セレクトボックスからタブ表示へ） */}
+        {/* 1段目: アカウント切替＋マークのみ＋サーバ登録対象外 */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* 表示切替（アカウントごとのタブ。セレクトボックスからタブ表示へ） */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-400 w-8">表示</span>
+            {[
+              { id: 'all', label: 'すべて', count: inventory.items.length },
+              ...inventory.accounts.map((a) => ({
+                id: a.id,
+                label: a.name,
+                count: inventory.items.filter((i) => i.accountId === a.id).length,
+              })),
+              // 旧データに未割り当てが残っている場合のみ表示（新規取り込みでは作られない）
+              ...(inventory.items.some((i) => i.accountId == null)
+                ? [{ id: 'unassigned', label: '未割り当て', count: inventory.items.filter((i) => i.accountId == null).length }]
+                : []),
+            ].map((tab) => {
+              const active = filterAccountId === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setFilterAccountId(tab.id)}
+                  aria-pressed={active}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                    active
+                      ? 'bg-primary-500 border-primary-500 text-white'
+                      : 'border-surface-border text-gray-300 hover:text-white hover:border-gray-500'
+                  }`}
+                >
+                  {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({tab.count})</span>
+                </button>
+              )
+            })}
+          </div>
+          <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
+            <input type="checkbox" checked={markedOnly} onChange={(e) => setMarkedOnly(e.target.checked)} className="accent-amber-500 w-4 h-4" />
+            <span>★ マークのみ ({markedCount})</span>
+          </label>
+          <button
+            onClick={() => setServerExcludedModalOpen(true)}
+            className="text-xs px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 text-gray-300 transition-colors"
+            title="サーバーに保存しない（端末のみ）アイテムを設定する"
+          >
+            サーバ登録対象外 ({serverExcludedSet.size})
+          </button>
+        </div>
+
+        {/* 2段目: 表示種別（ジャンル）切替。アカウント切替と同じ単一選択タブ */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-400">表示</span>
-          {[
-            { id: 'all', label: 'すべて', count: inventory.items.length },
-            ...inventory.accounts.map((a) => ({
-              id: a.id,
-              label: a.name,
-              count: inventory.items.filter((i) => i.accountId === a.id).length,
-            })),
-            // 旧データに未割り当てが残っている場合のみ表示（新規取り込みでは作られない）
-            ...(inventory.items.some((i) => i.accountId == null)
-              ? [{ id: 'unassigned', label: '未割り当て', count: inventory.items.filter((i) => i.accountId == null).length }]
-              : []),
-          ].map((tab) => {
-            const active = filterAccountId === tab.id
+          <span className="text-xs text-gray-400 w-8">種別</span>
+          {([
+            { id: 'all' as DisplayType, label: 'すべて' },
+            { id: 'tradeable' as DisplayType, label: '取引可能' },
+            ...exclusionTypes.map((t) => ({ id: t.id as DisplayType, label: t.name })),
+            { id: 'unset' as DisplayType, label: '未登録' },
+          ]).map((tab) => {
+            const active = displayType === tab.id
+            const count = typeCounts.get(tab.id) ?? 0
             return (
               <button
-                key={tab.id}
+                key={String(tab.id)}
                 type="button"
-                onClick={() => setFilterAccountId(tab.id)}
+                onClick={() => selectDisplayType(tab.id)}
                 aria-pressed={active}
                 className={`text-xs px-3 py-1 rounded-full border transition-colors ${
                   active
@@ -765,30 +843,11 @@ export default function OwnedItemsPage() {
                     : 'border-surface-border text-gray-300 hover:text-white hover:border-gray-500'
                 }`}
               >
-                {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({tab.count})</span>
+                {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({count})</span>
               </button>
             )
           })}
         </div>
-        <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
-          <input type="checkbox" checked={markedOnly} onChange={(e) => setMarkedOnly(e.target.checked)} className="accent-amber-500 w-4 h-4" />
-          <span>★ マークのみ ({markedCount})</span>
-        </label>
-        <button
-          onClick={() => setExclusionModalOpen(true)}
-          className="text-xs px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 text-gray-300 transition-colors"
-        >
-          除外リスト ({inventory.exclusions.length})
-        </button>
-        {exclusionTypes.length > 0 && (
-          <button
-            onClick={() => setCommonExclusionModalOpen(true)}
-            className="text-xs px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 text-gray-300 transition-colors"
-            title="貼り付け時に適用する共通除外の種別を選ぶ"
-          >
-            共通除外の設定 ({appliedCommonCount})
-          </button>
-        )}
       </div>
 
       {/* 一覧 */}
@@ -804,6 +863,7 @@ export default function OwnedItemsPage() {
             <tr className="text-xs text-gray-400">
               <th className={`${thCls} px-2 py-3 text-center w-10`}>★</th>
               <th className={`${thCls} px-4 py-3 text-left`}>アイテム</th>
+              <th className={`${thCls} px-3 py-3 text-left`}>種別</th>
               {filterAccountId === 'all' && <th className={`${thCls} px-3 py-3 text-left`}>アカウント</th>}
               <th className={`${thCls} px-3 py-3 text-right`}>個数</th>
               <th className={`${thCls} px-2 py-3 text-center`}>削れ</th>
@@ -815,7 +875,7 @@ export default function OwnedItemsPage() {
           </thead>
           <tbody className="divide-y divide-surface-border">
             {visibleItems.length === 0 ? (
-              <tr><td colSpan={filterAccountId === 'all' ? 9 : 8} className="text-center py-12 text-gray-500">
+              <tr><td colSpan={filterAccountId === 'all' ? 10 : 9} className="text-center py-12 text-gray-500">
                 {inventory.items.length === 0 ? 'アイテムボックスを貼り付けて読み込んでください。' : '表示できるアイテムがありません。'}
               </td></tr>
             ) : (
@@ -859,27 +919,65 @@ export default function OwnedItemsPage() {
                         <>
                           <p className="text-white font-medium">{row.name}</p>
                           {row.category && <p className="text-[11px] text-gray-500">{row.category}</p>}
-                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            {/* 「...」省略名は候補ボタンのみ（候補が無ければダイアログから新規登録できる）。
-                                完全な名前のときだけ新規登録ボタンを出す。 */}
-                            {isTruncatedName(row.name) ? (
-                              <button
-                                onClick={() => setCandidateRowId(row.id)}
-                                className="text-xs bg-sky-600/80 hover:bg-sky-600 text-white px-2 py-0.5 rounded transition-colors"
-                              >
-                                候補
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => openNewItemForm(row.id, row.name)}
-                                className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-2 py-0.5 rounded transition-colors"
-                              >
-                                + 新規登録
-                              </button>
-                            )}
-                          </div>
+                          {/* 取引可能以外の種別が割り当てられた行は、登録（候補/新規登録）ボタンを出さない。
+                              未設定の行のみ登録を促す。「...」省略名は候補ボタン、完全名は新規登録ボタン。 */}
+                          {rowType(row) === 'unset' && (
+                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                              {isTruncatedName(row.name) ? (
+                                <button
+                                  onClick={() => setCandidateRowId(row.id)}
+                                  className="text-xs bg-sky-600/80 hover:bg-sky-600 text-white px-2 py-0.5 rounded transition-colors"
+                                >
+                                  候補
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => openNewItemForm(row.id, row.name)}
+                                  className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-2 py-0.5 rounded transition-colors"
+                                >
+                                  + 新規登録
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </>
                       )}
+                    </td>
+
+                    {/* 種別（表示ジャンル） */}
+                    <td className="px-3 py-3">
+                      {(() => {
+                        const et = rowType(row)
+                        if (et === 'tradeable') {
+                          return <span className="text-[11px] bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 rounded px-2 py-0.5 whitespace-nowrap">取引可能</span>
+                        }
+                        if (et === 'unset') {
+                          // 未登録かつ種別未設定 → 種別を割り当てるボタン
+                          return (
+                            <button
+                              onClick={() => setTypeDialogRowId(row.id)}
+                              className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-2 py-0.5 rounded transition-colors whitespace-nowrap"
+                              title="このアイテムの対象外種別を設定"
+                            >
+                              対象外種別
+                            </button>
+                          )
+                        }
+                        // 種別が割り当て済み。共通（管理者）は固定表示、ユーザー割当は押すと変更/解除できる。
+                        const isCommon = commonMap.has(normalizeName(row.name))
+                        const label = typeName(et)
+                        return isCommon ? (
+                          <span className="text-[11px] bg-surface border border-surface-border text-gray-300 rounded px-2 py-0.5 whitespace-nowrap" title="管理者が設定した共通種別">{label}</span>
+                        ) : (
+                          <button
+                            onClick={() => setTypeDialogRowId(row.id)}
+                            className="text-[11px] bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/40 text-primary-300 rounded px-2 py-0.5 whitespace-nowrap transition-colors"
+                            title="種別を変更・解除"
+                          >
+                            {label} ✎
+                          </button>
+                        )
+                      })()}
                     </td>
 
                     {/* アカウント（すべて表示時のみ） */}
@@ -963,11 +1061,17 @@ export default function OwnedItemsPage() {
                           </button>
                         )}
                         <button
-                          onClick={() => addPersonalExclusion(row.name)}
-                          className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-400 px-2 py-1 rounded transition-colors"
-                          title="このアイテムを除外リストに追加"
+                          onClick={() => toggleUserServerExcluded(row.name)}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            isServerExcludedName(row.name)
+                              ? 'bg-amber-900/30 border-amber-700/50 text-amber-300'
+                              : 'bg-surface hover:bg-surface-border border-surface-border text-gray-400'
+                          }`}
+                          title={isServerExcludedName(row.name)
+                            ? 'サーバ登録対象外（端末のみ保存）。クリックで解除'
+                            : 'このアイテムをサーバ登録対象外（端末のみ保存）にする'}
                         >
-                          除外
+                          {isServerExcludedName(row.name) ? '🔒 端末のみ' : '端末のみ'}
                         </button>
                         <button
                           onClick={() => removeRow(row.id)}
@@ -1045,140 +1149,127 @@ export default function OwnedItemsPage() {
         </div>
       )}
 
-      {/* 個別除外リスト管理モーダル */}
-      {exclusionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setExclusionModalOpen(false)}>
+      {/* 対象外種別ダイアログ（未登録かつ未設定の行に表示種別を割り当てる） */}
+      {typeDialogRow && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setTypeDialogRowId(null)}>
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div>
-              <h3 className="text-base font-bold text-white">自分の除外リスト</h3>
-              <p className="text-xs text-gray-400 mt-1">ここに登録した名前は貼り付け時に除外されます（管理者の共通除外 {appliedCommonCount} 件とマージして適用）。共通除外の適用範囲は「共通除外の設定」から変更できます。</p>
+              <h3 className="text-base font-bold text-white">種別を選択</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                「{typeDialogRow.name}」の表示種別（ジャンル）を選びます。同じ名前のアイテムすべてに適用されます。
+                {isAdmin ? '管理者は新しい種別を追加できます。' : '既存の種別から選んでください。'}
+              </p>
             </div>
-            {inventory.exclusions.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4 text-center">個別の除外アイテムはありません。一覧の「除外」ボタンから追加できます。</p>
-            ) : (
-              <div className="space-y-1.5 max-h-72 overflow-y-auto">
-                {inventory.exclusions.map((name) => (
-                  <div key={name} className="flex items-center gap-2 bg-surface border border-surface-border rounded px-3 py-2">
-                    <span className="flex-1 text-sm text-white truncate">{name}</span>
-                    <button onClick={() => removePersonalExclusion(name)} className="text-xs text-red-400 hover:text-red-300 px-2">解除</button>
-                  </div>
-                ))}
+
+            <div className="flex flex-wrap gap-2">
+              {exclusionTypes.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => { assignUserType(typeDialogRow.name, t.id); setTypeDialogRowId(null) }}
+                  className="text-xs px-3 py-1.5 rounded-full border border-surface-border text-gray-200 hover:border-primary-500 hover:text-white transition-colors"
+                >
+                  {t.name}
+                </button>
+              ))}
+              {exclusionTypes.length === 0 && (
+                <p className="text-sm text-gray-500">選択できる種別がありません。{isAdmin ? '下から追加してください。' : '管理者の登録をお待ちください。'}</p>
+              )}
+            </div>
+
+            {/* 管理者のみ: 新規種別を登録して割り当て */}
+            {isAdmin && (
+              <div className="flex items-center gap-2 border-t border-surface-border pt-3">
+                <input
+                  type="text"
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') createTypeAndAssign(typeDialogRow.name) }}
+                  placeholder="新しい種別名"
+                  className="flex-1 bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
+                />
+                <button
+                  onClick={() => createTypeAndAssign(typeDialogRow.name)}
+                  disabled={addingType || !newTypeName.trim()}
+                  className="text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-4 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                >
+                  {addingType ? '追加中...' : '+ 追加して割当'}
+                </button>
               </div>
             )}
-            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none border-t border-surface-border pt-3">
-              <input
-                type="checkbox"
-                checked={hideExcludeConfirm}
-                onChange={(e) => { setHideExcludeConfirm(e.target.checked); setSkipExcludeConfirm(e.target.checked) }}
-                className="accent-primary-500 w-4 h-4"
-              />
-              除外するときに確認メッセージを表示しない
-            </label>
-            <div className="flex justify-end">
-              <button onClick={() => setExclusionModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
+
+            <div className="flex justify-between">
+              {/* 既にユーザー割当がある場合は解除も可能 */}
+              {userMap.has(normalizeName(typeDialogRow.name)) ? (
+                <button onClick={() => { clearUserType(typeDialogRow.name); setTypeDialogRowId(null) }} className="text-sm text-red-400 hover:text-red-300 px-2 py-2">種別を解除</button>
+              ) : <span />}
+              <button onClick={() => setTypeDialogRowId(null)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 共通除外の設定（適用する種別を選ぶ・個別除外リストとは別） */}
-      {commonExclusionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setCommonExclusionModalOpen(false)}>
+      {/* サーバ登録対象外の設定（保存先がサーバーでも端末のみに保存する） */}
+      {serverExcludedModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setServerExcludedModalOpen(false)}>
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div>
-              <h3 className="text-base font-bold text-white">共通除外の設定</h3>
+              <h3 className="text-base font-bold text-white">サーバ登録対象外</h3>
               <p className="text-xs text-gray-400 mt-1">
-                チェックした種類のアイテムは読み込み時に除外されます。<br />
-                ※管理者が手動で設定しているので、除外されないアイテムも多いですがご了承ください。
+                ここに登録した名前のアイテムは、保存先が「サーバー」でもサーバーには保存せず、この端末（ローカル）にだけ保存します。
+                運営に見られたくないアイテム向けの設定です。
               </p>
             </div>
-            {exclusionTypes.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4 text-center">共通除外の種別はありません。</p>
-            ) : (
-              <div className="space-y-3">
-                {/* その他以外の種別は種別単位でON/OFF */}
-                <div className="flex flex-wrap gap-2">
-                  {exclusionTypes.filter((t) => !t.is_default).map((t) => {
-                    const cnt = commonItems.filter((i) => i.type_id === t.id).length
-                    const on = isTypeApplied(t.id)
-                    return (
-                      <label
-                        key={t.id}
-                        className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border cursor-pointer transition-colors ${
-                          on ? 'border-primary-500/60 bg-primary-500/10 text-white' : 'border-surface-border text-gray-400 hover:border-gray-500'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          onChange={() => toggleAppliedType(t.id)}
-                          className="accent-primary-500"
-                        />
-                        {t.name} <span className="text-gray-500">({cnt})</span>
-                      </label>
-                    )
-                  })}
-                </div>
 
-                {/* その他（既定種別）は最後に表示し、アイテム単位で選択する */}
-                {(() => {
-                  const other = exclusionTypes.find((t) => t.is_default)
-                  if (!other) return null
-                  const otherItems = commonItems
-                    .filter((i) => i.type_id === other.id)
-                    .slice()
-                    .sort((a, b) => compareJa(a.name, b.name))
-                  const allOn = otherItems.length > 0 && otherItems.every((i) => isOtherItemApplied(i.name))
-                  const toggleAll = () => {
-                    const names = otherItems.map((i) => i.name)
-                    persistDisabledOther(
-                      allOn
-                        ? Array.from(new Set([...disabledOtherNames, ...names]))
-                        : disabledOtherNames.filter((n) => !names.includes(n))
-                    )
-                  }
-                  return (
-                    <div className="border-t border-surface-border pt-3">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <h4 className="text-sm font-semibold text-gray-300">{other.name}（アイテムごとに選択）</h4>
-                        {otherItems.length > 0 && (
-                          <button onClick={toggleAll} className="text-xs text-primary-400 hover:text-primary-300">
-                            {allOn ? 'すべて外す' : 'すべて選択'}
-                          </button>
-                        )}
-                      </div>
-                      {otherItems.length === 0 ? (
-                        <p className="text-xs text-gray-500">アイテムはありません。</p>
-                      ) : (
-                        <div className="space-y-1 max-h-60 overflow-y-auto">
-                          {otherItems.map((i) => {
-                            const on = isOtherItemApplied(i.name)
-                            return (
-                              <label
-                                key={i.name}
-                                className={`flex items-center gap-2 text-xs px-2.5 py-1.5 rounded border cursor-pointer transition-colors ${
-                                  on ? 'border-primary-500/60 bg-primary-500/10 text-white' : 'border-surface-border text-gray-400 hover:border-gray-500'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={on}
-                                  onChange={() => toggleOtherItem(i.name)}
-                                  className="accent-primary-500 shrink-0"
-                                />
-                                <span className="truncate">{i.name}</span>
-                              </label>
-                            )
-                          })}
-                        </div>
-                      )}
+            {/* ユーザー指定分の追加 */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={serverExcludedInput}
+                onChange={(e) => setServerExcludedInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && serverExcludedInput.trim()) { toggleUserServerExcluded(serverExcludedInput); setServerExcludedInput('') } }}
+                placeholder="アイテム名を入力"
+                className="flex-1 bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
+              />
+              <button
+                onClick={() => { if (serverExcludedInput.trim()) { toggleUserServerExcluded(serverExcludedInput); setServerExcludedInput('') } }}
+                disabled={!serverExcludedInput.trim()}
+                className="text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-4 py-1.5 rounded-md transition-colors whitespace-nowrap"
+              >
+                + 追加
+              </button>
+            </div>
+
+            {/* ユーザー指定分の一覧 */}
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 mb-1.5">自分で指定した対象外（端末のみ・{userServerExcluded.length}件）</h4>
+              {userServerExcluded.length === 0 ? (
+                <p className="text-xs text-gray-500">指定はありません。上の入力か、一覧の「端末のみ」ボタンから追加できます。</p>
+              ) : (
+                <div className="space-y-1 max-h-44 overflow-y-auto">
+                  {[...userServerExcluded].sort((a, b) => compareJa(a, b)).map((name) => (
+                    <div key={name} className="flex items-center gap-2 bg-surface border border-surface-border rounded px-3 py-1.5">
+                      <span className="flex-1 text-sm text-white truncate">{name}</span>
+                      <button onClick={() => toggleUserServerExcluded(name)} className="text-xs text-red-400 hover:text-red-300 px-2">解除</button>
                     </div>
-                  )
-                })()}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* システム共通分（読み取り専用） */}
+            {serverCommonNames.length > 0 && (
+              <div className="border-t border-surface-border pt-3">
+                <h4 className="text-xs font-semibold text-gray-400 mb-1.5">運営が指定した共通の対象外（{serverCommonNames.length}件）</h4>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                  {[...serverCommonNames].sort((a, b) => compareJa(a, b)).map((name) => (
+                    <span key={name} className="text-[11px] bg-surface border border-surface-border text-gray-300 rounded px-2 py-0.5">{name}</span>
+                  ))}
+                </div>
               </div>
             )}
+
             <div className="flex justify-end">
-              <button onClick={() => setCommonExclusionModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
+              <button onClick={() => setServerExcludedModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
             </div>
           </div>
         </div>

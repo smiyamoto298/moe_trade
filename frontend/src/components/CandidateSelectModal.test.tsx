@@ -4,7 +4,7 @@ import CandidateSelectModal from './CandidateSelectModal'
 import { itemsApi } from '../api/items'
 import type { Item } from '../types'
 
-// マイペ整理: 省略名の候補ダイアログでは、前方一致候補の有無に関わらず
+// アイテムボックス: 省略名の候補ダイアログでは、前方一致候補の有無に関わらず
 // 新規登録へ進めるボタンを常に表示する（検索キーワードを引き継ぐ）。
 
 vi.mock('../api/items', () => ({ itemsApi: { list: vi.fn() } }))

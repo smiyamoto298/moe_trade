@@ -1,5 +1,5 @@
 import client from './client'
-import type { ExcludedItem, ExcludedItemsPublic, ExclusionType, UserExclusionSuggestion } from '../types'
+import type { ExcludedItem, ExcludedItemsPublic, ExclusionType, UserExclusionSuggestion, ServerExcludedItem } from '../types'
 
 export const excludedItemsApi = {
   // 公開: 共通除外アイテムと種別（貼り付け除外に使用）
@@ -47,4 +47,24 @@ export const excludedItemsApi = {
 
   removeType: (id: number): Promise<void> =>
     client.delete(`/admin/exclusion-types/${id}`).then(() => undefined),
+}
+
+// 「サーバ登録対象外」のシステム共通アイテム名（保存先がサーバーでもローカル保存する対象）。
+export const serverExcludedItemsApi = {
+  // 公開: システム共通の対象外名（文字列配列）。分割保存判定に使用。
+  list: (): Promise<{ data: string[] }> => client.get<string[]>('/server-excluded-items'),
+
+  // 管理: 全件（id 付き）
+  adminList: (): Promise<{ data: ServerExcludedItem[] }> =>
+    client.get<ServerExcludedItem[]>('/admin/server-excluded-items'),
+
+  // 管理: 複数名をまとめて登録（改行・カンマ区切り由来）。重複は無視される。
+  create: (names: string[]): Promise<{ data: { created_count: number; skipped_count: number } }> =>
+    client.post('/admin/server-excluded-items', { names }).then((r) => ({ data: r.data })),
+
+  remove: (id: number): Promise<void> =>
+    client.delete(`/admin/server-excluded-items/${id}`).then(() => undefined),
+
+  removeMany: (ids: number[]): Promise<{ data: { deleted_count: number } }> =>
+    client.delete('/admin/server-excluded-items', { data: { ids } }),
 }

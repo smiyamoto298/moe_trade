@@ -1,20 +1,22 @@
-import type { InventoryData, InventoryStorageMode } from '../types'
+import type { InventoryData, InventoryStorageMode, OwnedItem, UserTypeAssignment } from '../types'
 import { inventoryApi, type InventorySnapshot, type InventoryPutPayload } from '../api/inventory'
-import { emptyInventory } from './inventory'
+import { emptyInventory, normalizeName } from './inventory'
 
 // 所有アイテム台帳のストレージアダプタ。
 // 保存先（ローカルストレージ / DB）を差し替えても UI 側は同じ InventoryData を扱う。
 
 export const STORAGE_MODE_KEY = 'moe_inventory_mode'
 export const LOCAL_DATA_KEY = 'moe_inventory:v1'
-// 「除外リストに追加」時の確認ダイアログを今後表示しないかどうか（端末ごとの設定）
+// 「対象外種別の付与」時などの確認ダイアログを今後表示しないかどうか（端末ごとの設定）
 export const SKIP_EXCLUDE_CONFIRM_KEY = 'moe_inventory_skip_exclude_confirm'
-// ユーザーが「適用する共通除外の種別」として選んだ種別ID（端末ごとの設定）。
-// 未設定（null）は「全種別を適用」（既定）。
-export const APPLIED_EXCLUSION_TYPES_KEY = 'moe_inventory_applied_exclusion_types'
-// 既定種別「その他」のうち、ユーザーが個別にOFFにした共通除外アイテム名（端末ごとの設定）。
-// 既定は空＝その他のアイテムは全適用（オプトアウト方式）。
-export const DISABLED_COMMON_NAMES_KEY = 'moe_inventory_disabled_common_names'
+// 現在選択中の表示種別タブ（端末ごと）。'all' | 'tradeable' | 'unset' | type_id(number)。既定は取引可能。
+export const DISPLAY_TYPE_KEY = 'moe_inventory_display_type'
+// ユーザー指定の「サーバ登録対象外」アイテム名（端末ごと・サーバーには送らない）。
+export const SERVER_EXCLUDED_KEY = 'moe_inventory_server_excluded'
+// DBモード時に、サーバ登録対象外のためサーバーへ送らずローカルにだけ保持するアイテム（分割保存）。
+export const LOCAL_DB_SPLIT_KEY = 'moe_inventory:db-local:v1'
+
+export type DisplayType = 'all' | 'tradeable' | 'unset' | number
 
 export function getSkipExcludeConfirm(): boolean {
   try {
@@ -33,32 +35,31 @@ export function setSkipExcludeConfirm(skip: boolean): void {
   }
 }
 
-/** 適用する共通除外の種別ID。未設定（null）は「全種別を適用」（既定）。 */
-export function getAppliedExclusionTypeIds(): number[] | null {
+/** 現在選択中の表示種別タブ。未設定（既定）は 'tradeable'（取引可能のみ表示）。 */
+export function getDisplayType(): DisplayType {
   try {
-    const raw = localStorage.getItem(APPLIED_EXCLUSION_TYPES_KEY)
-    if (raw == null) return null
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((v): v is number => typeof v === 'number') : null
+    const raw = localStorage.getItem(DISPLAY_TYPE_KEY)
+    if (raw == null) return 'tradeable'
+    if (raw === 'all' || raw === 'tradeable' || raw === 'unset') return raw
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : 'tradeable'
   } catch {
-    return null
+    return 'tradeable'
   }
 }
 
-/** 適用する種別IDを保存する。null を渡すと「全種別を適用」（既定）に戻す。 */
-export function setAppliedExclusionTypeIds(ids: number[] | null): void {
+export function setDisplayType(t: DisplayType): void {
   try {
-    if (ids == null) localStorage.removeItem(APPLIED_EXCLUSION_TYPES_KEY)
-    else localStorage.setItem(APPLIED_EXCLUSION_TYPES_KEY, JSON.stringify(ids))
+    localStorage.setItem(DISPLAY_TYPE_KEY, String(t))
   } catch {
     /* noop */
   }
 }
 
-/** その他（既定種別）のうち個別にOFFにした共通除外アイテム名。既定は空（全適用）。 */
-export function getDisabledCommonNames(): string[] {
+/** ユーザー指定の「サーバ登録対象外」名（端末ローカル。サーバーには送らない）。 */
+export function getServerExcludedNames(): string[] {
   try {
-    const raw = localStorage.getItem(DISABLED_COMMON_NAMES_KEY)
+    const raw = localStorage.getItem(SERVER_EXCLUDED_KEY)
     if (raw == null) return []
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
@@ -67,11 +68,10 @@ export function getDisabledCommonNames(): string[] {
   }
 }
 
-/** その他で個別OFFにした共通除外アイテム名を保存する。 */
-export function setDisabledCommonNames(names: string[]): void {
+export function setServerExcludedNames(names: string[]): void {
   try {
-    if (names.length === 0) localStorage.removeItem(DISABLED_COMMON_NAMES_KEY)
-    else localStorage.setItem(DISABLED_COMMON_NAMES_KEY, JSON.stringify(names))
+    if (names.length === 0) localStorage.removeItem(SERVER_EXCLUDED_KEY)
+    else localStorage.setItem(SERVER_EXCLUDED_KEY, JSON.stringify(names))
   } catch {
     /* noop */
   }
@@ -94,6 +94,23 @@ export function setStorageMode(mode: InventoryStorageMode): void {
   }
 }
 
+// ---- 後方互換: exclusions（種別割当）の正規化 -------------------------------
+
+/** 旧形式（文字列配列）／新形式（{name,exclusion_type_id}）どちらも UserTypeAssignment[] に正規化する。 */
+function normalizeExclusions(raw: unknown): UserTypeAssignment[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((e): UserTypeAssignment | null => {
+      if (typeof e === 'string') return { name: e, exclusion_type_id: null }
+      if (e && typeof e === 'object' && typeof (e as { name?: unknown }).name === 'string') {
+        const t = (e as { exclusion_type_id?: unknown }).exclusion_type_id
+        return { name: (e as { name: string }).name, exclusion_type_id: typeof t === 'number' ? t : null }
+      }
+      return null
+    })
+    .filter((v): v is UserTypeAssignment => v !== null)
+}
+
 // ---- ローカルストレージ実装 -------------------------------------------------
 
 function loadLocal(): InventoryData {
@@ -105,7 +122,7 @@ function loadLocal(): InventoryData {
       accounts: parsed.accounts ?? [],
       // 旧データには note が無いため空文字で補う
       items: (parsed.items ?? []).map((it) => ({ ...it, note: it.note ?? '' })),
-      exclusions: parsed.exclusions ?? [],
+      exclusions: normalizeExclusions(parsed.exclusions),
     }
   } catch {
     return emptyInventory()
@@ -117,6 +134,40 @@ function saveLocal(data: InventoryData): void {
     localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(data))
   } catch {
     /* noop（容量超過など） */
+  }
+}
+
+// ---- DBモードの分割保存（サーバ登録対象外をローカルにだけ持つ） --------------
+
+// 分割保存する行は、DB再保存でアカウントIDが振り直されても復元できるよう
+// アカウント「名」を併せて持つ（読込時に名前で現在のアカウントへ対応づける）。
+type SplitItem = OwnedItem & { _accountName: string | null }
+
+function loadLocalSplit(): SplitItem[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_DB_SPLIT_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as SplitItem[]).map((it) => ({ ...it, note: it.note ?? '' })) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalSplit(items: SplitItem[]): void {
+  try {
+    if (items.length === 0) localStorage.removeItem(LOCAL_DB_SPLIT_KEY)
+    else localStorage.setItem(LOCAL_DB_SPLIT_KEY, JSON.stringify(items))
+  } catch {
+    /* noop */
+  }
+}
+
+function clearLocalSplit(): void {
+  try {
+    localStorage.removeItem(LOCAL_DB_SPLIT_KEY)
+  } catch {
+    /* noop */
   }
 }
 
@@ -139,7 +190,7 @@ export function snapshotToInventory(s: InventorySnapshot): InventoryData {
       marked: it.is_marked,
       note: it.note ?? '',
     })),
-    exclusions: s.exclusions,
+    exclusions: normalizeExclusions(s.exclusions),
   }
 }
 
@@ -160,38 +211,56 @@ export function inventoryToPayload(d: InventoryData): InventoryPutPayload {
       note: it.note ?? '',
       sort_order: i,
     })),
-    exclusions: d.exclusions,
+    exclusions: d.exclusions.map((e) => ({ name: e.name, exclusion_type_id: e.exclusion_type_id })),
   }
+}
+
+// ---- サーバ登録対象外の分割ヘルパー ----------------------------------------
+
+/** 名前がサーバ登録対象外集合に含まれるか（正規化して判定）。 */
+function isServerExcluded(name: string, set: Set<string>): boolean {
+  return set.has(normalizeName(name))
 }
 
 // ---- 公開 API ---------------------------------------------------------------
 
-/** 指定した保存先から台帳を読み込む。 */
+/**
+ * 指定した保存先から台帳を読み込む。
+ * DBモードでは、サーバ登録対象外のためローカルにだけ保持していた行（分割保存）をマージして返す。
+ */
 export async function loadInventory(mode: InventoryStorageMode): Promise<InventoryData> {
   if (mode === 'db') {
     const res = await inventoryApi.get()
-    return snapshotToInventory(res.data)
+    return mergeSplitInto(snapshotToInventory(res.data))
   }
   return loadLocal()
 }
 
+/** DBスナップショットへ、ローカル分割保存の対象外行をマージする（アカウント名で現在のアカウントに対応づけ）。 */
+function mergeSplitInto(inv: InventoryData): InventoryData {
+  const split = loadLocalSplit()
+  if (split.length === 0) return inv
+  const idByName = new Map(inv.accounts.map((a) => [a.name, a.id]))
+  const merged = split.map(({ _accountName, ...it }) => ({
+    ...it,
+    accountId: _accountName != null ? (idByName.get(_accountName) ?? null) : null,
+  }))
+  return { ...inv, items: [...inv.items, ...merged] }
+}
+
 /**
  * 初期ロード。保存先モードはサーバー（ユーザー単位）を正とする。
- *
- * これまでモードは端末の localStorage だけにあり、ある端末で「サーバー（DB）」を選んでも
- * 別端末では既定の local 表示に戻ってしまっていた。サーバーのスナップショットに含まれる
- * storage_mode を参照し、db なら DB の内容を、local ならこの端末の内容を返す。
- * サーバー到達不可時のみ端末キャッシュ（localStorage）のモードにフォールバックする。
+ * DBモードのときはローカル分割保存分もマージして返す。
  */
 export async function loadInitialInventory(): Promise<{ mode: InventoryStorageMode; data: InventoryData }> {
   try {
     const res = await inventoryApi.get()
     const mode: InventoryStorageMode = res.data.storage_mode === 'db' ? 'db' : 'local'
     setStorageMode(mode) // 端末キャッシュも揃えておく（オフライン時のフォールバック用）
-    return { mode, data: mode === 'db' ? snapshotToInventory(res.data) : loadLocal() }
+    return { mode, data: mode === 'db' ? mergeSplitInto(snapshotToInventory(res.data)) : loadLocal() }
   } catch {
     const mode = getStorageMode()
-    return { mode, data: mode === 'db' ? emptyInventory() : loadLocal() }
+    return { mode, data: mode === 'db' ? mergeSplitInto(emptyInventory()) : loadLocal() }
   }
 }
 
@@ -201,11 +270,34 @@ export async function persistStorageMode(mode: InventoryStorageMode): Promise<vo
   await inventoryApi.setMode(mode)
 }
 
-/** 指定した保存先へ台帳を保存する。 */
-export async function saveInventory(mode: InventoryStorageMode, data: InventoryData): Promise<void> {
+/**
+ * 指定した保存先へ台帳を保存する。
+ *
+ * DBモードでは、サーバ登録対象外（serverExcluded）に一致する行はサーバーへ送らず、
+ * 端末ローカル（分割保存）にだけ保持する。残りはサーバーへ全置換で送る。
+ * localモードはすべて端末ローカルへ保存する（分割は不要なのでクリアする）。
+ */
+export async function saveInventory(
+  mode: InventoryStorageMode,
+  data: InventoryData,
+  serverExcluded: Set<string> = new Set(),
+): Promise<void> {
   if (mode === 'db') {
-    await inventoryApi.replace(inventoryToPayload(data))
+    const nameById = new Map(data.accounts.map((a) => [a.id, a.name]))
+    const dbItems: OwnedItem[] = []
+    const splitItems: SplitItem[] = []
+    for (const it of data.items) {
+      if (isServerExcluded(it.name, serverExcluded)) {
+        splitItems.push({ ...it, _accountName: it.accountId != null ? (nameById.get(it.accountId) ?? null) : null })
+      } else {
+        dbItems.push(it)
+      }
+    }
+    await inventoryApi.replace(inventoryToPayload({ ...data, items: dbItems }))
+    saveLocalSplit(splitItems)
     return
   }
+  // local: すべて端末へ。分割保存は使わないのでクリアする。
   saveLocal(data)
+  clearLocalSplit()
 }

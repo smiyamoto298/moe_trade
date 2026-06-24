@@ -113,7 +113,11 @@ class InventoryApiTest extends TestCase
 
         $res->assertJsonCount(2, 'accounts')
             ->assertJsonCount(2, 'items')
-            ->assertJsonPath('exclusions', ['ゴミ', '木の枝']); // name 昇順（カタカナ→漢字）
+            // 文字列で送っても {name, exclusion_type_id} で返る（後方互換・NULL=既定種別）。name 昇順
+            ->assertJsonPath('exclusions.0.name', 'ゴミ')
+            ->assertJsonPath('exclusions.0.exclusion_type_id', null)
+            ->assertJsonPath('exclusions.1.name', '木の枝')
+            ->assertJsonPath('exclusions.1.exclusion_type_id', null);
 
         // 登録アイテム行に item オブジェクトが同梱される
         $items = collect($res->json('items'));
@@ -132,6 +136,66 @@ class InventoryApiTest extends TestCase
 
         $this->assertSame(2, OwnedItem::where('user_id', $user->id)->count());
         $this->assertSame(2, UserExcludedItem::where('user_id', $user->id)->count());
+    }
+
+    public function test_種別割当をtype_id付きで保存しスナップショットに含まれる(): void
+    {
+        $user = $this->makeUser();
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+
+        $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'   => [],
+            'items'      => [],
+            // オブジェクト形式（種別ID付き）と文字列（NULL=既定種別）を混在で送る
+            'exclusions' => [
+                ['name' => '花火', 'exclusion_type_id' => $event->id],
+                '木の枝',
+            ],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('user_excluded_items', [
+            'user_id' => $user->id, 'name' => '花火', 'exclusion_type_id' => $event->id,
+        ]);
+        $this->assertDatabaseHas('user_excluded_items', [
+            'user_id' => $user->id, 'name' => '木の枝', 'exclusion_type_id' => null,
+        ]);
+
+        $byName = collect($res->json('exclusions'))->keyBy('name');
+        $this->assertSame($event->id, $byName['花火']['exclusion_type_id']);
+        $this->assertNull($byName['木の枝']['exclusion_type_id']);
+    }
+
+    public function test_不正なtype_idはnullに丸められる(): void
+    {
+        $user = $this->makeUser();
+
+        $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'   => [],
+            'items'      => [],
+            'exclusions' => [['name' => 'なぞ', 'exclusion_type_id' => 99999]],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('user_excluded_items', [
+            'user_id' => $user->id, 'name' => 'なぞ', 'exclusion_type_id' => null,
+        ]);
+    }
+
+    public function test_共通種別に登録済みの名前はユーザー種別割当のスナップショットから除外される(): void
+    {
+        $user = $this->makeUser();
+        // 共通種別（excluded_items）に「ゴミ」がある状態でユーザーも「ゴミ」を割当
+        \App\Models\ExcludedItem::create(['name' => 'ゴミ']);
+
+        $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'   => [],
+            'items'      => [],
+            'exclusions' => ['ゴミ', '木の枝'],
+        ])->assertOk();
+
+        // 保存自体はされるが、スナップショットでは共通優先のため「ゴミ」は返らない
+        $names = collect($res->json('exclusions'))->pluck('name');
+        $this->assertFalse($names->contains('ゴミ'));
+        $this->assertTrue($names->contains('木の枝'));
     }
 
     public function test_アイテムごとのメモを保存しスナップショットに含まれる(): void

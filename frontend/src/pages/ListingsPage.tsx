@@ -471,12 +471,6 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
             >
               + 出品する
             </Link>
-            <Link
-              to="/listings/bulk"
-              className="border border-surface-border hover:border-primary-500 text-gray-200 text-sm px-4 py-2 rounded-md transition-colors whitespace-nowrap"
-            >
-              一括出品
-            </Link>
           </div>
         )}
       </div>

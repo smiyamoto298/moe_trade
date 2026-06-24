@@ -391,11 +391,19 @@ export interface OwnedItem {
   note: string
 }
 
+// ユーザーが分類したアイテム名→表示種別（ジャンル）の割当。
+// exclusion_type_id が null の行は既定種別「その他」とみなす。
+// 旧「個別除外」を表示種別へ概念転換したもの（フィールド名は後方互換のため exclusions のまま）。
+export interface UserTypeAssignment {
+  name: string
+  exclusion_type_id: number | null
+}
+
 export interface InventoryData {
   accounts: MoeAccount[]
   items: OwnedItem[]
-  // ユーザー個別の除外アイテム名
-  exclusions: string[]
+  // ユーザーの種別割当（name→種別）
+  exclusions: UserTypeAssignment[]
 }
 
 // 保存先（デフォルトはローカルストレージ）
@@ -434,6 +442,17 @@ export interface UserExclusionSuggestion {
   name: string
   user_count: number
   from_device: boolean
+  // ユーザーが最も多く割り当てた種別（共通化時の既定種別の候補。未指定は null=その他）
+  suggested_type_id: number | null
+}
+
+// 「サーバ登録対象外」のシステム共通アイテム（管理者が登録）。
+// ここに登録された名前は、保存先がサーバー（DB）でもローカルストレージにだけ保存する。
+export interface ServerExcludedItem {
+  id: number
+  name: string
+  created_by: number | null
+  created_at: string
 }
 
 // 他ユーザーが買取中の価格（item_id ごと）。複数あるときは最高額と件数を返す。

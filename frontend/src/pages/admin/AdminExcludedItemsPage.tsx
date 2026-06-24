@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { excludedItemsApi } from '../../api/excludedItems'
+import { excludedItemsApi, serverExcludedItemsApi } from '../../api/excludedItems'
 import { compareJa } from '../../utils/collator'
 import { useDialog } from '../../contexts/DialogContext'
 import { usePageMeta } from '../../hooks/usePageMeta'
-import type { ExcludedItem, ExclusionType, UserExclusionSuggestion } from '../../types'
+import type { ExcludedItem, ExclusionType, UserExclusionSuggestion, ServerExcludedItem } from '../../types'
 
 /**
  * 共通の除外アイテム管理（admin）。
@@ -11,7 +11,7 @@ import type { ExcludedItem, ExclusionType, UserExclusionSuggestion } from '../..
  * 判定はアイテム名（文字列）単位。改行区切りでまとめて追加できる。
  */
 export default function AdminExcludedItemsPage() {
-  usePageMeta('除外アイテム管理', '貼り付け時に除外する共通アイテム名を管理します。')
+  usePageMeta('表示種別・対象外の管理', 'アイテムボックスの共通の表示種別（ジャンル）割当と、サーバ登録対象外アイテムを管理します。')
   const { confirm, alert } = useDialog()
   const [rows, setRows] = useState<ExcludedItem[]>([])
   const [types, setTypes] = useState<ExclusionType[]>([])
@@ -33,6 +33,41 @@ export default function AdminExcludedItemsPage() {
   const [dismissingName, setDismissingName] = useState<string | null>(null)
   // 候補を共通除外へ昇格するときに割り当てる種別（未選択は既定種別「その他」）
   const [promoteTypeId, setPromoteTypeId] = useState<number | ''>('')
+  // サーバ登録対象外（システム共通）
+  const [serverRows, setServerRows] = useState<ServerExcludedItem[]>([])
+  const [serverInput, setServerInput] = useState('')
+  const [serverAdding, setServerAdding] = useState(false)
+
+  const loadServer = () => {
+    serverExcludedItemsApi.adminList()
+      .then((r) => setServerRows(r.data))
+      .catch(() => setServerRows([]))
+  }
+
+  const addServer = async () => {
+    const names = serverInput.split(/[\r\n,]+/).map((n) => n.trim()).filter((n) => n !== '')
+    if (names.length === 0) return
+    setServerAdding(true)
+    try {
+      await serverExcludedItemsApi.create(names)
+      setServerInput('')
+      loadServer()
+    } catch {
+      await alert('サーバ登録対象外の追加に失敗しました。', { title: 'エラー' })
+    } finally {
+      setServerAdding(false)
+    }
+  }
+
+  const removeServer = async (row: ServerExcludedItem) => {
+    if (!(await confirm(`「${row.name}」をサーバ登録対象外から削除しますか？`, { title: '削除', confirmLabel: '削除', danger: true }))) return
+    try {
+      await serverExcludedItemsApi.remove(row.id)
+      setServerRows((p) => p.filter((r) => r.id !== row.id))
+    } catch {
+      await alert('削除に失敗しました。', { title: 'エラー' })
+    }
+  }
 
   const loadSuggestions = () => {
     excludedItemsApi.userSuggestions()
@@ -53,6 +88,7 @@ export default function AdminExcludedItemsPage() {
       .finally(() => setLoading(false))
     loadTypes()
     loadSuggestions()
+    loadServer()
   }
   useEffect(load, [])
 
@@ -90,16 +126,6 @@ export default function AdminExcludedItemsPage() {
       setTypes((p) => p.map((x) => (x.id === t.id ? res.data : x)))
     } catch {
       await alert('種別の改名に失敗しました（同名が既にある可能性があります）。', { title: 'エラー' })
-    }
-  }
-
-  // 種別のデフォルトON/OFF（未設定ユーザーに既定で適用するか）を切り替える
-  const toggleDefaultEnabled = async (t: ExclusionType) => {
-    try {
-      const res = await excludedItemsApi.updateType(t.id, { default_enabled: !t.default_enabled })
-      setTypes((p) => p.map((x) => (x.id === t.id ? res.data : x)))
-    } catch {
-      await alert('デフォルトON/OFFの変更に失敗しました。', { title: 'エラー' })
     }
   }
 
@@ -251,10 +277,10 @@ export default function AdminExcludedItemsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      <h1 className="text-xl font-bold text-white mb-2">除外アイテム管理</h1>
+      <h1 className="text-xl font-bold text-white mb-2">表示種別・対象外の管理</h1>
       <p className="text-sm text-gray-400 mb-5">
-        ここに登録したアイテム名は、所持アイテム管理・一括出品でアイテムボックスを貼り付けたときに自動で除外されます
-        （アイテム名の完全一致で判定）。改行・カンマ区切りでまとめて追加できます。
+        ここに登録したアイテム名は、アイテムボックスで共通の<strong>表示種別（ジャンル）</strong>として扱われます
+        （アイテム名の完全一致で判定）。ユーザーは種別ごとに表示/非表示を切り替えられます。改行・カンマ区切りでまとめて追加できます。
       </p>
 
       {/* 新規追加（複数可） */}
@@ -263,7 +289,7 @@ export default function AdminExcludedItemsPage() {
           rows={3}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={'除外したいアイテム名を入力（改行で複数可）\n例:\nゴミ\n木の枝'}
+          placeholder={'種別を割り当てるアイテム名を入力（改行で複数可）\n例:\nゴミ\n木の枝'}
           className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
         />
         <div className="flex flex-wrap items-center gap-3">
@@ -293,13 +319,11 @@ export default function AdminExcludedItemsPage() {
 
       {/* 種別（カテゴリ）管理 */}
       <div className="mb-6 bg-surface-card border border-surface-border rounded-lg p-4">
-        <h2 className="text-sm font-semibold text-gray-300 mb-1">種別（カテゴリ）の管理</h2>
+        <h2 className="text-sm font-semibold text-gray-300 mb-1">種別（ジャンル）の管理</h2>
         <p className="text-xs text-gray-400 mb-3">
-          共通除外を種別で分類できます。ユーザーはマイペ整理で適用する種別を選べます。
-          各種別の「既定ON/OFF」は、まだ設定をいじっていないユーザーにその種別を最初から適用するかどうかです
-          （ユーザーは個別に上書きできます）。
-          「{defaultType?.name ?? 'その他'}」は既定種別で削除できません（種別を削除すると、その種別の除外アイテムは既定種別へ移動します）。
-          ※「{defaultType?.name ?? 'その他'}」はアイテムごとに適用するため既定ON/OFFの対象外です。
+          アイテムを種別（表示ジャンル）で分類できます。アイテムボックスでは既定で「取引可能」（登録済みアイテム）のみ表示され、
+          ユーザーは見たい種別を切り替えて表示します。
+          「{defaultType?.name ?? 'その他'}」は既定種別で削除できません（種別を削除すると、その種別のアイテムは既定種別へ移動します）。
         </p>
         <div className="flex items-center gap-2 mb-3">
           <input
@@ -328,17 +352,6 @@ export default function AdminExcludedItemsPage() {
                   <span className="text-[10px] text-gray-500 border border-surface-border rounded px-1 py-0.5">既定</span>
                 ) : (
                   <>
-                    <button
-                      onClick={() => toggleDefaultEnabled(t)}
-                      title="まだ設定をいじっていないユーザーに、この種別を既定で適用するか"
-                      className={`text-[10px] rounded px-1.5 py-0.5 border transition-colors ${
-                        t.default_enabled
-                          ? 'border-emerald-600/50 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50'
-                          : 'border-surface-border text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      既定{t.default_enabled ? 'ON' : 'OFF'}
-                    </button>
                     <button onClick={() => renameType(t)} className="text-gray-400 hover:text-white">改名</button>
                     <button onClick={() => removeType(t)} className="text-red-400 hover:text-red-300">削除</button>
                   </>
@@ -393,6 +406,17 @@ export default function AdminExcludedItemsPage() {
                 {s.from_device && (
                   <span className="text-[10px] text-gray-300 bg-surface border border-surface-border rounded px-1.5 py-0.5 shrink-0" title="端末（ローカル）保存ユーザーが除外（匿名・人数は不明）">端末</span>
                 )}
+                {/* ユーザーが最も多く割り当てた種別での即時昇格（候補がある場合） */}
+                {s.suggested_type_id != null && types.some((t) => t.id === s.suggested_type_id) && (
+                  <button
+                    onClick={() => promote([s.name], s.suggested_type_id)}
+                    disabled={promotingName !== null || dismissingName !== null}
+                    title="ユーザーが多く選んだ種別で共通へ追加"
+                    className="text-xs bg-emerald-900/40 hover:bg-emerald-900/70 disabled:opacity-50 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded transition-colors shrink-0 whitespace-nowrap"
+                  >
+                    「{types.find((t) => t.id === s.suggested_type_id)?.name}」で追加
+                  </button>
+                )}
                 <select
                   value=""
                   onChange={(e) => {
@@ -424,8 +448,46 @@ export default function AdminExcludedItemsPage() {
         </div>
       )}
 
+      {/* サーバ登録対象外（システム共通） */}
+      <div className="mb-6 bg-surface-card border border-amber-700/40 rounded-lg p-4">
+        <h2 className="text-sm font-semibold text-amber-200 mb-1">サーバ登録対象外（システム共通）</h2>
+        <p className="text-xs text-gray-400 mb-3">
+          ここに登録した名前のアイテムは、ユーザーがアイテムボックスの保存先を「サーバー」にしていても
+          サーバーには保存されず、各ユーザーの端末（ローカル）にのみ保存されます（運営から内容を参照できません）。
+          アイテム名の完全一致で判定します。改行・カンマ区切りでまとめて追加できます。
+        </p>
+        <div className="flex items-start gap-2 mb-3">
+          <textarea
+            rows={2}
+            value={serverInput}
+            onChange={(e) => setServerInput(e.target.value)}
+            placeholder={'対象外にするアイテム名（改行で複数可）'}
+            className="flex-1 bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+          />
+          <button
+            onClick={addServer}
+            disabled={serverAdding || !serverInput.trim()}
+            className="text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-4 py-2 rounded-md transition-colors whitespace-nowrap"
+          >
+            {serverAdding ? '追加中...' : '+ 追加'}
+          </button>
+        </div>
+        {serverRows.length === 0 ? (
+          <p className="text-xs text-gray-500">登録はありません。</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {[...serverRows].sort((a, b) => compareJa(a.name, b.name)).map((r) => (
+              <span key={r.id} className="flex items-center gap-1.5 text-xs bg-surface border border-surface-border rounded px-2.5 py-1 text-gray-200">
+                {r.name}
+                <button onClick={() => removeServer(r)} className="text-red-400 hover:text-red-300" title="削除">✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* 種別タブ＋検索 */}
-      <h2 className="text-sm font-semibold text-gray-300 mb-2">共通除外リスト</h2>
+      <h2 className="text-sm font-semibold text-gray-300 mb-2">共通の種別割当</h2>
       <div className="flex flex-wrap gap-1.5 mb-3 border-b border-surface-border pb-2">
         <button
           onClick={() => setActiveTypeId('all')}

@@ -154,7 +154,7 @@ export default function Header() {
         {/* デスクトップナビ（lg以上） */}
         <nav className="hidden lg:flex items-center gap-6 text-sm">
           {navLinks}
-          {/* マイ取引・マイペ整理をトップ階層に直接表示 */}
+          {/* マイ取引・アイテムボックスをトップ階層に直接表示 */}
           {user && (
             <>
               <Link
@@ -180,7 +180,7 @@ export default function Header() {
                 to="/mypage/items"
                 className="text-gray-300 hover:text-white transition-colors"
               >
-                マイペ整理
+                アイテムボックス
               </Link>
               <Link
                 to="/board"
@@ -382,7 +382,7 @@ export default function Header() {
                   </span>
                 </Link>
                 <Link to="/mypage/items" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-                  マイペ整理
+                  アイテムボックス
                 </Link>
                 <Link to="/board" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
                   <span>運営掲示板</span>

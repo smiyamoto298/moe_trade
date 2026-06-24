@@ -1,5 +1,5 @@
 import client from './client'
-import type { Item } from '../types'
+import type { Item, UserTypeAssignment } from '../types'
 
 // サーバーが返す所持品スナップショットの型（DB保存時）。
 export interface InventoryServerAccount {
@@ -30,7 +30,8 @@ export interface InventorySnapshot {
   storage_mode: 'local' | 'db'
   accounts: InventoryServerAccount[]
   items: InventoryServerItem[]
-  exclusions: string[]
+  // ユーザーの種別割当（name→種別）。後方互換のため文字列配列も受け付けるが、サーバーは常にオブジェクトで返す。
+  exclusions: UserTypeAssignment[]
 }
 
 // PUT で全置換するペイロード。アカウントはクライアントキー（key）で参照する。
@@ -49,7 +50,7 @@ export interface InventoryPutPayload {
     note: string
     sort_order: number
   }[]
-  exclusions: string[]
+  exclusions: UserTypeAssignment[]
 }
 
 export const inventoryApi = {

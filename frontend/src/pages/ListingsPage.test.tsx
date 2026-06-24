@@ -543,7 +543,6 @@ describe('ListingsPage ログイン状態によるアクション制御', () => 
 
     expect(screen.queryByText('出品・取引希望にはログインが必要です！')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: '+ 出品する' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '一括出品' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '取引' })).toBeInTheDocument()
   })
 

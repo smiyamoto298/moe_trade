@@ -1,35 +1,51 @@
 import { describe, it, expect } from 'vitest'
-import { selectedCommonNames } from './inventory'
+import { effectiveTypeId } from './inventory'
 
 // 種別: 1=その他(既定), 2=イベント, 3=レア
-const items = [
-  { name: 'ゴミ', type_id: 1 },   // その他
-  { name: '木の枝', type_id: 1 }, // その他
-  { name: '花火', type_id: 2 },   // イベント
-  { name: 'お宝', type_id: 3 },   // レア
-]
+const commonMap = new Map<string, number>([
+  ['ゴミ', 1],
+  ['花火', 2],
+])
+const userMap = new Map<string, number | null>([
+  ['お宝', 3],
+  ['なぞ', null], // 種別未指定 → 既定種別「その他」(=1) に解決
+])
+const DEFAULT_TYPE_ID = 1
 
-describe('selectedCommonNames', () => {
-  it('ユーザー未設定かつdefaultEnabled未指定なら全種別を適用する（後方互換）', () => {
-    const names = selectedCommonNames(items, null, 1, [])
-    expect(names.sort()).toEqual(['お宝', 'ゴミ', '木の枝', '花火'].sort())
+const row = (over: Partial<{ itemId: number | null; name: string }>) => ({
+  itemId: null,
+  name: '',
+  ...over,
+})
+
+describe('effectiveTypeId', () => {
+  it('登録アイテムに紐づく行は取引可能になる', () => {
+    expect(effectiveTypeId(row({ itemId: 10, name: '炎の剣' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe('tradeable')
+    // 名前が割当にあっても itemId があれば取引可能が優先
+    expect(effectiveTypeId(row({ itemId: 10, name: 'ゴミ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe('tradeable')
   })
 
-  it('ユーザー未設定なら管理者の既定ON種別だけを適用する（その他はアイテム単位で全適用）', () => {
-    // 既定ONはイベント(2)のみ。レア(3)は既定OFF。
-    const names = selectedCommonNames(items, null, 1, [], [2])
-    // その他(ゴミ・木の枝)＋イベント(花火)。レア(お宝)は含まない。
-    expect(names.sort()).toEqual(['ゴミ', '木の枝', '花火'].sort())
+  it('共通割当はユーザー割当より優先される', () => {
+    const cm = new Map([['花火', 2]])
+    const um = new Map<string, number | null>([['花火', 3]])
+    expect(effectiveTypeId(row({ name: '花火' }), cm, um, DEFAULT_TYPE_ID)).toBe(2)
   })
 
-  it('ユーザーが明示選択したら既定ON/OFFより選択が優先される', () => {
-    // ユーザーはレア(3)だけを選択 → その他は常にアイテム単位で適用される
-    const names = selectedCommonNames(items, [3], 1, [], [2])
-    expect(names.sort()).toEqual(['ゴミ', '木の枝', 'お宝'].sort())
+  it('共通割当の種別IDを返す', () => {
+    expect(effectiveTypeId(row({ name: 'ゴミ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(1)
+    expect(effectiveTypeId(row({ name: '花火' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(2)
   })
 
-  it('その他のアイテムはdisabledOtherNamesで個別にOFFにできる', () => {
-    const names = selectedCommonNames(items, null, 1, ['木の枝'], [2])
-    expect(names.sort()).toEqual(['ゴミ', '花火'].sort())
+  it('ユーザー割当の種別IDを返す（null は既定種別へ解決）', () => {
+    expect(effectiveTypeId(row({ name: 'お宝' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(3)
+    expect(effectiveTypeId(row({ name: 'なぞ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(1)
+  })
+
+  it('どの割当にも無い未登録行は未設定になる', () => {
+    expect(effectiveTypeId(row({ name: '未分類' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe('unset')
+  })
+
+  it('前後の空白は正規化して照合する', () => {
+    expect(effectiveTypeId(row({ name: '  ゴミ  ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(1)
   })
 })

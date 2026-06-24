@@ -13,52 +13,36 @@ export function emptyInventory(): InventoryData {
   return { accounts: [], items: [], exclusions: [] }
 }
 
-/** 除外判定用にアイテム名を正規化（前後空白の除去）。判定はアイテム名（文字列）単位。 */
-export function normalizeExcludeName(name: string): string {
+/** アイテム名を正規化（前後空白の除去）。種別割当の照合はアイテム名（文字列）単位。 */
+export function normalizeName(name: string): string {
   return name.trim()
 }
 
 /**
- * 共通除外アイテムを「適用する種別」で絞り込んだ名前の配列を返す。
+ * 行の実効表示種別（ジャンル）を求める。
  *
- * - 既定種別「その他」（defaultTypeId）のアイテムは **アイテム単位** で適用する。
- *   disabledOtherNames に入っている名前だけ除外する（既定は空＝全適用＝オプトアウト方式）。
- * - それ以外の種別は **種別単位** で適用する。selectedTypeIds が null（ユーザー未設定）なら、
- *   管理者が「既定ON」にした種別（defaultEnabledTypeIds）だけを適用する。
- *   defaultEnabledTypeIds が null（情報なし）の場合は従来どおり全種別を適用する（後方互換）。
+ * 優先順位:
+ *  1. 登録アイテムに紐づく（itemId!=null）→ 'tradeable'（取引可能・派生種別）
+ *  2. 共通の種別割当（管理者）に名前がある → その type_id
+ *  3. ユーザーの種別割当に名前がある → その type_id（null は既定種別「その他」= defaultTypeId）
+ *  4. どれも無し → 'unset'（未設定）
+ *
+ * commonMap / userMap のキーは正規化済みのアイテム名を想定する。
  */
-export function selectedCommonNames(
-  items: { name: string; type_id: number }[],
-  selectedTypeIds: number[] | null,
-  defaultTypeId: number | null = null,
-  disabledOtherNames: string[] = [],
-  defaultEnabledTypeIds: number[] | null = null
-): string[] {
-  const typeSet = selectedTypeIds != null
-    ? new Set(selectedTypeIds)
-    : (defaultEnabledTypeIds != null ? new Set(defaultEnabledTypeIds) : null)
-  const disabled = new Set(disabledOtherNames)
-  return items
-    .filter((i) => {
-      if (defaultTypeId != null && i.type_id === defaultTypeId) {
-        return !disabled.has(i.name)
-      }
-      return typeSet == null ? true : typeSet.has(i.type_id)
-    })
-    .map((i) => i.name)
-}
+export type EffectiveType = 'tradeable' | 'unset' | number
 
-/** 共通除外（管理者）と個別除外（ユーザー）をマージした除外名セットを作る。 */
-export function buildExclusionSet(common: string[], personal: string[]): Set<string> {
-  const set = new Set<string>()
-  for (const n of [...common, ...personal]) {
-    const norm = normalizeExcludeName(n)
-    if (norm) set.add(norm)
+export function effectiveTypeId(
+  row: { itemId: number | null; name: string },
+  commonMap: Map<string, number>,
+  userMap: Map<string, number | null>,
+  defaultTypeId: number | null,
+): EffectiveType {
+  if (row.itemId != null) return 'tradeable'
+  const name = normalizeName(row.name)
+  if (commonMap.has(name)) return commonMap.get(name)!
+  if (userMap.has(name)) {
+    const t = userMap.get(name)
+    return t ?? (defaultTypeId ?? 'unset')
   }
-  return set
-}
-
-/** 指定名が除外対象か（完全一致）。 */
-export function isExcluded(name: string, set: Set<string>): boolean {
-  return set.has(normalizeExcludeName(name))
+  return 'unset'
 }

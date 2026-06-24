@@ -9,7 +9,6 @@ import HelpButton from './components/HelpButton'
 import ListingsPage from './pages/ListingsPage'
 import ListingDetailPage from './pages/ListingDetailPage'
 import NewListingPage from './pages/NewListingPage'
-import BulkListingPage from './pages/BulkListingPage'
 import BuyRequestsPage from './pages/BuyRequestsPage'
 import BuyRequestDetailPage from './pages/BuyRequestDetailPage'
 import NewBuyRequestPage from './pages/NewBuyRequestPage'
@@ -69,10 +68,6 @@ export default function App() {
           <Route
             path="/listings/new"
             element={<PrivateRoute><NewListingPage /></PrivateRoute>}
-          />
-          <Route
-            path="/listings/bulk"
-            element={<PrivateRoute><BulkListingPage /></PrivateRoute>}
           />
           <Route path="/buy-requests" element={<BuyRequestsPage />} />
           <Route path="/buy-requests/:id" element={<BuyRequestDetailPage />} />

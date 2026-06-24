@@ -56,7 +56,7 @@ export const TOURS: Record<string, PageTour> = {
       {
         target: '[data-tour="listings-actions"]',
         title: '自分も出品できます',
-        body: '出品する : 1件ずつ\n一括出品 : マイページをコピペしてまとめて出品',
+        body: '「出品する」から1件ずつ出品できます。',
         placement: 'bottom',
         width: 350,
       },
@@ -85,32 +85,6 @@ export const TOURS: Record<string, PageTour> = {
         title: '相場情報',
         body: '過去に成立した取引の価格情報を確認できます。',
         placement: 'top',
-      },
-    ],
-  },
-
-  // 一括出品（/listings/bulk）
-  'listing-bulk': {
-    pageId: 'listing-bulk',
-    version: 1,
-    steps: [
-      {
-        target: '[data-tour="bulk-paste"]',
-        title: '一括出品',
-        body: '公式マイページのアイテムボックスをコピーして、ここに貼り付け「読込」を押します。転送が×のアイテムは自動で除外されます。',
-        placement: 'bottom',
-        width: 400,
-        image: '/tours/mypage_item.png',
-        imageAlt: '公式マイページのアイテムボックス',
-      },
-      {
-        target: '[data-tour="bulk-paste"]',
-        title: '出品対象を選択',
-        body: '登録済みのアイテムは自動で選択されます。\n新規登録ボタンが表示されている場合未登録のアイテムです。\n「...」で省略されているアイテムは、候補から検索して見つからなければ登録が必要になります。\n出品数を指定したアイテムのみ出品登録されます。',
-        placement: 'bottom',
-        width: 400,
-        image: '/tours/bulk_list.png',
-        imageAlt: '公式マイページのアイテムボックス',
       },
     ],
   },
@@ -169,7 +143,7 @@ export const TOURS: Record<string, PageTour> = {
     version: 1,
     steps: [
       {
-        title: 'マイペ整理へようこそ',
+        title: 'アイテムボックスへようこそ',
         body: '公式サイトのアイテムボックスを貼り付けて、自分の所持アイテムを記録・管理できます。',
       },
       {
@@ -246,7 +220,6 @@ export const TOURS: Record<string, PageTour> = {
 
 export const ROUTE_TO_PAGE_ID: { test: (path: string) => boolean; pageId: string }[] = [
   { test: (p) => p === '/listings/new', pageId: 'listing-new' },
-  { test: (p) => p === '/listings/bulk', pageId: 'listing-bulk' },
   { test: (p) => /^\/listings\/\d+$/.test(p), pageId: 'listing-detail' },
   { test: (p) => p === '/listings' || p === '/skills' || p === '/assets', pageId: 'listings' },
   { test: (p) => p === '/mypage/items', pageId: 'owned-items' },

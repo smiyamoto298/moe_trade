@@ -82,6 +82,51 @@ class ExcludedItemApiTest extends TestCase
         $this->assertSame(3, ExcludedItem::count());
     }
 
+    public function test_共通種別へ昇格するとユーザー個別の種別割当は削除される(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+
+        // 2人が「ゴミ」を個別に分類済み
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ']);
+        UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ']);
+
+        // 共通種別へ昇格
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/excluded-items', [
+            'names' => ['ゴミ'],
+        ])->assertCreated();
+
+        // 共通に登録され、ユーザー個別の割当（重複）は削除される
+        $this->assertDatabaseHas('excluded_items', ['name' => 'ゴミ']);
+        $this->assertSame(0, UserExcludedItem::where('name', 'ゴミ')->count());
+    }
+
+    public function test_候補にはユーザーが最も多く割り当てた種別がsuggested_type_idとして付く(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+        $u3 = $this->makeUser();
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+        $rare  = \App\Models\ExclusionType::create(['name' => 'レア']);
+
+        // 「ゴミ」: 2人がイベント、1人がレア → イベントが最頻
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ', 'exclusion_type_id' => $event->id]);
+        UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ', 'exclusion_type_id' => $event->id]);
+        UserExcludedItem::create(['user_id' => $u3->id, 'name' => 'ゴミ', 'exclusion_type_id' => $rare->id]);
+        // 「小石」: 種別未指定（null）のみ → suggested_type_id は null
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => '小石']);
+
+        $res = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')
+            ->assertOk();
+
+        $byName = collect($res->json())->keyBy('name');
+        $this->assertSame($event->id, $byName['ゴミ']['suggested_type_id']);
+        $this->assertNull($byName['小石']['suggested_type_id']);
+    }
+
     public function test_一般ユーザーと編集者は除外アイテムを登録できない(): void
     {
         // 未ログインは 401（actingAs はテスト内で持続するため最初に検証する）

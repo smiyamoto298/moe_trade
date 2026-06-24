@@ -64,13 +64,16 @@ class InventoryController extends Controller
             'items.*.is_marked'        => 'nullable|boolean',
             'items.*.sort_order'       => 'nullable|integer',
 
+            // 表示種別（ジャンル）の割当。後方互換のため文字列も許容する（NULL=既定種別「その他」）。
+            // 各要素は文字列 "name" か、オブジェクト { name, exclusion_type_id } のいずれか。
             'exclusions'               => 'present|array',
-            'exclusions.*'             => 'string|max:200',
         ]);
 
         $userId = $request->user()->id;
+        // 有効な種別IDの集合（不正/存在しない type_id は null=既定種別に丸める）
+        $validTypeIds = \App\Models\ExclusionType::pluck('id')->flip();
 
-        DB::transaction(function () use ($userId, $data) {
+        DB::transaction(function () use ($userId, $data, $validTypeIds) {
             // 既存の台帳を全削除（owned_items を先に消してから accounts）
             OwnedItem::where('user_id', $userId)->delete();
             MoeAccount::where('user_id', $userId)->delete();
@@ -105,13 +108,26 @@ class InventoryController extends Controller
                 ]);
             }
 
-            // 個別除外（重複は無視）
-            $names = collect($data['exclusions'])
-                ->map(fn($n) => trim($n))
-                ->filter(fn($n) => $n !== '')
-                ->unique();
-            foreach ($names as $name) {
-                UserExcludedItem::create(['user_id' => $userId, 'name' => $name]);
+            // ユーザーの種別割当（name→種別）。文字列／オブジェクト両対応。name 単位で重複は無視。
+            $seen = [];
+            foreach ($data['exclusions'] as $entry) {
+                if (is_array($entry)) {
+                    $name = trim((string) ($entry['name'] ?? ''));
+                    $rawType = $entry['exclusion_type_id'] ?? null;
+                } else {
+                    $name = trim((string) $entry);
+                    $rawType = null;
+                }
+                if ($name === '' || isset($seen[$name])) {
+                    continue;
+                }
+                $seen[$name] = true;
+                $typeId = ($rawType !== null && $validTypeIds->has((int) $rawType)) ? (int) $rawType : null;
+                UserExcludedItem::create([
+                    'user_id'           => $userId,
+                    'name'              => $name,
+                    'exclusion_type_id' => $typeId,
+                ]);
             }
         });
 
@@ -136,8 +152,19 @@ class InventoryController extends Controller
             ->orderBy('sort_order')->orderBy('id')
             ->get();
 
+        // ユーザーの種別割当（name→種別）。クライアントは effectiveTypeId で表示種別を決める。
+        // 共通割当（excluded_items）が同名を持つ場合はそちらが優先されるため、ここでは
+        // 共通に存在する name を除いて返す（共通へ昇格済みの個別割当は重複させない）。
+        $commonNames = \App\Models\ExcludedItem::pluck('name')->flip();
         $exclusions = UserExcludedItem::where('user_id', $userId)
-            ->orderBy('name')->pluck('name');
+            ->orderBy('name')
+            ->get(['name', 'exclusion_type_id'])
+            ->filter(fn ($e) => !$commonNames->has($e->name))
+            ->map(fn ($e) => [
+                'name'              => $e->name,
+                'exclusion_type_id' => $e->exclusion_type_id,
+            ])
+            ->values();
 
         // 保存先モード（local / db）。クライアントはこれを正としてどの保存先を読むか決める。
         $storageMode = \App\Models\User::whereKey($userId)->value('inventory_storage_mode') ?? 'local';

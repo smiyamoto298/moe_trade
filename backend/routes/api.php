@@ -72,6 +72,9 @@ Route::get('buy-requests/{id}', [BuyRequestController::class, 'show']);
 // 共通の除外アイテム名（貼り付け除外に使用・公開）
 Route::get('excluded-items', [\App\Http\Controllers\ExcludedItemController::class, 'index']);
 
+// サーバ登録対象外（システム共通）の名前一覧（分割保存判定に使用・公開）
+Route::get('server-excluded-items', [\App\Http\Controllers\ServerExcludedItemController::class, 'index']);
+
 // 認証必須
 Route::middleware('auth:sanctum')->group(function () {
     // デバッグ用（開発環境のみ）
@@ -349,6 +352,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('admin/exclusion-types',          [\App\Http\Controllers\ExclusionTypeController::class, 'store']);
         Route::put('admin/exclusion-types/{id}',      [\App\Http\Controllers\ExclusionTypeController::class, 'update']);
         Route::delete('admin/exclusion-types/{id}',   [\App\Http\Controllers\ExclusionTypeController::class, 'destroy']);
+
+        // サーバ登録対象外（システム共通）の管理
+        Route::get('admin/server-excluded-items',         [\App\Http\Controllers\ServerExcludedItemController::class, 'adminIndex']);
+        Route::post('admin/server-excluded-items',        [\App\Http\Controllers\ServerExcludedItemController::class, 'store']);
+        Route::delete('admin/server-excluded-items',      [\App\Http\Controllers\ServerExcludedItemController::class, 'destroyMany']);
+        Route::delete('admin/server-excluded-items/{id}', [\App\Http\Controllers\ServerExcludedItemController::class, 'destroy']);
 
         // お知らせ管理
         Route::get('admin/announcements',          [AnnouncementController::class, 'adminIndex']);

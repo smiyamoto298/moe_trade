@@ -3,10 +3,10 @@ import { render, waitFor, screen, fireEvent, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import OwnedItemsPage from './OwnedItemsPage'
 import { itemsApi } from '../api/items'
-import { saveInventory, loadInitialInventory } from '../utils/inventoryStore'
+import { saveInventory, loadInitialInventory, getDisplayType } from '../utils/inventoryStore'
 import type { Item, InventoryData } from '../types'
 
-// design.md「マイペ整理 > 貼り付け取り込み」:
+// design.md「アイテムボックス > 貼り付け取り込み」:
 // 一覧を表示するタイミングで、未紐づけ（itemId=null）の行を /api/items/match で
 // 登録アイテムへ再照合し、一致したものを自動でリンクして保存する。
 // 末尾「...」の省略名は誤紐づけ防止のため対象外。
@@ -14,23 +14,28 @@ import type { Item, InventoryData } from '../types'
 
 vi.mock('../api/items', () => ({ itemsApi: { matchNames: vi.fn() } }))
 vi.mock('../api/buyRequests', () => ({ buyRequestsApi: { prices: vi.fn(() => Promise.resolve({ data: {} })) } }))
-vi.mock('../api/excludedItems', () => ({ excludedItemsApi: { list: vi.fn(() => Promise.resolve({ data: { types: [], items: [] } })), report: vi.fn(() => Promise.resolve()) } }))
+vi.mock('../api/excludedItems', () => ({
+  excludedItemsApi: { list: vi.fn(() => Promise.resolve({ data: { types: [], items: [] } })), report: vi.fn(() => Promise.resolve()), createType: vi.fn() },
+  serverExcludedItemsApi: { list: vi.fn(() => Promise.resolve({ data: [] })) },
+}))
 vi.mock('../api/client', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: {} })) } }))
 vi.mock('../utils/inventoryStore', () => ({
   getStorageMode: vi.fn(() => 'local'),
   loadInitialInventory: vi.fn(),
   saveInventory: vi.fn(() => Promise.resolve()),
   persistStorageMode: vi.fn(() => Promise.resolve()),
-  getSkipExcludeConfirm: vi.fn(() => false),
-  setSkipExcludeConfirm: vi.fn(),
-  getAppliedExclusionTypeIds: vi.fn(() => null),
-  setAppliedExclusionTypeIds: vi.fn(),
-  getDisabledCommonNames: vi.fn(() => []),
-  setDisabledCommonNames: vi.fn(),
+  // 既定で全種別表示にしてテストの行が見えるようにする（種別フィルタは別テストで検証）
+  getDisplayType: vi.fn(() => 'all'),
+  setDisplayType: vi.fn(),
+  getServerExcludedNames: vi.fn(() => []),
+  setServerExcludedNames: vi.fn(),
 }))
 vi.mock('../hooks/usePageMeta', () => ({ usePageMeta: vi.fn() }))
 vi.mock('../contexts/DialogContext', () => ({
   useDialog: () => ({ confirm: vi.fn(), alert: vi.fn() }),
+}))
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { role: 'user' } }),
 }))
 vi.mock('../components/NewItemForm', () => ({ default: () => <div /> }))
 vi.mock('../components/CandidateSelectModal', () => ({ default: () => <div /> }))
@@ -40,6 +45,7 @@ vi.mock('../components/equipmentCells', () => ({ BaseStatBadges: () => <div /> }
 const mockedMatch = vi.mocked(itemsApi.matchNames)
 const mockedLoad = vi.mocked(loadInitialInventory)
 const mockedSave = vi.mocked(saveInventory)
+const mockedDisplayType = vi.mocked(getDisplayType)
 
 const makeItem = (over: Partial<Item> = {}): Item => ({
   id: 12,
@@ -149,9 +155,9 @@ describe('OwnedItemsPage 表示切替タブ', () => {
     await waitFor(() => expect(container.querySelector('[data-tour="owned-filter"]')).toBeTruthy())
     const filterBar = container.querySelector('[data-tour="owned-filter"]') as HTMLElement
 
-    // 「すべて」と各アカウントのタブが描画され、初期は全件表示
-    expect(within(filterBar).getByRole('button', { name: /すべて/ })).toBeInTheDocument()
+    // 各アカウントのタブが描画され、初期は全件表示（「すべて」は表示・種別の両行にあるため件数のみ確認）
     expect(within(filterBar).getByRole('button', { name: /メイン/ })).toBeInTheDocument()
+    expect(within(filterBar).getByRole('button', { name: /サブ/ })).toBeInTheDocument()
     expect(screen.getByText('アイテムA')).toBeInTheDocument()
     expect(screen.getByText('アイテムB')).toBeInTheDocument()
 
@@ -159,6 +165,29 @@ describe('OwnedItemsPage 表示切替タブ', () => {
     fireEvent.click(within(filterBar).getByRole('button', { name: /サブ/ }))
     expect(screen.queryByText('アイテムA')).not.toBeInTheDocument()
     expect(screen.getByText('アイテムB')).toBeInTheDocument()
+  })
+
+  it('既定の表示種別は「取引可能」で、未登録（未設定）の行は表示されない', async () => {
+    // useState 初期化時の1回だけ 'tradeable' を返す（後続テストへ影響させない）
+    mockedDisplayType.mockReturnValueOnce('tradeable')
+    const inv = makeInventory([
+      unlinkedRow({ id: 'r1', name: '未登録アイテム' }), // itemId=null → 未設定
+      unlinkedRow({ id: 'r2', name: '炎の大剣', itemId: 12, item: makeItem() }), // 取引可能
+    ])
+    mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    const { container } = renderPage()
+    await waitFor(() => expect(container.querySelector('[data-tour="owned-filter"]')).toBeTruthy())
+
+    // 取引可能（登録済み）だけ表示。未設定の未登録行は既定では非表示
+    expect(screen.getByText('炎の大剣')).toBeInTheDocument()
+    expect(screen.queryByText('未登録アイテム')).not.toBeInTheDocument()
+
+    // 「未登録」タブに切り替えると未分類の行が見える
+    const filterBar = container.querySelector('[data-tour="owned-filter"]') as HTMLElement
+    fireEvent.click(within(filterBar).getByRole('button', { name: /未登録/ }))
+    expect(screen.getByText('未登録アイテム')).toBeInTheDocument()
   })
 })
 
