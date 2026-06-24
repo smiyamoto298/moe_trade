@@ -130,14 +130,14 @@ export default function AdminExcludedItemsPage() {
     }
   }
 
-  // ユーザー個別除外の候補から共通除外へ追加（昇格）。追加先の種別は promoteTypeId（既定は「その他」）。
-  const promote = async (names: string[]) => {
+  // ユーザー個別除外の候補から共通除外へ追加（昇格）。追加先の種別を引数で指定（null は既定「その他」）。
+  const promote = async (names: string[], typeId: number | null) => {
     if (names.length === 0) return
     setPromotingName(names.length === 1 ? names[0] : '__bulk__')
     setMessage('')
     try {
-      const res = await excludedItemsApi.create(names, promoteTypeId === '' ? null : promoteTypeId)
-      const intoName = promoteTypeId === '' ? (defaultType?.name ?? 'その他') : (types.find((t) => t.id === promoteTypeId)?.name ?? '')
+      const res = await excludedItemsApi.create(names, typeId)
+      const intoName = typeId === null ? (defaultType?.name ?? 'その他') : (types.find((t) => t.id === typeId)?.name ?? '')
       setMessage(`${res.data.created_count}件を共通除外（${intoName}）に追加しました。${res.data.skipped_count > 0 ? `（${res.data.skipped_count}件は既存のためスキップ）` : ''}`)
       load()
     } catch {
@@ -362,7 +362,7 @@ export default function AdminExcludedItemsPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <label className="flex items-center gap-1.5 text-xs text-gray-400">
-                追加先の種別
+                一括追加先の種別
                 <select
                   value={promoteTypeId}
                   onChange={(e) => setPromoteTypeId(e.target.value === '' ? '' : Number(e.target.value))}
@@ -375,7 +375,7 @@ export default function AdminExcludedItemsPage() {
                 </select>
               </label>
               <button
-                onClick={() => promote(suggestions.map((s) => s.name))}
+                onClick={() => promote(suggestions.map((s) => s.name), promoteTypeId === '' ? null : promoteTypeId)}
                 disabled={promotingName !== null}
                 className="text-xs bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white px-3 py-1.5 rounded transition-colors whitespace-nowrap"
               >
@@ -393,13 +393,23 @@ export default function AdminExcludedItemsPage() {
                 {s.from_device && (
                   <span className="text-[10px] text-gray-300 bg-surface border border-surface-border rounded px-1.5 py-0.5 shrink-0" title="端末（ローカル）保存ユーザーが除外（匿名・人数は不明）">端末</span>
                 )}
-                <button
-                  onClick={() => promote([s.name])}
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '') return
+                    promote([s.name], v === 'default' ? null : Number(v))
+                  }}
                   disabled={promotingName !== null || dismissingName !== null}
-                  className="text-xs bg-sky-900/40 hover:bg-sky-900/70 disabled:opacity-50 border border-sky-700/50 text-sky-300 px-3 py-1.5 rounded transition-colors shrink-0"
+                  title="選んだ種別で共通除外へ追加"
+                  className="text-xs bg-sky-900/40 hover:bg-sky-900/70 disabled:opacity-50 border border-sky-700/50 text-sky-300 px-3 py-1.5 rounded transition-colors shrink-0 focus:outline-none focus:border-sky-500"
                 >
-                  {promotingName === s.name ? '追加中...' : '共通へ追加'}
-                </button>
+                  <option value="">{promotingName === s.name ? '追加中...' : '共通へ追加…'}</option>
+                  <option value="default">{defaultType ? `${defaultType.name}（既定）` : '既定'}</option>
+                  {types.filter((t) => !t.is_default).map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
                 <button
                   onClick={() => dismiss(s.name)}
                   disabled={promotingName !== null || dismissingName !== null}
