@@ -20,9 +20,10 @@ export const excludedItemsApi = {
   dismissSuggestion: (name: string): Promise<void> =>
     client.post('/admin/excluded-items/dismiss-suggestion', { name }).then(() => undefined),
 
-  // 管理: 複数名をまとめて登録（改行区切り由来）。重複は無視される。種別未指定は既定「その他」。
-  create: (names: string[], exclusionTypeId?: number | null): Promise<{ data: { created_count: number; skipped_count: number } }> =>
-    client.post('/admin/excluded-items', { names, exclusion_type_id: exclusionTypeId ?? null }).then((r) => ({ data: r.data })),
+  // 管理: 複数名をまとめて登録／共通化（改行区切り由来）。種別未指定は既定「その他」。
+  // updateExisting=true のときは既存名の共通種別を上書き更新する（上書き候補の共通化用）。既定は既存をスキップ。
+  create: (names: string[], exclusionTypeId?: number | null, updateExisting = false): Promise<{ data: { created_count: number; updated_count: number; skipped_count: number } }> =>
+    client.post('/admin/excluded-items', { names, exclusion_type_id: exclusionTypeId ?? null, update_existing: updateExisting }).then((r) => ({ data: r.data })),
 
   // 管理: 除外アイテムの名前・種別を更新
   update: (id: number, patch: { name?: string; exclusion_type_id?: number | null }): Promise<{ data: ExcludedItem }> =>

@@ -127,6 +127,96 @@ class ExcludedItemApiTest extends TestCase
         $this->assertNull($byName['小石']['suggested_type_id']);
     }
 
+    public function test_候補にはユーザーが設定した種別の内訳が付く(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+        $u3 = $this->makeUser();
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+        $rare  = \App\Models\ExclusionType::create(['name' => 'レア']);
+
+        // 「ゴミ」: 2人がイベント、1人がレア → 内訳は多い順（イベント2・レア1）
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ', 'exclusion_type_id' => $event->id]);
+        UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ', 'exclusion_type_id' => $event->id]);
+        UserExcludedItem::create(['user_id' => $u3->id, 'name' => 'ゴミ', 'exclusion_type_id' => $rare->id]);
+
+        $res = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')->assertOk();
+
+        $row = collect($res->json())->firstWhere('name', 'ゴミ');
+        $this->assertNull($row['current_type_id']); // 共通未登録 → 新規候補
+        $this->assertSame($event->id, $row['type_assignments'][0]['type_id']);
+        $this->assertSame(2, $row['type_assignments'][0]['count']);
+        $this->assertSame($rare->id, $row['type_assignments'][1]['type_id']);
+        $this->assertSame(1, $row['type_assignments'][1]['count']);
+    }
+
+    public function test_共通登録済みでも別種別への上書きは上書き候補として返り同種別は出ない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+        $rare  = \App\Models\ExclusionType::create(['name' => 'レア']);
+
+        // 「花火」は共通でイベント。u1 はレアへ上書き（別種別）、u2 はイベント（共通と同じ）
+        ExcludedItem::create(['name' => '花火', 'exclusion_type_id' => $event->id]);
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => '花火', 'exclusion_type_id' => $rare->id]);
+        UserExcludedItem::create(['user_id' => $u2->id, 'name' => '花火', 'exclusion_type_id' => $event->id]);
+        // 「石」は共通でイベント、ユーザーもイベント（上書きなし）→ 候補に出ない
+        ExcludedItem::create(['name' => '石', 'exclusion_type_id' => $event->id]);
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => '石', 'exclusion_type_id' => $event->id]);
+
+        $res = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')->assertOk();
+
+        $byName = collect($res->json())->keyBy('name');
+        // 花火: 上書き候補（現在=イベント・候補=レア・人数は上書き者のみ=1）
+        $this->assertTrue($byName->has('花火'));
+        $this->assertSame($event->id, $byName['花火']['current_type_id']);
+        $this->assertSame($rare->id, $byName['花火']['suggested_type_id']);
+        $this->assertSame(1, $byName['花火']['user_count']);
+        // 石: 上書きが無いので候補に出ない
+        $this->assertFalse($byName->has('石'));
+    }
+
+    public function test_上書き候補を共通化すると共通種別が更新されユーザー割当は削除される(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+        $rare  = \App\Models\ExclusionType::create(['name' => 'レア']);
+        $row = ExcludedItem::create(['name' => '花火', 'exclusion_type_id' => $event->id]);
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => '花火', 'exclusion_type_id' => $rare->id]);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/admin/excluded-items', [
+            'names'             => ['花火'],
+            'exclusion_type_id' => $rare->id,
+            'update_existing'   => true,
+        ])->assertCreated();
+        $res->assertJsonPath('updated_count', 1)->assertJsonPath('created_count', 0);
+
+        // 共通種別がレアへ更新され、ユーザー個別割当は削除される
+        $this->assertDatabaseHas('excluded_items', ['id' => $row->id, 'exclusion_type_id' => $rare->id]);
+        $this->assertSame(0, UserExcludedItem::where('name', '花火')->count());
+    }
+
+    public function test_update_existing無しでは既存の共通種別は更新されない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+        $rare  = \App\Models\ExclusionType::create(['name' => 'レア']);
+        $row = ExcludedItem::create(['name' => '花火', 'exclusion_type_id' => $event->id]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/excluded-items', [
+            'names'             => ['花火'],
+            'exclusion_type_id' => $rare->id,
+        ])->assertCreated()->assertJsonPath('updated_count', 0);
+
+        $this->assertDatabaseHas('excluded_items', ['id' => $row->id, 'exclusion_type_id' => $event->id]);
+    }
+
     public function test_一般ユーザーと編集者は除外アイテムを登録できない(): void
     {
         // 未ログインは 401（actingAs はテスト内で持続するため最初に検証する）

@@ -47,56 +47,88 @@ class ExcludedItemController extends Controller
     }
 
     /**
-     * 管理: ユーザーが個別に登録した除外アイテムを名前で集計して、共通除外への昇格候補を返す。
+     * 管理: ユーザーが個別に設定した種別を名前で集計して、共通の種別割当への昇格（共通化）候補を返す。
      *
-     * DB保存ユーザー分（user_excluded_items）は除外している人数を集計し、端末（ローカルストレージ）
-     * 保存ユーザー分（reported_excluded_names・匿名報告）はその名前を `from_device` 付きで合流させる。
-     * 端末分は誰が・何人除外したかを持たないため `user_count` には数えない（presence のみ）。
-     * 共通除外（excluded_items）に既に登録済みの名前、および管理者が「共通にしない」と却下した
-     * 名前（dismissed_excluded_suggestions）は両方から除く。
+     * 2種類の候補を返す:
+     *  - 新規候補: まだ共通登録されていない名前。DB保存ユーザー分（user_excluded_items）は設定人数を
+     *    集計し、端末（ローカルストレージ）保存ユーザー分（reported_excluded_names・匿名報告）は名前を
+     *    `from_device` 付きで合流させる（端末分は人数を持たないため presence のみ）。
+     *  - 上書き候補: 既に共通登録済みだが、現在の共通種別と**異なる種別**を設定したユーザーがいる名前
+     *    （`current_type_id` に現在の共通種別を入れて返す）。同じ種別しか設定されていなければ候補にしない。
      *
-     * 戻り値: [{ name, user_count, from_device }]（user_count 降順 → name 昇順）。
+     * 各候補には、ユーザーが設定した種別の内訳 `type_assignments`（多い順・`type_id` は null=その他）と、
+     * 共通化時の既定候補 `suggested_type_id`（最頻の種別。上書き候補は現在と異なる最頻種別）を付ける。
+     * 管理者が「共通にしない」と却下した名前（dismissed_excluded_suggestions）は除く。
+     *
+     * 戻り値: [{ name, user_count, from_device, current_type_id, suggested_type_id, type_assignments }]
+     *（user_count 降順 → name 昇順）。
      */
     public function userSuggestions()
     {
-        $excludeNames = ExcludedItem::pluck('name')
-            ->merge(DismissedExcludedSuggestion::pluck('name'))
-            ->unique()
-            ->all();
+        $defaultId = ExclusionType::default()?->id;
+        $dismissed = DismissedExcludedSuggestion::pluck('name')->flip();
 
-        // DB保存ユーザーの個別除外を人数集計（name => user_count）
-        $dbCounts = UserExcludedItem::query()
-            ->selectRaw('name, COUNT(DISTINCT user_id) as user_count')
-            ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
-            ->groupBy('name')
-            ->pluck('user_count', 'name');
+        // 共通の種別割当（name → 現在の共通種別ID。null は既定種別へ正規化）
+        $common = ExcludedItem::get(['name', 'exclusion_type_id'])
+            ->mapWithKeys(fn ($i) => [$i->name => $i->exclusion_type_id ?? $defaultId]);
 
-        // 端末保存ユーザーの匿名報告（名前のみ）
-        $deviceNames = ReportedExcludedName::query()
-            ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
-            ->pluck('name');
-
-        $names = $dbCounts->keys()->merge($deviceNames)->unique();
-        $deviceSet = $deviceNames->flip();
-
-        // 各名前について、ユーザーが最も多く割り当てた種別（共通化時の既定種別の候補）を求める。
-        // 種別未指定（null=その他）はカウントせず、明示的に種別を選んだものから最頻値を採る。
-        $suggestedType = UserExcludedItem::query()
-            ->whereNotNull('exclusion_type_id')
-            ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
-            ->selectRaw('name, exclusion_type_id, COUNT(*) as c')
+        // DB保存ユーザーの個別割当を name×種別 で人数集計（unique(user_id,name) のため 1ユーザー1名1種別）
+        $dbAgg = UserExcludedItem::query()
+            ->selectRaw('name, exclusion_type_id, COUNT(DISTINCT user_id) as cnt')
             ->groupBy('name', 'exclusion_type_id')
             ->get()
-            ->groupBy('name')
-            ->map(fn($g) => $g->sortByDesc('c')->first()->exclusion_type_id);
+            ->groupBy('name');
+
+        // 端末（ローカル）保存ユーザーの匿名報告（名前のみ）
+        $deviceNames = ReportedExcludedName::pluck('name')->flip();
+
+        $names = collect($dbAgg->keys())->merge($deviceNames->keys())->unique();
 
         $rows = $names
-            ->map(fn($name) => [
-                'name'              => $name,
-                'user_count'        => (int) ($dbCounts[$name] ?? 0),
-                'from_device'       => $deviceSet->has($name),
-                'suggested_type_id' => $suggestedType[$name] ?? null,
-            ])
+            ->reject(fn ($name) => $dismissed->has($name))
+            ->map(function ($name) use ($dbAgg, $deviceNames, $common, $defaultId) {
+                $assigns = $dbAgg->get($name, collect());
+                // 種別内訳（多い順）。type_id は raw（null=その他）。
+                $breakdown = $assigns
+                    ->map(fn ($r) => ['type_id' => $r->exclusion_type_id, 'count' => (int) $r->cnt])
+                    ->sortByDesc('count')->values()->all();
+                $current = $common->has($name) ? $common[$name] : null;
+
+                if ($current === null) {
+                    // 新規候補: DB割当か端末報告があれば候補
+                    $userCount = (int) $assigns->sum('cnt');
+                    if ($userCount === 0 && !$deviceNames->has($name)) {
+                        return null;
+                    }
+                    $suggested = $assigns->whereNotNull('exclusion_type_id')
+                        ->sortByDesc('cnt')->first()?->exclusion_type_id;
+                    return [
+                        'name'              => $name,
+                        'user_count'        => $userCount,
+                        'from_device'       => $deviceNames->has($name),
+                        'current_type_id'   => null,
+                        'suggested_type_id' => $suggested,
+                        'type_assignments'  => $breakdown,
+                    ];
+                }
+
+                // 上書き候補: 既に共通登録済み。現在の共通種別と異なる種別を設定したユーザーがいる場合のみ。
+                $overriders = $assigns->filter(fn ($r) => ($r->exclusion_type_id ?? $defaultId) !== $current);
+                if ($overriders->isEmpty()) {
+                    return null;
+                }
+                // 最頻の上書き種別（null=その他は既定種別IDへ正規化して具体IDで返す）
+                $top = $overriders->sortByDesc('cnt')->first();
+                return [
+                    'name'              => $name,
+                    'user_count'        => (int) $overriders->sum('cnt'),
+                    'from_device'       => false,
+                    'current_type_id'   => $current,
+                    'suggested_type_id' => $top->exclusion_type_id ?? $defaultId,
+                    'type_assignments'  => $breakdown,
+                ];
+            })
+            ->filter()
             // user_count 降順 → name 昇順
             ->sortBy([['user_count', 'desc'], ['name', 'asc']])
             ->values();
@@ -154,8 +186,10 @@ class ExcludedItemController extends Controller
     }
 
     /**
-     * 管理: 除外アイテムを追加（admin）。
-     * names[]（改行区切り由来）でまとめて登録でき、既存と重複する名前は黙って無視する。
+     * 管理: 共通の種別割当を追加／更新（admin）。
+     * names[]（改行区切り由来）でまとめて登録でき、既定では既存と重複する名前は黙って無視する。
+     * `update_existing=true` のときは、既存の名前の共通種別を指定種別へ**上書き更新**する
+     * （ユーザー個別設定の共通化で、別種別への上書きを共通へ反映する用途）。
      */
     public function store(Request $request)
     {
@@ -163,11 +197,13 @@ class ExcludedItemController extends Controller
             'names'             => 'required|array|min:1',
             'names.*'           => 'required|string|max:200',
             'exclusion_type_id' => 'nullable|integer|exists:exclusion_types,id',
+            'update_existing'   => 'sometimes|boolean',
         ]);
 
         $userId = $request->user()->id;
         // 種別未指定なら既定種別「その他」に入れる
         $typeId = $data['exclusion_type_id'] ?? ExclusionType::default()?->id;
+        $updateExisting = $data['update_existing'] ?? false;
         // 入力内の重複・空白を整理
         $names = collect($data['names'])
             ->map(fn($n) => trim($n))
@@ -175,10 +211,20 @@ class ExcludedItemController extends Controller
             ->unique()
             ->values();
 
-        $existing = ExcludedItem::whereIn('name', $names)->pluck('name')->all();
+        $existing = ExcludedItem::whereIn('name', $names)->get()->keyBy('name');
         $created = [];
+        $updatedCount = 0;
+        $skippedCount = 0;
         foreach ($names as $name) {
-            if (in_array($name, $existing, true)) {
+            $row = $existing->get($name);
+            if ($row !== null) {
+                // 既存: update_existing 指定時かつ種別が変わるときだけ上書き更新する。
+                if ($updateExisting && (int) $row->exclusion_type_id !== (int) $typeId) {
+                    $row->update(['exclusion_type_id' => $typeId]);
+                    $updatedCount++;
+                } else {
+                    $skippedCount++;
+                }
                 continue;
             }
             $created[] = ExcludedItem::create([
@@ -188,13 +234,14 @@ class ExcludedItemController extends Controller
             ]);
         }
 
-        // 共通種別として登録された名前は、ユーザー個別の種別割当から削除する（共通が優先・重複排除）。
+        // 共通種別へ反映した名前は、ユーザー個別の種別割当から削除する（共通へ集約・重複排除）。
         UserExcludedItem::whereIn('name', $names)->delete();
 
         return response()->json([
-            'created'      => $created,
+            'created'       => $created,
             'created_count' => count($created),
-            'skipped_count' => $names->count() - count($created),
+            'updated_count' => $updatedCount,
+            'skipped_count' => $skippedCount,
         ], 201);
     }
 

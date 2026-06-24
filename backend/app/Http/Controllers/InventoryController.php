@@ -72,8 +72,13 @@ class InventoryController extends Controller
         $userId = $request->user()->id;
         // 有効な種別IDの集合（不正/存在しない type_id は null=既定種別に丸める）
         $validTypeIds = \App\Models\ExclusionType::pluck('id')->flip();
+        $defaultId = \App\Models\ExclusionType::default()?->id;
+        // 共通の種別割当（name → 現在の共通種別ID。null は既定種別へ正規化）。
+        // ユーザーの個別設定が共通と同じ種別なら冗長なので保存しない（共通に従う）。
+        $commonTypes = \App\Models\ExcludedItem::get(['name', 'exclusion_type_id'])
+            ->mapWithKeys(fn ($i) => [$i->name => $i->exclusion_type_id ?? $defaultId]);
 
-        DB::transaction(function () use ($userId, $data, $validTypeIds) {
+        DB::transaction(function () use ($userId, $data, $validTypeIds, $defaultId, $commonTypes) {
             // 既存の台帳を全削除（owned_items を先に消してから accounts）
             OwnedItem::where('user_id', $userId)->delete();
             MoeAccount::where('user_id', $userId)->delete();
@@ -123,6 +128,11 @@ class InventoryController extends Controller
                 }
                 $seen[$name] = true;
                 $typeId = ($rawType !== null && $validTypeIds->has((int) $rawType)) ? (int) $rawType : null;
+                // 共通登録済みと同じ種別の個別設定は冗長なので保存しない（共通に従う＝該当設定は削除）。
+                // 種別が異なる場合は上書きとして保存する。
+                if ($commonTypes->has($name) && ($typeId ?? $defaultId) === $commonTypes[$name]) {
+                    continue;
+                }
                 UserExcludedItem::create([
                     'user_id'           => $userId,
                     'name'              => $name,
@@ -153,13 +163,17 @@ class InventoryController extends Controller
             ->get();
 
         // ユーザーの種別割当（name→種別）。クライアントは effectiveTypeId で表示種別を決める。
-        // 共通割当（excluded_items）が同名を持つ場合はそちらが優先されるため、ここでは
-        // 共通に存在する name を除いて返す（共通へ昇格済みの個別割当は重複させない）。
-        $commonNames = \App\Models\ExcludedItem::pluck('name')->flip();
+        // ユーザー割当は共通割当（excluded_items）より優先される（ユーザーが共通種別を上書きできる）ため、
+        // 共通と種別が異なる割当（＝上書き）はそのまま返す。一方、共通と同じ種別の割当は冗長なので
+        // 取り除く（共通に従う＝該当設定は削除）。null は既定種別へ正規化して比較する。
+        $defaultId = \App\Models\ExclusionType::default()?->id;
+        $commonTypes = \App\Models\ExcludedItem::get(['name', 'exclusion_type_id'])
+            ->mapWithKeys(fn ($i) => [$i->name => $i->exclusion_type_id ?? $defaultId]);
         $exclusions = UserExcludedItem::where('user_id', $userId)
             ->orderBy('name')
             ->get(['name', 'exclusion_type_id'])
-            ->filter(fn ($e) => !$commonNames->has($e->name))
+            ->filter(fn ($e) => !$commonTypes->has($e->name)
+                || ($e->exclusion_type_id ?? $defaultId) !== $commonTypes[$e->name])
             ->map(fn ($e) => [
                 'name'              => $e->name,
                 'exclusion_type_id' => $e->exclusion_type_id,

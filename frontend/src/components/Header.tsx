@@ -276,10 +276,10 @@ export default function Header() {
                         onClick={() => setAdminOpen(false)}
                         className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
                       >
-                        <span>除外アイテム管理</span>
+                        <span>アイテム種別管理</span>
                         {excludedSuggestionCount > 0 && (
                           <span
-                            title={`ユーザーが個別に除外しているアイテム ${excludedSuggestionCount}件`}
+                            title={`ユーザーが個別に設定した種別 ${excludedSuggestionCount}件（共通化の候補）`}
                             className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none"
                           >
                             {excludedSuggestionCount}
@@ -458,7 +458,7 @@ export default function Header() {
                       onClick={closeMobile}
                       className="flex items-center justify-between py-3 text-gray-300 hover:text-white transition-colors"
                     >
-                      <span>除外アイテム管理</span>
+                      <span>アイテム種別管理</span>
                       {excludedSuggestionCount > 0 && (
                         <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
                           {excludedSuggestionCount}

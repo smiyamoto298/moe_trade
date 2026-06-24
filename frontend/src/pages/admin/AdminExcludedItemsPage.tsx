@@ -6,12 +6,14 @@ import { usePageMeta } from '../../hooks/usePageMeta'
 import type { ExcludedItem, ExclusionType, UserExclusionSuggestion, ServerExcludedItem } from '../../types'
 
 /**
- * 共通の除外アイテム管理（admin）。
- * ここに登録したアイテム名は、所持アイテム管理・一括出品の貼り付けで除外される。
+ * アイテム種別管理（admin）。
+ * アイテム名→表示種別（ジャンル）の共通割当を管理する。ここで割り当てた名前は、
+ * アイテムボックスで全ユーザー共通の表示種別として扱われる（ユーザーは自分用に上書き可能）。
+ * ユーザーが個別に設定した種別は「共通化の候補」として集計され、ワンクリックで共通へ昇格できる。
  * 判定はアイテム名（文字列）単位。改行区切りでまとめて追加できる。
  */
 export default function AdminExcludedItemsPage() {
-  usePageMeta('表示種別・対象外の管理', 'アイテムボックスの共通の表示種別（ジャンル）割当と、サーバ登録対象外アイテムを管理します。')
+  usePageMeta('アイテム種別管理', 'アイテムボックスの共通の表示種別（ジャンル）割当・ユーザー個別設定の共通化・サーバ登録対象外を管理します。')
   const { confirm, alert } = useDialog()
   const [rows, setRows] = useState<ExcludedItem[]>([])
   const [types, setTypes] = useState<ExclusionType[]>([])
@@ -25,13 +27,13 @@ export default function AdminExcludedItemsPage() {
   const [addingType, setAddingType] = useState(false)
   const [message, setMessage] = useState('')
   const [search, setSearch] = useState('')
-  // 共通除外リストの表示を絞り込む種別タブ（'all' は全種別）
+  // 共通の種別割当リストの表示を絞り込む種別タブ（'all' は全種別）
   const [activeTypeId, setActiveTypeId] = useState<number | 'all'>('all')
-  // ユーザー個別除外（DB保存分）の集計候補
+  // ユーザー個別の種別設定（DB保存分）の集計候補
   const [suggestions, setSuggestions] = useState<UserExclusionSuggestion[]>([])
   const [promotingName, setPromotingName] = useState<string | null>(null)
   const [dismissingName, setDismissingName] = useState<string | null>(null)
-  // 候補を共通除外へ昇格するときに割り当てる種別（未選択は既定種別「その他」）
+  // 候補を共通種別へ昇格（共通化）するときに割り当てる種別（未選択は既定種別「その他」）
   const [promoteTypeId, setPromoteTypeId] = useState<number | ''>('')
   // サーバ登録対象外（システム共通）
   const [serverRows, setServerRows] = useState<ServerExcludedItem[]>([])
@@ -102,6 +104,10 @@ export default function AdminExcludedItemsPage() {
   // 既定種別（その他）
   const defaultType = types.find((t) => t.is_default) ?? null
 
+  // 種別IDの表示名（null は既定種別「その他」）
+  const typeLabel = (id: number | null) =>
+    id == null ? (defaultType?.name ?? 'その他') : (types.find((t) => t.id === id)?.name ?? `#${id}`)
+
   // ---- 種別管理 ----
   const addType = async () => {
     const name = newTypeName.trim()
@@ -133,7 +139,7 @@ export default function AdminExcludedItemsPage() {
     if (t.is_default) return
     const cnt = rows.filter((r) => r.exclusion_type_id === t.id).length
     if (!(await confirm(
-      `種別「${t.name}」を削除しますか？${cnt > 0 ? `この種別の除外アイテム${cnt}件は「${defaultType?.name ?? 'その他'}」へ移動します。` : ''}`,
+      `種別「${t.name}」を削除しますか？${cnt > 0 ? `この種別のアイテム${cnt}件は「${defaultType?.name ?? 'その他'}」へ移動します。` : ''}`,
       { title: '種別の削除', confirmLabel: '削除', danger: true }
     ))) return
     try {
@@ -146,7 +152,7 @@ export default function AdminExcludedItemsPage() {
     }
   }
 
-  // 除外アイテムの種別を変更
+  // 共通の種別割当の種別を変更
   const changeItemType = async (row: ExcludedItem, typeId: number) => {
     try {
       const res = await excludedItemsApi.update(row.id, { exclusion_type_id: typeId })
@@ -156,18 +162,23 @@ export default function AdminExcludedItemsPage() {
     }
   }
 
-  // ユーザー個別除外の候補から共通除外へ追加（昇格）。追加先の種別を引数で指定（null は既定「その他」）。
+  // ユーザー個別の種別設定を共通の種別割当へ昇格（共通化）。追加先の種別を引数で指定（null は既定「その他」）。
+  // 既に共通登録済みの名前（上書き候補）は update_existing=true で共通種別を上書き更新する。
   const promote = async (names: string[], typeId: number | null) => {
     if (names.length === 0) return
     setPromotingName(names.length === 1 ? names[0] : '__bulk__')
     setMessage('')
     try {
-      const res = await excludedItemsApi.create(names, typeId)
+      const res = await excludedItemsApi.create(names, typeId, true)
       const intoName = typeId === null ? (defaultType?.name ?? 'その他') : (types.find((t) => t.id === typeId)?.name ?? '')
-      setMessage(`${res.data.created_count}件を共通除外（${intoName}）に追加しました。${res.data.skipped_count > 0 ? `（${res.data.skipped_count}件は既存のためスキップ）` : ''}`)
+      const parts: string[] = []
+      if (res.data.created_count > 0) parts.push(`${res.data.created_count}件を追加`)
+      if (res.data.updated_count > 0) parts.push(`${res.data.updated_count}件の種別を更新`)
+      if (parts.length === 0) parts.push('変更はありません')
+      setMessage(`共通の種別割当（${intoName}）に${parts.join('・')}しました。${res.data.skipped_count > 0 ? `（${res.data.skipped_count}件はスキップ）` : ''}`)
       load()
     } catch {
-      await alert('共通除外への追加に失敗しました。', { title: 'エラー' })
+      await alert('共通化に失敗しました。', { title: 'エラー' })
     } finally {
       setPromotingName(null)
     }
@@ -175,7 +186,7 @@ export default function AdminExcludedItemsPage() {
 
   // 候補を「共通にしない」と却下（以後この名前は候補に出さない）
   const dismiss = async (name: string) => {
-    if (!(await confirm(`「${name}」を共通除外の候補に出さないようにしますか？（個別除外しているユーザーには影響しません）`, { title: '候補を共通にしない', confirmLabel: '共通にしない' }))) return
+    if (!(await confirm(`「${name}」を共通化の候補に出さないようにしますか？（個別に設定しているユーザーには影響しません）`, { title: '候補を共通にしない', confirmLabel: '共通にしない' }))) return
     setDismissingName(name)
     setMessage('')
     try {
@@ -210,7 +221,7 @@ export default function AdminExcludedItemsPage() {
   }
 
   const remove = async (row: ExcludedItem) => {
-    if (!(await confirm(`「${row.name}」を除外リストから削除しますか？`, { title: '除外アイテムの削除', confirmLabel: '削除', danger: true }))) return
+    if (!(await confirm(`「${row.name}」を共通の種別割当から削除しますか？`, { title: '種別割当の削除', confirmLabel: '削除', danger: true }))) return
     try {
       await excludedItemsApi.remove(row.id)
       setRows((p) => p.filter((r) => r.id !== row.id))
@@ -230,7 +241,7 @@ export default function AdminExcludedItemsPage() {
   const bulkDelete = async () => {
     const ids = [...selected]
     if (ids.length === 0) return
-    if (!(await confirm(`選択した ${ids.length} 件を除外リストから削除しますか？`, { title: '除外アイテムの一括削除', confirmLabel: '削除', danger: true }))) return
+    if (!(await confirm(`選択した ${ids.length} 件を共通の種別割当から削除しますか？`, { title: '種別割当の一括削除', confirmLabel: '削除', danger: true }))) return
     setBulkDeleting(true)
     try {
       await excludedItemsApi.removeMany(ids)
@@ -258,7 +269,7 @@ export default function AdminExcludedItemsPage() {
     return m
   }, [rows, defaultType])
 
-  // 共通除外リストは 種別タブ＋検索で絞り、あいうえお順（日本語ロケール）で表示する
+  // 共通の種別割当リストは 種別タブ＋検索で絞り、あいうえお順（日本語ロケール）で表示する
   const filtered = useMemo(() => {
     let list = activeTypeId === 'all' ? rows : rows.filter((r) => rowTypeId(r) === activeTypeId)
     if (search.trim()) list = list.filter((r) => r.name.includes(search.trim()))
@@ -277,10 +288,11 @@ export default function AdminExcludedItemsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      <h1 className="text-xl font-bold text-white mb-2">表示種別・対象外の管理</h1>
+      <h1 className="text-xl font-bold text-white mb-2">アイテム種別管理</h1>
       <p className="text-sm text-gray-400 mb-5">
-        ここに登録したアイテム名は、アイテムボックスで共通の<strong>表示種別（ジャンル）</strong>として扱われます
-        （アイテム名の完全一致で判定）。ユーザーは種別ごとに表示/非表示を切り替えられます。改行・カンマ区切りでまとめて追加できます。
+        アイテム名に共通の<strong>表示種別（ジャンル）</strong>を割り当てます（アイテム名の完全一致で判定）。
+        ここで割り当てた種別は全ユーザーのアイテムボックスに反映され、ユーザーは種別ごとに表示/非表示を切り替えられます
+        （各ユーザーは自分のアイテムボックス上で種別を上書き変更できます）。改行・カンマ区切りでまとめて追加できます。
       </p>
 
       {/* 新規追加（複数可） */}
@@ -362,17 +374,22 @@ export default function AdminExcludedItemsPage() {
         </div>
       </div>
 
-      {/* ユーザーが個別に除外しているアイテム（共通除外への追加候補） */}
-      {suggestions.length > 0 && (
-        <div className="mb-6 bg-surface-card border border-sky-700/40 rounded-lg p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div>
-              <h2 className="text-sm font-semibold text-sky-200">ユーザーが個別に除外しているアイテム</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                利用者が自分の除外リストに登録した名前です（多い順）。共通除外へ追加できます。
-                <span className="text-gray-500">（DB保存のユーザーは除外人数を集計。端末保存のユーザー分は匿名で名前のみ＝「端末」表示。共通除外に登録済みの名前は表示されません）</span>
-              </p>
-            </div>
+      {/* ユーザー個別設定の共通化（昇格候補） */}
+      <div className="mb-6 bg-surface-card border border-sky-700/40 rounded-lg p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div>
+            <h2 className="text-sm font-semibold text-sky-200">
+              ユーザー個別設定の共通化
+              <span className="ml-1.5 text-xs font-normal text-gray-400">候補 {suggestions.length} 件</span>
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              ユーザーが自分のアイテムボックスで個別に種別を設定した名前です（設定の多い順）。各行に<strong className="text-sky-200">ユーザーが設定した種別の内訳</strong>を表示します。
+              <strong className="text-sky-200">共通の種別割当へ昇格（共通化）</strong>すると、以後すべてのユーザーに同じ種別が反映されます。
+              <span className="text-amber-300">「現在: ◯◯」付きの行</span>は、すでに共通登録済みのアイテムをユーザーが<strong>別の種別へ変更</strong>したもので、共通化すると現在の共通種別を上書き更新します。
+              <span className="text-gray-500">（DB保存ユーザーは設定人数を集計。端末保存ユーザー分は匿名で名前のみ＝「端末」表示。却下済みの名前は表示されません。共通化した名前は各ユーザーの個別設定からは取り除かれます）</span>
+            </p>
+          </div>
+          {suggestions.length > 0 && (
             <div className="flex items-center gap-2 shrink-0">
               <label className="flex items-center gap-1.5 text-xs text-gray-400">
                 一括追加先の種別
@@ -392,61 +409,97 @@ export default function AdminExcludedItemsPage() {
                 disabled={promotingName !== null}
                 className="text-xs bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white px-3 py-1.5 rounded transition-colors whitespace-nowrap"
               >
-                {promotingName === '__bulk__' ? '追加中...' : `表示中をすべて追加 (${suggestions.length})`}
+                {promotingName === '__bulk__' ? '追加中...' : `表示中をすべて共通化 (${suggestions.length})`}
               </button>
             </div>
-          </div>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {suggestions.map((s) => (
-              <div key={s.name} className="flex items-center gap-2 bg-surface border border-surface-border rounded px-3 py-2">
-                <span className="flex-1 text-sm text-white truncate">{s.name}</span>
-                {s.user_count > 0 && (
-                  <span className="text-xs text-gray-400 shrink-0" title="このアイテムを個別除外しているDB保存ユーザー数">{s.user_count}人</span>
-                )}
-                {s.from_device && (
-                  <span className="text-[10px] text-gray-300 bg-surface border border-surface-border rounded px-1.5 py-0.5 shrink-0" title="端末（ローカル）保存ユーザーが除外（匿名・人数は不明）">端末</span>
-                )}
-                {/* ユーザーが最も多く割り当てた種別での即時昇格（候補がある場合） */}
-                {s.suggested_type_id != null && types.some((t) => t.id === s.suggested_type_id) && (
-                  <button
-                    onClick={() => promote([s.name], s.suggested_type_id)}
-                    disabled={promotingName !== null || dismissingName !== null}
-                    title="ユーザーが多く選んだ種別で共通へ追加"
-                    className="text-xs bg-emerald-900/40 hover:bg-emerald-900/70 disabled:opacity-50 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded transition-colors shrink-0 whitespace-nowrap"
-                  >
-                    「{types.find((t) => t.id === s.suggested_type_id)?.name}」で追加
-                  </button>
-                )}
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const v = e.target.value
-                    if (v === '') return
-                    promote([s.name], v === 'default' ? null : Number(v))
-                  }}
-                  disabled={promotingName !== null || dismissingName !== null}
-                  title="選んだ種別で共通除外へ追加"
-                  className="text-xs bg-sky-900/40 hover:bg-sky-900/70 disabled:opacity-50 border border-sky-700/50 text-sky-300 px-3 py-1.5 rounded transition-colors shrink-0 focus:outline-none focus:border-sky-500"
-                >
-                  <option value="">{promotingName === s.name ? '追加中...' : '共通へ追加…'}</option>
-                  <option value="default">{defaultType ? `${defaultType.name}（既定）` : '既定'}</option>
-                  {types.filter((t) => !t.is_default).map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => dismiss(s.name)}
-                  disabled={promotingName !== null || dismissingName !== null}
-                  title="以後この名前を共通除外の候補に出さない"
-                  className="text-xs bg-surface hover:bg-surface-border disabled:opacity-50 border border-surface-border text-gray-400 px-3 py-1.5 rounded transition-colors shrink-0"
-                >
-                  {dismissingName === s.name ? '却下中...' : '共通にしない'}
-                </button>
-              </div>
-            ))}
-          </div>
+          )}
         </div>
-      )}
+        {suggestions.length === 0 ? (
+          <p className="text-xs text-gray-500 py-2">共通化の候補はありません。ユーザーがアイテムボックスで種別を設定すると、ここに候補として表示されます。</p>
+        ) : (
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {suggestions.map((s) => {
+              // 既に共通登録済み（current_type_id あり）＝ユーザーが別種別へ上書きした「上書き候補」
+              const isOverride = s.current_type_id != null
+              return (
+              <div key={s.name} className="flex flex-col gap-1.5 bg-surface border border-surface-border rounded px-3 py-2">
+                {/* アイテム名（省略せず全表示。長い名前は折り返す） */}
+                <div className="text-sm text-white break-words">{s.name}</div>
+                {/* メタ情報（人数・端末・現在の共通種別）＋操作 */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {s.user_count > 0 && (
+                    <span className="text-xs text-gray-400 shrink-0" title={isOverride ? '現在の共通種別と異なる種別を設定したDB保存ユーザー数' : 'このアイテムに個別で種別を設定したDB保存ユーザー数'}>{s.user_count}人</span>
+                  )}
+                  {s.from_device && (
+                    <span className="text-[10px] text-gray-300 bg-surface border border-surface-border rounded px-1.5 py-0.5 shrink-0" title="端末（ローカル）保存ユーザーが設定（匿名・人数は不明）">端末</span>
+                  )}
+                  {isOverride && (
+                    <span className="text-[10px] text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded px-1.5 py-0.5 shrink-0 whitespace-nowrap" title="既に共通登録済み。ユーザーが別の種別へ変更しています">
+                      現在: {typeLabel(s.current_type_id)}
+                    </span>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 ml-auto">
+                    {/* ユーザーが多く選んだ種別での即時共通化／上書き更新 */}
+                    {s.suggested_type_id != null && types.some((t) => t.id === s.suggested_type_id) && (
+                      <button
+                        onClick={() => promote([s.name], s.suggested_type_id)}
+                        disabled={promotingName !== null || dismissingName !== null}
+                        title={isOverride ? 'ユーザーが多く選んだ種別へ共通種別を更新' : 'ユーザーが多く選んだ種別で共通化'}
+                        className="text-xs bg-emerald-900/40 hover:bg-emerald-900/70 disabled:opacity-50 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded transition-colors shrink-0 whitespace-nowrap"
+                      >
+                        「{typeLabel(s.suggested_type_id)}」{isOverride ? 'に更新' : 'で共通化'}
+                      </button>
+                    )}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value
+                        if (v === '') return
+                        promote([s.name], v === 'default' ? null : Number(v))
+                      }}
+                      disabled={promotingName !== null || dismissingName !== null}
+                      title={isOverride ? '選んだ種別へ共通種別を更新' : '選んだ種別で共通化'}
+                      className="text-xs bg-sky-900/40 hover:bg-sky-900/70 disabled:opacity-50 border border-sky-700/50 text-sky-300 px-3 py-1.5 rounded transition-colors shrink-0 focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="">{promotingName === s.name ? '処理中...' : isOverride ? '種別を選んで更新…' : '種別を選んで共通化…'}</option>
+                      <option value="default">{defaultType ? `${defaultType.name}（既定）` : '既定'}</option>
+                      {types.filter((t) => !t.is_default).map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => dismiss(s.name)}
+                      disabled={promotingName !== null || dismissingName !== null}
+                      title="以後この名前を共通化の候補に出さない"
+                      className="text-xs bg-surface hover:bg-surface-border disabled:opacity-50 border border-surface-border text-gray-400 px-3 py-1.5 rounded transition-colors shrink-0"
+                    >
+                      {dismissingName === s.name ? '却下中...' : '共通にしない'}
+                    </button>
+                  </div>
+                </div>
+                {/* 2段目: ユーザーが設定した種別の内訳（多い順）。上書き候補は現在と異なる種別を強調 */}
+                {s.type_assignments.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-[10px] text-gray-500 shrink-0">ユーザー設定:</span>
+                    {s.type_assignments.map((a) => {
+                      const differs = isOverride && (a.type_id ?? defaultType?.id ?? null) !== s.current_type_id
+                      return (
+                        <span
+                          key={String(a.type_id)}
+                          className={`text-[10px] rounded px-1.5 py-0.5 border whitespace-nowrap ${differs ? 'bg-sky-900/30 border-sky-700/40 text-sky-300' : 'bg-surface border-surface-border text-gray-300'}`}
+                        >
+                          {typeLabel(a.type_id)} ×{a.count}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {/* サーバ登録対象外（システム共通） */}
       <div className="mb-6 bg-surface-card border border-amber-700/40 rounded-lg p-4">
@@ -525,7 +578,7 @@ export default function AdminExcludedItemsPage() {
         <p className="text-sm text-gray-500">読み込み中...</p>
       ) : filtered.length === 0 ? (
         <div className="text-center py-10 bg-surface-card border border-surface-border rounded-lg text-sm text-gray-500">
-          {rows.length === 0 ? '除外アイテムはありません。上のフォームから追加できます。' : '該当する除外アイテムがありません。'}
+          {rows.length === 0 ? '共通の種別割当はありません。上のフォームから追加できます。' : '該当する種別割当がありません。'}
         </div>
       ) : (
         <>

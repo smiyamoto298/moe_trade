@@ -73,7 +73,7 @@ export default function OwnedItemsPage() {
   const [candidateRowId, setCandidateRowId] = useState<string | null>(null)
   const [analyticsItem, setAnalyticsItem] = useState<{ id: number; name: string } | null>(null)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
-  // 「対象外種別」ダイアログ（未登録かつ未設定の行に種別を割り当てる）。対象の行IDを保持。
+  // 種別選択ダイアログ（取引可能以外の行に種別を割り当て・変更する。共通割当も上書き可）。対象の行IDを保持。
   const [typeDialogRowId, setTypeDialogRowId] = useState<string | null>(null)
   // 管理者が種別ダイアログから新規種別を登録するための入力
   const [newTypeName, setNewTypeName] = useState('')
@@ -136,13 +136,29 @@ export default function OwnedItemsPage() {
       if (!active) return
       setMode(loadedMode)
       modeRef.current = loadedMode
-      setInventory(inv)
+      // 共通登録済みと同じ種別のユーザー個別設定は冗長なので取り除く（共通に従う＝該当設定は削除）。
+      // 主に端末（ローカル）保存分のクリーンアップ。DB保存分はサーバー側でも除外済み。種別が異なる上書きは保持。
+      const defId = common.types.find((t) => t.is_default)?.id ?? null
+      const commonTypeByName = new Map(common.items.map((i) => [normalizeName(i.name), i.type_id]))
+      const prunedExclusions = inv.exclusions.filter((e) => {
+        const ct = commonTypeByName.get(normalizeName(e.name))
+        return ct == null || (e.exclusion_type_id ?? defId) !== ct
+      })
+      const cleanedInv = prunedExclusions.length === inv.exclusions.length
+        ? inv : { ...inv, exclusions: prunedExclusions }
+      setInventory(cleanedInv)
       setCommonItems(common.items)
       setExclusionTypes(common.types)
       setServerCommonNames(serverCommon)
       // 既定の貼り付け先は先頭アカウント
-      setPasteAccountId(inv.accounts[0]?.id ?? null)
+      setPasteAccountId(cleanedInv.accounts[0]?.id ?? null)
       setLoading(false)
+      // 冗長な個別設定を取り除いた場合は保存して永続化する（ローカルは localStorage、DBは PUT）。
+      if (cleanedInv !== inv) {
+        latestRef.current = cleanedInv
+        dirtyRef.current = true
+        scheduleSave()
+      }
     })
     return () => { active = false }
   }, [])
@@ -551,6 +567,13 @@ export default function OwnedItemsPage() {
   // ユーザーの種別割当を付与/更新する（アイテム名単位。同名の全行に効く）。
   // 取り込み済みの行は削除しない（表示種別で切り替える方式）。
   const assignUserType = (name: string, typeId: number | null) => {
+    // 選んだ種別が共通登録済みの種別と同じなら、個別設定は冗長なので持たない
+    // （共通に従う＝該当設定は削除。実効種別は共通から同じ種別になる）。
+    const commonType = commonMap.get(normalizeName(name))
+    if (commonType != null && (typeId ?? defaultTypeId) === commonType) {
+      clearUserType(name)
+      return
+    }
     commit((p) => ({
       ...p,
       exclusions: [
@@ -980,37 +1003,39 @@ export default function OwnedItemsPage() {
                       )}
                     </td>
 
-                    {/* 種別（表示ジャンル） */}
+                    {/* 種別（表示ジャンル）。取引可能（登録済み）は固定。それ以外はクリックで変更できる。 */}
                     <td className="px-3 py-3">
                       {(() => {
                         const et = rowType(row)
                         if (et === 'tradeable') {
                           return <span className="text-[11px] bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 rounded px-2 py-0.5 whitespace-nowrap">取引可能</span>
                         }
-                        if (et === 'unset') {
-                          // 未登録かつ種別未設定 → 種別を割り当てるボタン
-                          return (
-                            <button
-                              onClick={() => setTypeDialogRowId(row.id)}
-                              className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-300 px-2 py-0.5 rounded transition-colors whitespace-nowrap"
-                              title="このアイテムの対象外種別を設定"
-                            >
-                              対象外種別
-                            </button>
-                          )
-                        }
-                        // 種別が割り当て済み。共通（管理者）は固定表示、ユーザー割当は押すと変更/解除できる。
-                        const isCommon = commonMap.has(normalizeName(row.name))
-                        const label = typeName(et)
-                        return isCommon ? (
-                          <span className="text-[11px] bg-surface border border-surface-border text-gray-300 rounded px-2 py-0.5 whitespace-nowrap" title="管理者が設定した共通種別">{label}</span>
-                        ) : (
+                        // 未設定 / 共通（管理者）/ ユーザー割当 のいずれもクリックで種別を変更できる。
+                        // 共通割当はユーザーが自分用に上書きできる（実効種別はユーザー割当が優先）。
+                        const name = normalizeName(row.name)
+                        const isUserAssigned = userMap.has(name)
+                        const isCommon = !isUserAssigned && et !== 'unset' && commonMap.has(name)
+                        const cls =
+                          et === 'unset'
+                            ? 'bg-surface hover:bg-surface-border border-dashed border-surface-border text-gray-400'
+                            : isCommon
+                              ? 'bg-surface hover:bg-surface-border border-surface-border text-gray-300'
+                              : 'bg-primary-500/10 hover:bg-primary-500/20 border-primary-500/40 text-primary-300'
+                        return (
                           <button
                             onClick={() => setTypeDialogRowId(row.id)}
-                            className="text-[11px] bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/40 text-primary-300 rounded px-2 py-0.5 whitespace-nowrap transition-colors"
-                            title="種別を変更・解除"
+                            className={`inline-flex items-center gap-1 text-[11px] border rounded px-2 py-0.5 whitespace-nowrap transition-colors ${cls}`}
+                            title={
+                              et === 'unset'
+                                ? 'このアイテムの種別を設定'
+                                : isCommon
+                                  ? '管理者の共通種別。クリックで自分用に変更できます'
+                                  : '種別を変更・解除'
+                            }
                           >
-                            {label} ✎
+                            {et === 'unset' ? '未設定' : typeName(et)}
+                            {isCommon && <span className="text-[9px] text-gray-500 border border-surface-border rounded px-1 leading-none">共通</span>}
+                            <span aria-hidden>✎</span>
                           </button>
                         )
                       })()}
@@ -1185,7 +1210,7 @@ export default function OwnedItemsPage() {
         </div>
       )}
 
-      {/* 対象外種別ダイアログ（未登録かつ未設定の行に表示種別を割り当てる） */}
+      {/* 種別選択ダイアログ（取引可能以外の行の表示種別を割り当て・変更する。共通割当も上書き可） */}
       {typeDialogRow && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setTypeDialogRowId(null)}>
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>

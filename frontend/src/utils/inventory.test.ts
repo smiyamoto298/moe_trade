@@ -25,13 +25,13 @@ describe('effectiveTypeId', () => {
     expect(effectiveTypeId(row({ itemId: 10, name: 'ゴミ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe('tradeable')
   })
 
-  it('共通割当はユーザー割当より優先される', () => {
+  it('ユーザー割当は共通割当より優先される（ユーザーが上書きできる）', () => {
     const cm = new Map([['花火', 2]])
     const um = new Map<string, number | null>([['花火', 3]])
-    expect(effectiveTypeId(row({ name: '花火' }), cm, um, DEFAULT_TYPE_ID)).toBe(2)
+    expect(effectiveTypeId(row({ name: '花火' }), cm, um, DEFAULT_TYPE_ID)).toBe(3)
   })
 
-  it('共通割当の種別IDを返す', () => {
+  it('共通割当の種別IDを返す（ユーザー割当が無いとき）', () => {
     expect(effectiveTypeId(row({ name: 'ゴミ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(1)
     expect(effectiveTypeId(row({ name: '花火' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(2)
   })

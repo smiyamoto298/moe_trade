@@ -180,22 +180,63 @@ class InventoryApiTest extends TestCase
         ]);
     }
 
-    public function test_共通種別に登録済みの名前はユーザー種別割当のスナップショットから除外される(): void
+    public function test_共通種別と同名でもユーザー種別割当はスナップショットに含まれる(): void
     {
         $user = $this->makeUser();
-        // 共通種別（excluded_items）に「ゴミ」がある状態でユーザーも「ゴミ」を割当
+        // 共通種別（excluded_items）に「ゴミ」がある状態でユーザーも「ゴミ」に別種別を割当（上書き）
+        $rare = \App\Models\ExclusionType::create(['name' => 'レア']);
         \App\Models\ExcludedItem::create(['name' => 'ゴミ']);
 
         $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
             'accounts'   => [],
             'items'      => [],
-            'exclusions' => ['ゴミ', '木の枝'],
+            'exclusions' => [['name' => 'ゴミ', 'exclusion_type_id' => $rare->id], '木の枝'],
         ])->assertOk();
 
-        // 保存自体はされるが、スナップショットでは共通優先のため「ゴミ」は返らない
+        // ユーザー割当は共通より優先（上書き可）のため、共通と同名でもスナップショットに含まれる
+        $byName = collect($res->json('exclusions'))->keyBy('name');
+        $this->assertTrue($byName->has('ゴミ'));
+        $this->assertSame($rare->id, $byName['ゴミ']['exclusion_type_id']);
+        $this->assertTrue($byName->has('木の枝'));
+    }
+
+    public function test_共通と同じ種別の個別割当は冗長なので保存されずスナップショットにも出ない(): void
+    {
+        $user = $this->makeUser();
+        $rare  = \App\Models\ExclusionType::create(['name' => 'レア']);
+        $event = \App\Models\ExclusionType::create(['name' => 'イベント']);
+        // 共通: 「ゴミ」=レア
+        \App\Models\ExcludedItem::create(['name' => 'ゴミ', 'exclusion_type_id' => $rare->id]);
+
+        $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'   => [],
+            'items'      => [],
+            // 「ゴミ」は共通と同じレア（冗長）、「花火」は共通に無いイベント
+            'exclusions' => [
+                ['name' => 'ゴミ',  'exclusion_type_id' => $rare->id],
+                ['name' => '花火', 'exclusion_type_id' => $event->id],
+            ],
+        ])->assertOk();
+
+        $names = collect($res->json('exclusions'))->pluck('name');
+        $this->assertFalse($names->contains('ゴミ')); // 共通と同じ種別 → 該当設定は削除
+        $this->assertTrue($names->contains('花火'));
+        // 保存（永続化）もされない
+        $this->assertSame(0, UserExcludedItem::where('user_id', $user->id)->where('name', 'ゴミ')->count());
+        $this->assertDatabaseHas('user_excluded_items', ['user_id' => $user->id, 'name' => '花火', 'exclusion_type_id' => $event->id]);
+    }
+
+    public function test_既存の共通と同じ種別の個別割当はスナップショット取得時に除外される(): void
+    {
+        $user = $this->makeUser();
+        $rare = \App\Models\ExclusionType::create(['name' => 'レア']);
+        \App\Models\ExcludedItem::create(['name' => 'ゴミ', 'exclusion_type_id' => $rare->id]);
+        // 旧データとして、共通と同じ種別の個別割当が DB に残っているケース
+        UserExcludedItem::create(['user_id' => $user->id, 'name' => 'ゴミ', 'exclusion_type_id' => $rare->id]);
+
+        $res = $this->actingAs($user, 'sanctum')->getJson('/api/mypage/inventory')->assertOk();
         $names = collect($res->json('exclusions'))->pluck('name');
         $this->assertFalse($names->contains('ゴミ'));
-        $this->assertTrue($names->contains('木の枝'));
     }
 
     public function test_アイテムごとのメモを保存しスナップショットに含まれる(): void

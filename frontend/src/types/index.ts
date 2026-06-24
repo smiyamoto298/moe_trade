@@ -436,14 +436,19 @@ export interface ExcludedItemsPublic {
   items: { name: string; type_id: number }[]
 }
 
-// ユーザー個別除外を集計した、共通除外への昇格候補。
-// DB保存分は user_count（除外人数）、端末保存ユーザーの匿名報告分は from_device=true で合流する。
+// ユーザー個別の種別設定を集計した、共通の種別割当への昇格（共通化）候補。
+// DB保存分は user_count（設定人数）、端末保存ユーザーの匿名報告分は from_device=true で合流する。
 export interface UserExclusionSuggestion {
   name: string
   user_count: number
   from_device: boolean
-  // ユーザーが最も多く割り当てた種別（共通化時の既定種別の候補。未指定は null=その他）
+  // 既に共通登録済みの場合の現在の共通種別ID（＝別種別への上書き候補）。新規候補は null
+  current_type_id: number | null
+  // ユーザーが最も多く割り当てた種別（共通化時の既定候補。新規候補で全員未指定なら null=その他。
+  // 上書き候補は現在と異なる最頻種別＝具体ID）
   suggested_type_id: number | null
+  // ユーザーが設定した種別の内訳（多い順。type_id が null は既定種別「その他」）
+  type_assignments: { type_id: number | null; count: number }[]
 }
 
 // 「サーバ登録対象外」のシステム共通アイテム（管理者が登録）。

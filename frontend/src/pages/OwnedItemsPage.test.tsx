@@ -3,6 +3,7 @@ import { render, waitFor, screen, fireEvent, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import OwnedItemsPage from './OwnedItemsPage'
 import { itemsApi } from '../api/items'
+import { excludedItemsApi } from '../api/excludedItems'
 import { saveInventory, loadInitialInventory, getDisplayType } from '../utils/inventoryStore'
 import type { Item, InventoryData } from '../types'
 
@@ -46,6 +47,7 @@ const mockedMatch = vi.mocked(itemsApi.matchNames)
 const mockedLoad = vi.mocked(loadInitialInventory)
 const mockedSave = vi.mocked(saveInventory)
 const mockedDisplayType = vi.mocked(getDisplayType)
+const mockedExcludedList = vi.mocked(excludedItemsApi.list)
 
 const makeItem = (over: Partial<Item> = {}): Item => ({
   id: 12,
@@ -251,6 +253,88 @@ describe('OwnedItemsPage 重複を確認', () => {
 
     const dupBtn = await screen.findByRole('button', { name: /重複を確認/ })
     expect(dupBtn).toHaveTextContent('重複を確認 (0)')
+  })
+})
+
+describe('OwnedItemsPage 種別の変更', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  // 取引可能（登録済み）以外の行は、種別バッジをクリックして種別選択ダイアログを開ける。
+  // 共通割当の行も「共通」マーク付きでクリック可能（ユーザーが自分用に上書きできる）。
+  it('未設定・共通割当の行は種別バッジがクリックでき、ダイアログを開ける', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    // 共通の種別割当: 「光の杖」→ レア(id=5)。既定種別「その他」(id=1)。
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [
+          { id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 },
+          { id: 5, name: 'レア', is_default: false, default_enabled: true, sort_order: 1 },
+        ],
+        items: [{ name: '光の杖', type_id: 5 }],
+      },
+    })
+    const inv = makeInventory([
+      unlinkedRow({ id: 'r1', name: '光の杖', itemId: null, item: null }), // 共通割当（レア）
+      unlinkedRow({ id: 'r2', name: '謎の薬', itemId: null, item: null }), // 未設定
+    ])
+    mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // 共通割当の行の種別バッジ（title で一意に特定。種別タブの「レア」と区別する）。
+    // 種別名「レア」＋「共通」マークを表示し、クリックできる。
+    const commonBtn = await screen.findByTitle('管理者の共通種別。クリックで自分用に変更できます')
+    expect(commonBtn).toHaveTextContent('レア')
+    expect(commonBtn).toHaveTextContent('共通')
+    // 未設定の行の種別バッジは「未設定」と表示
+    const unsetBtn = screen.getByTitle('このアイテムの種別を設定')
+    expect(unsetBtn).toHaveTextContent('未設定')
+
+    // クリックで種別選択ダイアログが開く（共通割当もユーザーが上書き変更できる）
+    fireEvent.click(commonBtn)
+    expect(await screen.findByText('種別を選択')).toBeInTheDocument()
+  })
+
+  // 共通登録済みと同じ種別を選んだら、個別設定は冗長なので作らず削除する（共通に従う）。
+  it('共通と同じ種別を選ぶと個別設定は削除され共通表示に戻る', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [
+          { id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 },
+          { id: 5, name: 'レア', is_default: false, default_enabled: true, sort_order: 1 },
+        ],
+        items: [{ name: '光の杖', type_id: 5 }], // 共通: 光の杖 = レア
+      },
+    })
+    // ユーザーは「光の杖」を共通(レア)と異なる「その他」へ上書き済み
+    const inv: InventoryData = {
+      accounts: [{ id: 'acc1', name: 'メイン' }],
+      items: [unlinkedRow({ id: 'r1', name: '光の杖', itemId: null, item: null })],
+      exclusions: [{ name: '光の杖', exclusion_type_id: 1 }],
+    }
+    mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // 初期はユーザー上書き（その他）。バッジ（title=種別を変更・解除）をクリックしてダイアログを開く
+    const userBtn = await screen.findByTitle('種別を変更・解除')
+    expect(userBtn).toHaveTextContent('その他')
+    fireEvent.click(userBtn)
+
+    // ダイアログ内で共通と同じ「レア」を選ぶ
+    const dialog = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+    fireEvent.click(within(dialog).getByRole('button', { name: 'レア' }))
+
+    // 個別設定は削除され、共通(レア)に従う＝バッジが「共通」表示へ変わる
+    expect(await screen.findByTitle('管理者の共通種別。クリックで自分用に変更できます')).toBeInTheDocument()
+    // 保存内容にも個別設定（光の杖）は含まれない
+    await waitFor(() => {
+      const saved = mockedSave.mock.calls.at(-1)?.[1] as InventoryData
+      expect(saved.exclusions.some((e) => e.name === '光の杖')).toBe(false)
+    }, { timeout: 2500 })
   })
 })
 
