@@ -795,10 +795,12 @@ export default function OwnedItemsPage() {
         style={{ top: headerH }}
       >
         {/* 1段目: アカウント切替＋マークのみ＋サーバ登録対象外 */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* 表示切替（アカウントごとのタブ。セレクトボックスからタブ表示へ） */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-gray-400 w-8">表示</span>
+        <div className="flex items-start gap-3">
+          {/* 表示切替（アカウントごとのタブ。セレクトボックスからタブ表示へ）。
+              アカウントが増えても右上のボタン群は固定したいので、タブ側を flex-1 で残り幅に折り返させる */}
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <span className="text-xs text-gray-400 w-8 shrink-0 pt-1.5">表示</span>
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
             {[
               { id: 'all', label: 'すべて', count: inventory.items.length },
               ...inventory.accounts.map((a) => ({
@@ -828,30 +830,34 @@ export default function OwnedItemsPage() {
                 </button>
               )
             })}
+            </div>
           </div>
-          <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 cursor-pointer text-xs text-gray-300 transition-colors">
-            <input type="checkbox" checked={markedOnly} onChange={(e) => setMarkedOnly(e.target.checked)} className="accent-amber-500 w-4 h-4" />
-            <span>★ マークのみ ({markedCount})</span>
-          </label>
-          <button
-            onClick={() => setServerExcludedModalOpen(true)}
-            className="text-xs px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 text-gray-300 transition-colors"
-            title="サーバーに保存しない（端末のみ）アイテムを設定する"
-          >
-            サーバ登録対象外 ({serverExcludedSet.size})
-          </button>
-          <button
-            onClick={() => setDuplicateModalOpen(true)}
-            className="text-xs px-2 py-1.5 rounded border border-surface-border hover:border-gray-500 text-gray-300 transition-colors"
-            title="異なる取り込み先で同じ名称のアイテムを所持しているものを確認する（種別「未登録」は対象外）"
-          >
-            重複を確認 ({duplicates.length})
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+            <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 hover:border-amber-500/70 cursor-pointer text-xs text-amber-200 transition-colors">
+              <input type="checkbox" checked={markedOnly} onChange={(e) => setMarkedOnly(e.target.checked)} className="accent-amber-500 w-4 h-4" />
+              <span>★ マークのみ ({markedCount})</span>
+            </label>
+            <button
+              onClick={() => setServerExcludedModalOpen(true)}
+              className="text-xs px-2 py-1.5 rounded border border-sky-500/40 bg-sky-500/10 hover:border-sky-500/70 text-sky-200 transition-colors"
+              title="サーバーに保存しない（端末のみ）アイテムを設定する"
+            >
+              サーバ登録対象外 ({serverExcludedSet.size})
+            </button>
+            <button
+              onClick={() => setDuplicateModalOpen(true)}
+              className="text-xs px-2 py-1.5 rounded border border-violet-500/40 bg-violet-500/10 hover:border-violet-500/70 text-violet-200 transition-colors"
+              title="異なる取り込み先で同じ名称のアイテムを所持しているものを確認する（種別「未登録」は対象外）"
+            >
+              重複を確認 ({duplicates.length})
+            </button>
+          </div>
         </div>
 
         {/* 2段目: 表示種別（ジャンル）切替。アカウント切替と同じ単一選択タブ */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-400 w-8">種別</span>
+        <div className="flex items-start gap-2">
+          <span className="text-xs text-gray-400 w-8 shrink-0 pt-1.5">種別</span>
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
           {([
             { id: 'all' as DisplayType, label: 'すべて' },
             { id: 'tradeable' as DisplayType, label: '取引可能' },
@@ -876,6 +882,7 @@ export default function OwnedItemsPage() {
               </button>
             )
           })}
+          </div>
         </div>
       </div>
 
