@@ -162,10 +162,13 @@ class AuctionTest extends TestCase
             'server' => 'Emerald', 'bid_price' => 1200,
         ])->assertStatus(201);
 
-        // 現在の最高入札(1200)以下 → 拒否
+        // 現在の最高入札(1200)以下 → 拒否。
+        // 入力中に抜かれた利用者へ現在価格を提示できるよう、拒否レスポンスに current_price/best_bid を含める。
         $this->actingAs($b, 'sanctum')->postJson("/api/listings/{$listing->id}/chats", [
             'server' => 'Emerald', 'bid_price' => 1150,
-        ])->assertStatus(400);
+        ])->assertStatus(400)
+            ->assertJsonPath('current_price', 1200)
+            ->assertJsonPath('best_bid', 1200);
     }
 
     public function test_即決価格に達した入札で即時成立する(): void

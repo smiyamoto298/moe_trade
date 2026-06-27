@@ -47,23 +47,28 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
   const [newCharName, setNewCharName] = useState('')
   const [error, setError] = useState('')
 
+  // ---- オークション ----
+  const isAuction = listing.trade_type === 'auction'
+  const higherIsBetter = kind !== 'buy_request' // 出品=高いほど有利 / 買取=安いほど有利
+  // 入力中に他ユーザーがより有利な額で入札した場合、サーバーから返る最新値で現在価格を上書きする
+  // （初期値は props。outbid エラー時に setLiveBest/Current で更新して即座に再入札できるようにする）。
+  const [liveBest, setLiveBest] = useState<number | null>(listing.best_bid ?? null)
+  const [liveCurrent, setLiveCurrent] = useState<number | null>(listing.current_price ?? null)
+
   // 選択サーバーに自分のキャラクターが登録済みか
   const myChar = server ? user?.characters?.find((c) => c.server === server) : null
   const needsChar = server && !myChar
 
-  // ---- オークション ----
-  const isAuction = listing.trade_type === 'auction'
-  const higherIsBetter = kind !== 'buy_request' // 出品=高いほど有利 / 買取=安いほど有利
-  const current = listing.current_price ?? listing.price ?? 0
-  const hasBid = listing.best_bid != null
+  const current = liveCurrent ?? listing.price ?? 0
+  const hasBid = liveBest != null
   // 次に必要な最小/最大入札額（最良入札より有利。入札が無ければ開始価格=price）
   const requiredBid = higherIsBetter
-    ? (hasBid ? (listing.best_bid as number) + 1 : (listing.price ?? 1))
-    : (hasBid ? (listing.best_bid as number) - 1 : (listing.price ?? 1))
+    ? (hasBid ? (liveBest as number) + 1 : (listing.price ?? 1))
+    : (hasBid ? (liveBest as number) - 1 : (listing.price ?? 1))
   const bidValid = !isAuction || (
     bid !== '' && (higherIsBetter
-      ? Number(bid) >= (listing.price ?? 1) && (!hasBid || Number(bid) > (listing.best_bid as number))
-      : Number(bid) <= (listing.price ?? 1) && Number(bid) >= 1 && (!hasBid || Number(bid) < (listing.best_bid as number)))
+      ? Number(bid) >= (listing.price ?? 1) && (!hasBid || Number(bid) > (liveBest as number))
+      : Number(bid) <= (listing.price ?? 1) && Number(bid) >= 1 && (!hasBid || Number(bid) < (liveBest as number)))
   )
 
   const handleServerChange = (s: Server) => {
@@ -101,7 +106,19 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
       }
       onComplete()
     } catch (err: unknown) {
-      const res = (err as { response?: { status?: number; data?: { message?: string } } })?.response
+      const res = (err as { response?: { status?: number; data?: { message?: string; best_bid?: number | null; current_price?: number | null } } })?.response
+      // 入力中に他ユーザーがより有利な額で入札していた場合（サーバーが現在価格付きで 400 を返す）
+      // → 現在価格を最新に更新し、その額を添えて再入札を促す（一覧へは飛ばさず再入力できるようにする）。
+      if (isAuction && res?.status === 400 && res.data && res.data.current_price != null) {
+        setLiveBest(res.data.best_bid ?? null)
+        setLiveCurrent(res.data.current_price)
+        const cur = (res.data.current_price ?? 0).toLocaleString()
+        setError(
+          `${higherIsBetter ? '他のユーザーがより高い額で入札しました。' : '他のユーザーがより安い額で入札しました。'}` +
+          `現在の入札額は ${cur} ${listing.currency ?? 'AC'} です。入札額を入力し直してください。`
+        )
+        return
+      }
       // 入力中に出品が取り下げ／取引成立した場合 → エラー表示して一覧へリダイレクト
       const unavailable =
         res?.status === 404 ||
