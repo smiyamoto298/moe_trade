@@ -33,18 +33,21 @@ class BuyRequest extends Model
      */
     public function scopeExpired(Builder $query): Builder
     {
-        return $query->where(function (Builder $q) {
-            $q->where('status', 'expired')
-              ->orWhere(function (Builder $q2) {
-                  $q2->where('status', 'active')
-                     ->whereNotNull('expires_at')
-                     ->where('expires_at', '<', now());
-              });
-        });
+        // オークションは期限到来後にバッチで自動成立/取り下げされる（再登録しない）ため、
+        // 「期限切れ＝再登録促し」の対象には含めない。
+        return $query->where('trade_type', '!=', 'auction')
+            ->where(function (Builder $q) {
+                $q->where('status', 'expired')
+                  ->orWhere(function (Builder $q2) {
+                      $q2->where('status', 'active')
+                         ->whereNotNull('expires_at')
+                         ->where('expires_at', '<', now());
+                  });
+            });
     }
 
     protected $fillable = [
-        'user_id', 'item_id', 'price', 'currency', 'quantity',
+        'user_id', 'item_id', 'price', 'buyout_price', 'currency', 'quantity',
         'trade_type', 'comment', 'status', 'expires_at', 'bumped_at',
     ];
 
@@ -54,8 +57,15 @@ class BuyRequest extends Model
             'expires_at' => 'datetime',
             'bumped_at' => 'datetime',
             'price' => 'integer',
+            'buyout_price' => 'integer',
             'quantity' => 'integer',
         ];
+    }
+
+    /** オークション買取かどうか。 */
+    public function isAuction(): bool
+    {
+        return $this->trade_type === 'auction';
     }
 
     public function user()

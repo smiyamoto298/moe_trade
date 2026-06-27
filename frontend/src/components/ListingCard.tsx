@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Listing } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, remainingLabel } from '../utils/constants'
 import UnverifiedBadge from './UnverifiedBadge'
 
 interface Props {
@@ -91,8 +91,8 @@ export default function ListingCard({ listing }: Props) {
 
           {/* サーバー・取引方法 */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs bg-surface text-gray-300 px-2 py-0.5 rounded">
-              {TRADE_TYPE_LABEL[listing.trade_type]}
+            <span className={`px-2 py-0.5 rounded whitespace-nowrap ${listing.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
+              {listing.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[listing.trade_type]}
             </span>
             {listing.servers.map((s) => (
               <span key={s.server} className={`text-xs px-2 py-0.5 rounded ${SERVER_COLORS[s.server]}`}>
@@ -108,12 +108,21 @@ export default function ListingCard({ listing }: Props) {
 
         {/* 右：価格・期限 */}
         <div className="text-right shrink-0 flex flex-col items-end justify-between">
-          <div>
-            <p className="text-xl font-bold text-primary-500">{listing.price.toLocaleString()}</p>
-            <p className="text-xs text-gray-400">{listing.currency}</p>
-          </div>
-          <p className={`text-xs mt-2 ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
-            残り{daysLeft}日
+          {listing.trade_type === 'auction' ? (
+            <div>
+              <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
+              <p className="text-xl font-bold text-amber-300">{(listing.current_price ?? listing.price).toLocaleString()}</p>
+              <p className="text-xs text-gray-400">{listing.currency}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">入札 {listing.bid_count ?? 0}件{listing.buyout_price != null && ` ・即決 ${listing.buyout_price.toLocaleString()}`}</p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-xl font-bold text-primary-500">{listing.price.toLocaleString()}</p>
+              <p className="text-xs text-gray-400">{listing.currency}</p>
+            </div>
+          )}
+          <p className={`text-xs mt-2 whitespace-nowrap ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+            {remainingLabel(listing.expires_at, listing.trade_type === 'auction')}
           </p>
         </div>
       </div>

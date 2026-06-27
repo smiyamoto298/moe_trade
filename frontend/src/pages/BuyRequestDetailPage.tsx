@@ -89,12 +89,24 @@ export default function BuyRequestDetailPage() {
       <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">買取情報</h2>
         <div className="flex items-end gap-2 mb-4">
-          <span className="text-xs text-emerald-400/80 mb-1.5">買取希望</span>
-          <span className="text-3xl font-bold text-emerald-400">{buyRequest.price.toLocaleString()}</span>
-          <span className="text-gray-400 mb-1">{buyRequest.currency}</span>
-          <span className="ml-2 bg-surface text-gray-300 text-sm px-2 py-0.5 rounded">
-            {TRADE_TYPE_LABEL[buyRequest.trade_type]}
-          </span>
+          {buyRequest.trade_type === 'auction' ? (
+            <>
+              <span className="text-xs text-amber-300/80 mb-1.5">現在価格</span>
+              <span className="text-3xl font-bold text-amber-300">{(buyRequest.current_price ?? buyRequest.price).toLocaleString()}</span>
+              <span className="text-gray-400 mb-1">{buyRequest.currency}</span>
+              <span className="text-xs text-gray-500 mb-1">（入札 {buyRequest.bid_count ?? 0}件）</span>
+              <span className="ml-2 bg-amber-900/40 border border-amber-600/40 text-amber-200 text-sm px-2 py-0.5 rounded">🔨 オークション</span>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-emerald-400/80 mb-1.5">買取希望</span>
+              <span className="text-3xl font-bold text-emerald-400">{buyRequest.price.toLocaleString()}</span>
+              <span className="text-gray-400 mb-1">{buyRequest.currency}</span>
+              <span className="ml-2 bg-surface text-gray-300 text-sm px-2 py-0.5 rounded">
+                {TRADE_TYPE_LABEL[buyRequest.trade_type]}
+              </span>
+            </>
+          )}
         </div>
 
         {buyRequest.comment && (
@@ -114,9 +126,19 @@ export default function BuyRequestDetailPage() {
           ))}
         </div>
 
-        <p className={`text-sm mb-5 ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
-          買取期限まで残り{daysLeft}日
-        </p>
+        {buyRequest.trade_type === 'auction' ? (
+          <div className="text-sm mb-5 space-y-0.5">
+            {buyRequest.buyout_price != null && <p className="text-gray-400">即決価格: <span className="text-amber-200 font-medium">{buyRequest.buyout_price.toLocaleString()} {buyRequest.currency}</span>（この額以下の入札で即時成立）</p>}
+            <p className="text-gray-400">最高取引価格: {buyRequest.price.toLocaleString()} {buyRequest.currency}</p>
+            <p className={daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}>
+              締切: {new Date(buyRequest.expires_at).toLocaleString('ja-JP')}（締切時に最安入札が自動成立）
+            </p>
+          </div>
+        ) : (
+          <p className={`text-sm mb-5 ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+            買取期限まで残り{daysLeft}日
+          </p>
+        )}
 
         {/* 取引アクション（チャットのやり取りはマイページで行う） */}
         {isOwner ? (

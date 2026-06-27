@@ -30,6 +30,29 @@ services:
     networks:
       - moe
 
+  # ── Laravel スケジューラ ────────────────────────────────
+  # `schedule:work` が schedule:run を毎分起動し、routes/console.php の定期バッチ
+  # （auctions:resolve=15分ごと / listings:expire=毎時 / announcements:purge-expired=毎日6:00）
+  # をローカルでも自動実行する。php と同じイメージ・ボリュームを共有する。
+  scheduler:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    command: php artisan schedule:work
+    volumes:
+      - ./backend:/var/www/backend
+      - vendor_data:/var/www/backend/vendor
+    environment:
+      - APP_ENV=local
+    depends_on:
+      db:
+        condition: service_healthy
+      php:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - moe
+
   # ── React 開発サーバー ────────────────────────────────
   frontend:
     image: node:22-alpine

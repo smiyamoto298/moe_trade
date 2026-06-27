@@ -118,8 +118,20 @@ export type AssetFunction = '販売員' | '銀行' | 'タイプカプセル' | '
 export type ItemType = 'equipment' | 'technique' | 'asset' | 'other'
 
 // ---- 出品 ----
-export type TradeType = 'fixed' | 'negotiable'
+export type TradeType = 'fixed' | 'negotiable' | 'auction'
 export type ListingStatus = 'active' | 'expired' | 'cancelled' | 'completed' | 'deal_failed'
+
+/** オークションの現在状況（出品/買取の詳細・一覧レスポンスに付与） */
+export interface AuctionInfo {
+  /** 即決価格（任意） */
+  buyout_price?: number | null
+  /** 現在価格（最良入札 or 開始価格 price） */
+  current_price?: number | null
+  /** 現在の最良入札（無ければ null） */
+  best_bid?: number | null
+  /** 入札数 */
+  bid_count?: number
+}
 
 export interface ListingServer {
   server: Server
@@ -146,6 +158,14 @@ export interface Listing {
   created_at: string
   /** 現在の取引希望者数（順番待ち人数）。詳細取得時のみ付与。 */
   waiting_count?: number
+  /** 即決価格（オークションのみ）。 */
+  buyout_price?: number | null
+  /** オークションの現在価格（最良入札 or 開始価格）。一覧/詳細で付与。 */
+  current_price?: number | null
+  /** オークションの最良入札（無ければ null）。 */
+  best_bid?: number | null
+  /** オークションの入札数。 */
+  bid_count?: number
 }
 
 // ---- 買取（買いたい） ----
@@ -164,6 +184,14 @@ export interface BuyRequest {
   created_at: string
   /** 現在の売却申し出者数（順番待ち人数）。詳細取得時のみ付与。 */
   waiting_count?: number
+  /** 即決価格（オークションのみ）。 */
+  buyout_price?: number | null
+  /** オークションの現在価格（最良入札 or 開始価格）。一覧/詳細で付与。 */
+  current_price?: number | null
+  /** オークションの最良入札（無ければ null）。 */
+  best_bid?: number | null
+  /** オークションの入札数。 */
+  bid_count?: number
 }
 
 export interface BuyRequestSearchParams {
@@ -307,6 +335,12 @@ export interface TradeChat {
   messages: TradeMessage[]
   created_at: string
   updated_at: string
+  /** オークションの入札額（入札チャットのみ）。 */
+  bid_price?: number | null
+  /** より有利な入札に抜かれた時刻（オークション・価格更新通知用）。 */
+  outbid_at?: string | null
+  /** 落札価格（自分が不成立=declined になったオークションの落札額。落札落選通知用）。 */
+  won_price?: number | null
   // ---- 順番待ち（先着順キュー）情報 ----
   /** open キュー内での順位（1始まり）。open 以外や未付与のときは null/undefined。 */
   queue_position?: number | null

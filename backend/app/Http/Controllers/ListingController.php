@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\DB;
 
 class ListingController extends Controller
 {
+    use \App\Http\Controllers\Concerns\HandlesAuctionBids;
+
     public function index(Request $request)
     {
         $includeCompleted = $request->boolean('include_completed', false);
@@ -351,8 +353,11 @@ class ListingController extends Controller
         $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
 
         $result = $query->paginate(20);
-        // 連絡先キャラ名を出品者の現在のキャラクターで解決
-        $result->getCollection()->each(fn(Listing $l) => $l->resolveServerContacts());
+        // 連絡先キャラ名を出品者の現在のキャラクターで解決し、オークションは現在価格等を付与
+        $result->getCollection()->each(function (Listing $l) {
+            $l->resolveServerContacts();
+            $this->annotateAuction($l);
+        });
 
         return response()->json($result);
     }
@@ -422,7 +427,19 @@ class ListingController extends Controller
         $listing->resolveServerContacts();
         // 現在の取引希望者数（順番待ち人数）。「この取引はN人待ちです」の表示に使う。
         $listing->waiting_count = $listing->chats()->where('status', 'open')->count();
+        $this->annotateAuction($listing);
         return response()->json($listing);
+    }
+
+    /** オークション出品に現在価格・最良入札・入札数を付与する（非オークションは何もしない）。 */
+    private function annotateAuction(Listing $listing): void
+    {
+        if (!$listing->isAuction()) {
+            return;
+        }
+        $listing->best_bid = \App\Support\Auction::bestBid($listing);
+        $listing->current_price = \App\Support\Auction::currentPrice($listing);
+        $listing->bid_count = \App\Support\Auction::bidCount($listing);
     }
 
     public function store(Request $request)
@@ -438,9 +455,22 @@ class ListingController extends Controller
 
         $data = $request->validate([
             'item_id'    => 'required|exists:items,id',
+            // オークションでは price = 最低取引価格（開始価格 兼 下限）
             'price'      => 'required|integer|min:1',
             'quantity'   => 'required|integer|min:1',
-            'trade_type' => 'required|in:fixed,negotiable',
+            'trade_type' => 'required|in:fixed,negotiable,auction',
+            // 即決価格（オークションのみ・任意）。最低取引価格より高いこと。
+            'buyout_price' => ['nullable', 'integer', 'min:1', function ($attr, $value, $fail) use ($request) {
+                if ($request->trade_type === 'auction' && $value !== null && (int) $value <= (int) $request->price) {
+                    $fail('即決価格は最低取引価格より高く設定してください。');
+                }
+            }],
+            // 期限日（オークションのみ必須・未来日時・最長30日）
+            'expires_at' => ['required_if:trade_type,auction', 'nullable', 'date', 'after:now', function ($attr, $value, $fail) use ($request) {
+                if ($request->trade_type === 'auction' && $value !== null && \Illuminate\Support\Carbon::parse($value)->gt(now()->addDays(30))) {
+                    $fail('期限日は30日以内で設定してください。');
+                }
+            }],
             'comment'    => 'nullable|string|max:1000',
             'is_worn'    => 'nullable|boolean',
             'is_dyed'    => 'nullable|boolean',
@@ -449,18 +479,22 @@ class ListingController extends Controller
             'servers.*.character_id' => 'nullable|exists:user_characters,id',
         ]);
 
-        $listing = DB::transaction(function () use ($data, $user) {
+        $isAuction = $data['trade_type'] === 'auction';
+
+        $listing = DB::transaction(function () use ($data, $user, $isAuction) {
             $listing = Listing::create([
                 'user_id'    => $user->id,
                 'item_id'    => $data['item_id'],
                 'price'      => $data['price'],
+                'buyout_price' => $isAuction ? ($data['buyout_price'] ?? null) : null,
                 'quantity'   => $data['quantity'],
                 'trade_type' => $data['trade_type'],
                 'comment'    => $data['comment'] ?? null,
                 'is_worn'    => $data['is_worn'] ?? false,
                 'is_dyed'    => $data['is_dyed'] ?? false,
                 'currency'   => 'AC',
-                'expires_at' => now()->addDays(7),
+                // オークションはユーザー指定の期限日（解決バッチに合わせ15分単位へ丸め）、それ以外は7日後
+                'expires_at' => $isAuction ? \App\Support\Auction::roundDeadline($data['expires_at']) : now()->addDays(7),
             ]);
 
             foreach ($data['servers'] as $srv) {
@@ -482,15 +516,23 @@ class ListingController extends Controller
         $listing = Listing::findOrFail($id);
         $this->authorize('update', $listing);
 
+        // オークションは入札が1件でもあると変更できない（取り下げ不可・条件は確定）。
+        if ($listing->isAuction() && $listing->chats()->where('status', 'open')->whereNotNull('bid_price')->exists()) {
+            return response()->json(['message' => '入札があるオークションは変更できません。'], 400);
+        }
+
         $data = $request->validate([
-            // 出品の編集では値下げのみ可能（値上げするには取り下げて再出品する）
+            // 出品の編集では値下げのみ可能（値上げするには取り下げて再出品する）。
+            // オークション（入札前）は最低取引価格の変更を許容するため値下げ制約を適用しない。
             'price'      => ['sometimes', 'integer', 'min:1', function ($attr, $value, $fail) use ($listing) {
-                if ((int) $value > (int) $listing->price) {
+                if (!$listing->isAuction() && (int) $value > (int) $listing->price) {
                     $fail('出品の編集では値下げのみ可能です。値上げするには一度取り下げて再出品してください。');
                 }
             }],
+            'buyout_price' => 'sometimes|nullable|integer|min:1',
+            'expires_at' => 'sometimes|date|after:now',
             'quantity'   => 'sometimes|integer|min:1',
-            'trade_type' => 'sometimes|in:fixed,negotiable',
+            'trade_type' => 'sometimes|in:fixed,negotiable,auction',
             'comment'    => 'nullable|string|max:1000',
             'is_worn'    => 'sometimes|boolean',
             'is_dyed'    => 'sometimes|boolean',
@@ -531,6 +573,11 @@ class ListingController extends Controller
             abort(403);
         }
 
+        // オークションは入札が1件でもあると取り下げできない（期限日に自動成立する）。
+        if ($listing->isAuction() && $listing->chats()->where('status', 'open')->whereNotNull('bid_price')->exists()) {
+            return response()->json(['message' => '入札があるオークションは取り下げできません。期限日に自動的に取引成立します。'], 400);
+        }
+
         $listing->update(['status' => 'cancelled']);
         return response()->json(null, 204);
     }
@@ -538,6 +585,39 @@ class ListingController extends Controller
     public function renew(Request $request, int $id)
     {
         $listing = Listing::where('user_id', $request->user()->id)->findOrFail($id);
+
+        // オークションは「入札が無いまま終了した」場合のみ、最低取引価格を下げて再出品できる。
+        if ($listing->isAuction()) {
+            if ($listing->chats()->whereNotNull('bid_price')->exists()) {
+                return response()->json(['message' => '入札があったオークションは再出品できません。'], 400);
+            }
+            $data = $request->validate([
+                // 再出品では最低取引価格を必ず下げる（不人気だったため）
+                'price' => ['required', 'integer', 'min:1', function ($attr, $value, $fail) use ($listing) {
+                    if ((int) $value >= (int) $listing->price) {
+                        $fail('再出品では最低取引価格を下げてください。');
+                    }
+                }],
+                'buyout_price' => ['nullable', 'integer', 'min:1', function ($attr, $value, $fail) use ($request) {
+                    if ($value !== null && (int) $value <= (int) $request->price) {
+                        $fail('即決価格は最低取引価格より高く設定してください。');
+                    }
+                }],
+                'expires_at' => ['required', 'date', 'after:now', function ($attr, $value, $fail) {
+                    if (\Illuminate\Support\Carbon::parse($value)->gt(now()->addDays(30))) {
+                        $fail('期限日は30日以内で設定してください。');
+                    }
+                }],
+            ]);
+            $listing->update([
+                'status'       => 'active',
+                'price'        => $data['price'],
+                'buyout_price' => $data['buyout_price'] ?? null,
+                'expires_at'   => \App\Support\Auction::roundDeadline($data['expires_at']),
+                'bumped_at'    => now(),
+            ]);
+            return response()->json($listing);
+        }
 
         // 再出品（期限切れ）時は価格・取引方法を任意で変更できる。
         // 単なる期限更新（active のまま延長）ではこれらを省略すると現状維持。
@@ -585,6 +665,11 @@ class ListingController extends Controller
         }
         if ($listing->user_id === $user->id) {
             return response()->json(['message' => '自分の出品には取引希望できません。'], 400);
+        }
+
+        // オークションは取引希望＝入札（価格を競う）。専用フローへ。
+        if ($listing->isAuction()) {
+            return $this->placeBid($request, $listing, $user);
         }
 
         $data = $request->validate([

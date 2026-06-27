@@ -11,6 +11,10 @@ export interface ListingCreatePayload {
   comment: string
   is_worn?: boolean
   is_dyed?: boolean
+  /** 即決価格（オークションのみ・任意） */
+  buyout_price?: number | null
+  /** 期限日（オークションのみ・ISO8601） */
+  expires_at?: string
   servers: { server: string; character_id: number | null }[]
 }
 
@@ -55,6 +59,7 @@ export const listingsApi = {
     client.delete(`/listings/${id}`),
 
   // payload を渡すと再出品時に価格・取引方法を変更できる（省略時は現状維持で期限延長のみ）。
-  renew: (id: number, payload?: { price?: number; trade_type?: string }) =>
+  // オークションの再出品では price（下げる）・buyout_price・expires_at を渡す。
+  renew: (id: number, payload?: { price?: number; trade_type?: string; buyout_price?: number | null; expires_at?: string }) =>
     client.post(`/listings/${id}/renew`, payload),
 }

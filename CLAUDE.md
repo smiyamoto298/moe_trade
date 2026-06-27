@@ -95,7 +95,7 @@
 - フロントエンド: React (Vite + TypeScript) … `frontend/`
 - バックエンド: Laravel (PHP 8.3) … `backend/`
 - DB: MySQL 8（開発は Docker）。テストは SQLite インメモリ
-- ローカル開発: Docker Compose（nginx / php / frontend / db / mailpit / phpmyadmin）
+- ローカル開発: Docker Compose（nginx / php / scheduler / frontend / db / mailpit / phpmyadmin）。scheduler は `php artisan schedule:work` で定期バッチ（auctions:resolve=15分ごと等）を自動実行
 
 ## よく使うコマンド
 

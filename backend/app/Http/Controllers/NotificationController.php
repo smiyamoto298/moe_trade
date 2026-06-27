@@ -69,6 +69,12 @@ class NotificationController extends Controller
         $waitingChatIds = $waitingChatIds->all();
 
         $unreadChats = $chats->map(function (TradeChat $chat) use ($user, $waitingChatIds) {
+            // オークションの入札（open）は先着順キューではなく価格更新通知(outbid_chats)で扱うため、
+            // 通常の未読チャット通知の対象から除外する。落札確定後（deal 等）は通常通り通知し、
+            // 出品者が落札者との受け渡しに進めるようにする。
+            if ($chat->isAuctionBid() && $chat->status === 'open') {
+                return null;
+            }
             // 順番待ち（2番目以降）の取引希望は、先頭を見送るまで通知しない。
             if (in_array($chat->id, $waitingChatIds, true)) {
                 return null;
@@ -102,6 +108,30 @@ class NotificationController extends Controller
                 'last_sender'         => $last ? $this->displayName($last->user) : '取引希望者',
             ];
         })->filter()->values();
+
+        // ---- オークションの価格更新（自分の入札がより有利な入札に抜かれた） ----
+        // 出品/買取オークションで、自分の open 入札のうち outbid_at が立っているもの。
+        // 「他の入札者へ通知」要件に対応。既読はクライアント側(localStorage)で outbid_at をもとに管理する。
+        $outbidChats = TradeChat::with(['listing.item:id,name', 'buyRequest.item:id,name'])
+            ->where('buyer_id', $user->id)
+            ->where('status', 'open')
+            ->whereNotNull('bid_price')
+            ->whereNotNull('outbid_at')
+            ->get()
+            ->map(function (TradeChat $chat) {
+                $source = $chat->source();
+                return [
+                    'chat_id'        => $chat->id,
+                    'source_type'    => $chat->sourceType(),
+                    'listing_id'     => $chat->listing_id,
+                    'buy_request_id' => $chat->buy_request_id,
+                    'item_name'      => $source?->item?->name,
+                    'your_bid'       => $chat->bid_price,
+                    'current_price'  => $source ? \App\Support\Auction::currentPrice($source) : null,
+                    'outbid_at'      => $chat->outbid_at->toISOString(),
+                ];
+            })
+            ->values();
 
         // ---- 運営掲示板 ----
         // 管理者: すべてのスレッドの他人の投稿が対象。
@@ -209,6 +239,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'unread_chats' => $unreadChats,
+            'outbid_chats' => $outbidChats,
             'expired_count' => $expiredCount,
             'board' => $latestPost ? [
                 'latest_post_at' => $latestPost->created_at->toISOString(),

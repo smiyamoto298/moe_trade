@@ -16,10 +16,55 @@ import {
   isLabelOnlyUnit,
   formatBonusEffectDescription,
   NO_WARAGE_EFFECT_NOTE,
+  snapToQuarterHour,
+  remainingLabel,
 } from './constants'
 
 // design.md のマスタ定義（追加効果キー・特殊条件・スキル・マスタリ・アセット選択肢）と
 // フロント定数の整合を回帰テストとして固定する。
+
+describe('remainingLabel（一覧の残り期限表示）', () => {
+  const iso = (ms: number) => new Date(Date.now() + ms).toISOString()
+  const H = 60 * 60 * 1000
+  const M = 60 * 1000
+
+  it('非オークションは常に「残りN日」', () => {
+    expect(remainingLabel(iso(5 * H), false)).toBe('残り1日') // 5時間でも切り上げ1日
+    expect(remainingLabel(iso(2 * 24 * H), false)).toBe('残り2日')
+  })
+
+  it('オークションで残り1日超は「残りN日」', () => {
+    expect(remainingLabel(iso(2 * 24 * H), true)).toBe('残り2日')
+  })
+
+  it('オークションで残り1日以下は時間表示', () => {
+    expect(remainingLabel(iso(1 * H + 30 * M + 30 * 1000), true)).toBe('残り1時間30分')
+    expect(remainingLabel(iso(45 * M + 30 * 1000), true)).toBe('残り45分')
+    expect(remainingLabel(iso(30 * 1000), true)).toBe('残り1分未満')
+    expect(remainingLabel(iso(-60 * 1000), true)).toBe('締切')
+  })
+})
+
+describe('snapToQuarterHour（オークション期限日を15分単位に切り上げ）', () => {
+  it('15分単位でない時刻は次の15分へ切り上げる', () => {
+    expect(snapToQuarterHour('2026-06-26T14:37')).toBe('2026-06-26T14:45')
+    expect(snapToQuarterHour('2026-06-26T14:01')).toBe('2026-06-26T14:15')
+  })
+
+  it('既に15分単位ならそのまま（秒は落とす）', () => {
+    expect(snapToQuarterHour('2026-06-26T14:30')).toBe('2026-06-26T14:30')
+    expect(snapToQuarterHour('2026-06-26T14:00')).toBe('2026-06-26T14:00')
+  })
+
+  it('45分超は次の正時へ繰り上がる', () => {
+    expect(snapToQuarterHour('2026-06-26T14:52')).toBe('2026-06-26T15:00')
+  })
+
+  it('空文字・不正値はそのまま返す', () => {
+    expect(snapToQuarterHour('')).toBe('')
+    expect(snapToQuarterHour('not-a-date')).toBe('not-a-date')
+  })
+})
 
 describe('SKILL_GROUPS / ALL_SKILLS', () => {
   it('design.md のグループ構成（戦闘・基本・生産・熟練）と一致する', () => {

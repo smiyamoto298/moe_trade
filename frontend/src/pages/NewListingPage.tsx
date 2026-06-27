@@ -10,7 +10,8 @@ import NewItemForm from '../components/NewItemForm'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import type { Item, MyItemCounts, ItemCategory } from '../types'
 import { SERVERS } from '../types'
-import { TRADE_TYPE_LABEL } from '../utils/constants'
+import { TRADE_TYPE_LABEL, defaultAuctionDeadline } from '../utils/constants'
+import DeadlineInput from '../components/DeadlineInput'
 import { itemTypeOf, topCategoryName, OTHER_CATEGORY } from '../utils/itemType'
 
 export default function NewListingPage() {
@@ -56,8 +57,11 @@ export default function NewListingPage() {
     comment: '',
     is_worn: presetState?.presetWorn ?? false,
     is_dyed: presetState?.presetDyed ?? false,
+    buyout_price: '',     // 即決価格（オークションのみ）
+    expires_at: '',       // 期限日（オークションのみ・datetime-local）
     servers: [] as string[],
   })
+  const isAuction = form.trade_type === 'auction'
 
   // デフォルトキャラのサーバーを取引可能サーバーに初期チェックする（複数可・初回のみ）
   const defaultServerApplied = useRef(false)
@@ -83,8 +87,23 @@ export default function NewListingPage() {
     if (!selectedItem || !user) return
     // 価格は1以上
     if (!(Number(form.price) >= 1)) {
-      setPriceError('価格は1以上で入力してください。')
+      setPriceError(isAuction ? '最低取引価格は1以上で入力してください。' : '価格は1以上で入力してください。')
       return
+    }
+    // オークションの追加バリデーション
+    if (isAuction) {
+      if (!form.expires_at) {
+        setPriceError('オークションの期限日を入力してください。')
+        return
+      }
+      if (new Date(form.expires_at).getTime() <= Date.now()) {
+        setPriceError('期限日は現在時刻より後に設定してください。')
+        return
+      }
+      if (form.buyout_price && Number(form.buyout_price) <= Number(form.price)) {
+        setPriceError('即決価格は最低取引価格より高く設定してください。')
+        return
+      }
     }
     setPriceError('')
     runSubmit(async () => {
@@ -101,6 +120,10 @@ export default function NewListingPage() {
         comment: form.comment,
         is_worn: hideWornDyed ? false : form.is_worn,
         is_dyed: hideWornDyed ? false : form.is_dyed,
+        ...(isAuction ? {
+          buyout_price: form.buyout_price ? Number(form.buyout_price) : null,
+          expires_at: new Date(form.expires_at).toISOString(),
+        } : {}),
         servers: serverPayload,
       })
       goBack()
@@ -125,7 +148,16 @@ export default function NewListingPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form
+        onSubmit={handleSubmit}
+        // Enter キーでの誤送信を防ぐ（textarea の改行入力は許可）。送信は「出品する」ボタンのみ。
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+            e.preventDefault()
+          }
+        }}
+        className="space-y-6"
+      >
         {/* アイテム選択 */}
         <div data-tour="new-item" className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
           <h2 className="text-sm font-semibold text-gray-300">アイテム</h2>
@@ -245,9 +277,30 @@ export default function NewListingPage() {
         <div data-tour="new-price" className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
           <h2 className="text-sm font-semibold text-gray-300">価格・取引方法</h2>
 
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">取引方法</label>
+            <select
+              value={form.trade_type}
+              onChange={(e) => {
+                const tt = e.target.value
+                setForm((p) => ({
+                  ...p,
+                  trade_type: tt,
+                  // オークションに切り替えた時、期限日が未入力なら翌日12:00を初期値にする（1時間以上先・15分単位）
+                  expires_at: tt === 'auction' && !p.expires_at ? defaultAuctionDeadline() : p.expires_at,
+                }))
+              }}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+            >
+              {(Object.keys(TRADE_TYPE_LABEL) as Array<keyof typeof TRADE_TYPE_LABEL>).map((k) => (
+                <option key={k} value={k}>{TRADE_TYPE_LABEL[k]}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">価格</label>
+              <label className="block text-xs text-gray-400 mb-1">{isAuction ? '最低取引価格' : '価格'}</label>
               <input
                 type="number"
                 required
@@ -261,6 +314,7 @@ export default function NewListingPage() {
                   priceError ? 'border-red-500 focus:border-red-500' : 'border-surface-border focus:border-primary-500'
                 }`}
               />
+              {isAuction && <p className="mt-1 text-xs text-gray-500">この額以上の入札のみ受け付けます（開始価格）</p>}
               {priceError && <p className="mt-1 text-xs text-red-400">{priceError}</p>}
             </div>
             <div>
@@ -271,18 +325,38 @@ export default function NewListingPage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">取引方法</label>
-            <select
-              value={form.trade_type}
-              onChange={(e) => setForm((p) => ({ ...p, trade_type: e.target.value }))}
-              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
-            >
-              {(Object.keys(TRADE_TYPE_LABEL) as Array<keyof typeof TRADE_TYPE_LABEL>).map((k) => (
-                <option key={k} value={k}>{TRADE_TYPE_LABEL[k]}</option>
-              ))}
-            </select>
-          </div>
+          {/* オークション設定 */}
+          {isAuction && (
+            <div className="space-y-3 border border-amber-700/40 bg-amber-900/15 rounded-lg p-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">即決価格（任意）</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.buyout_price}
+                    onChange={(e) => { setForm((p) => ({ ...p, buyout_price: e.target.value })); if (priceError) setPriceError('') }}
+                    placeholder="この額以上で即時成立"
+                    className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">期限日</label>
+                  <DeadlineInput
+                    value={form.expires_at}
+                    onChange={(v) => { setForm((p) => ({ ...p, expires_at: v })); if (priceError) setPriceError('') }}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">時刻は15分単位で選べます</p>
+                </div>
+              </div>
+              <div className="text-xs text-amber-200 space-y-1">
+                <p className="font-semibold text-amber-100">⚠ オークションの注意</p>
+                <p>・期限日に最も高い入札が<span className="font-bold">自動的に取引成立</span>します（即決価格に達した時点でも即時成立）。</p>
+                <p>・入札が<span className="font-bold">1件でも入ると、途中で取り下げ・変更はできません</span>。</p>
+                <p>・期限切れ後の再出品はできません（入札が無ければ自動的に取り下げ）。</p>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs text-gray-400 mb-1">コメント（任意）</label>
@@ -364,8 +438,17 @@ export default function NewListingPage() {
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-lg px-4 py-3 text-xs text-gray-400 space-y-1">
-          <p>・出品は <span className="text-gray-200 font-medium">7日間</span> で期限切れになります。</p>
-          <p>・期限はマイページの出品一覧からいつでも更新（延長）できます。</p>
+          {isAuction ? (
+            <>
+              <p>・オークションは設定した <span className="text-gray-200 font-medium">期限日</span> に自動的に取引成立します。</p>
+              <p>・通常の期限切れ（自動取り下げ）は適用されません。</p>
+            </>
+          ) : (
+            <>
+              <p>・出品は <span className="text-gray-200 font-medium">7日間</span> で期限切れになります。</p>
+              <p>・期限はマイページの出品一覧からいつでも更新（延長）できます。</p>
+            </>
+          )}
         </div>
 
         <button

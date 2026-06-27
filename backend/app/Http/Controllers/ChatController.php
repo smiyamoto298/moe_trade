@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\DB;
  */
 class ChatController extends Controller
 {
+    use \App\Http\Controllers\Concerns\HandlesAuctionBids;
+
     /** チャットに必要なリレーションを読み込む。 */
     private function loadSource(TradeChat $chat): TradeChat
     {
@@ -98,6 +100,10 @@ class ChatController extends Controller
 
         if ($chat->ownerId() !== $user->id) {
             abort(403);
+        }
+        // オークションは期限日/即決で自動成立する。owner が手動成立はできない。
+        if ($chat->source()?->isAuction()) {
+            return response()->json(['message' => 'オークションは期限日または即決価格で自動的に成立します。手動成立はできません。'], 400);
         }
         if ($chat->status !== 'open') {
             return response()->json(['message' => '既にクローズされています。'], 400);
@@ -274,6 +280,10 @@ class ChatController extends Controller
         if ($chat->ownerId() !== $user->id && $chat->buyer_id !== $user->id) {
             abort(403);
         }
+        // オークションは取り下げ・見送り不可（入札は撤回できず、期限日に自動成立する）。
+        if ($chat->source()?->isAuction()) {
+            return response()->json(['message' => 'オークションでは入札の取り下げ・見送りはできません。'], 400);
+        }
         // owner が見送る場合は先着順を強制（先頭から順に見送る）。相手側の取り下げは順不同で可。
         if ($chat->ownerId() === $user->id && $chat->isWaiting()) {
             return response()->json(['message' => '先着順での対応が必要です。先頭の取引希望から見送ってください。'], 400);
@@ -281,6 +291,48 @@ class ChatController extends Controller
 
         $chat->update(['status' => 'declined']);
         return response()->json($chat->fresh());
+    }
+
+    /**
+     * オークションの入札額を更新する（マイ取引から）。より有利な額のみ可・取り下げ不可。
+     * 即決価格に達した場合はその場で成立する。
+     */
+    public function bid(Request $request, int $id)
+    {
+        $chat = $this->loadSource(TradeChat::findOrFail($id));
+        $user = $request->user();
+
+        if ($chat->buyer_id !== $user->id) {
+            abort(403);
+        }
+        $source = $chat->source();
+        if (!$source || !$source->isAuction()) {
+            return response()->json(['message' => 'オークションの入札ではありません。'], 400);
+        }
+        if ($source->status !== 'active' || ($source->expires_at && $source->expires_at->isPast())) {
+            return response()->json(['message' => 'このオークションは終了しています。'], 400);
+        }
+        if ($chat->status !== 'open') {
+            return response()->json(['message' => 'この入札はクローズされています。'], 400);
+        }
+
+        $data = $request->validate(['bid_price' => 'required|integer|min:1']);
+        $amount = (int) $data['bid_price'];
+
+        if (!\App\Support\Auction::isValidBid($source, $amount)) {
+            return $this->invalidBidResponse($source);
+        }
+
+        DB::transaction(function () use ($chat, $source, $amount, $request) {
+            $chat->update(['bid_price' => $amount, 'request_ip' => $request->ip()]);
+            if (\App\Support\Auction::meetsBuyout($source, $amount)) {
+                \App\Support\Auction::conclude($source, $chat, null);
+            } else {
+                \App\Support\Auction::refreshOutbid($source);
+            }
+        });
+
+        return $this->respondWithSource($chat->fresh());
     }
 
     public function reopen(Request $request, int $id)

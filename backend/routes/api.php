@@ -146,6 +146,8 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         // 取引希望の順番待ち（出品の open キュー内での自分の順位・待ち人数）を付与
         \App\Models\TradeChat::annotateBuyerQueue($chats, 'listing_id');
+        // 落札落選通知用：不成立になったオークションに落札価格を付与
+        \App\Models\TradeChat::annotateWonPrice($chats, 'listing_id');
         return response()->json($chats);
     });
 
@@ -232,6 +234,8 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         // 販売希望の順番待ち（買取の open キュー内での自分の順位・待ち人数）を付与
         \App\Models\TradeChat::annotateBuyerQueue($chats, 'buy_request_id');
+        // 落札落選通知用：不成立になったオークションに落札価格を付与
+        \App\Models\TradeChat::annotateWonPrice($chats, 'buy_request_id');
         return response()->json($chats);
     });
 
@@ -281,6 +285,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('chats/{id}',           [ChatController::class, 'show']);
     Route::post('chats/{id}/messages', [ChatController::class, 'sendMessage']);
     Route::post('chats/{id}/deal',        [ChatController::class, 'deal']);
+    Route::post('chats/{id}/bid',         [ChatController::class, 'bid']);
     Route::post('chats/{id}/complete',    [ChatController::class, 'markComplete']);
     Route::post('chats/{id}/deal-failed', [ChatController::class, 'dealFailed']);
     Route::post('chats/{id}/decline',     [ChatController::class, 'decline']);

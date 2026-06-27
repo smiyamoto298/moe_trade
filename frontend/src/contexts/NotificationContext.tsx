@@ -20,6 +20,17 @@ interface UnreadChat {
   last_sender: string
 }
 
+interface OutbidChat {
+  chat_id: number
+  source_type?: 'listing' | 'buy_request'
+  listing_id?: number | null
+  buy_request_id?: number | null
+  item_name?: string | null
+  your_bid?: number | null
+  current_price?: number | null
+  outbid_at: string
+}
+
 interface BoardSummary {
   latest_post_at: string
   thread_id: number
@@ -48,6 +59,12 @@ interface NotificationContextValue {
   unreadBuyRequestIds: Set<number>
   // 未読の買い手チャットがあるか
   hasBuyerUnread: boolean
+  // オークションで価格更新（outbid）された自分の入札チャット
+  outbidChats: OutbidChat[]
+  // 価格更新が未読のチャットIDセット
+  unreadOutbidChatIds: Set<number>
+  // 価格更新通知を既読にする
+  markOutbidSeen: (chatId: number) => void
   // チャットを既読にする
   markAsRead: (chatId: number) => void
   // 運営掲示板に新着があるか
@@ -88,6 +105,14 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 const CHAT_SEEN_KEY = 'notif_chat_seen'   // { [chatId]: lastSeenMessageAt }
 const BOARD_SEEN_KEY = 'notif_board_seen' // lastSeenPostAt(ISO)
 const BOARD_THREAD_SEEN_KEY = 'notif_board_thread_seen' // { [threadId]: lastSeenPostAt }
+const OUTBID_SEEN_KEY = 'notif_outbid_seen' // { [chatId]: lastSeenOutbidAt }
+
+function loadOutbidSeen(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(OUTBID_SEEN_KEY) ?? '{}') } catch { return {} }
+}
+function saveOutbidSeen(map: Record<string, string>) {
+  localStorage.setItem(OUTBID_SEEN_KEY, JSON.stringify(map))
+}
 
 function loadChatSeen(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(CHAT_SEEN_KEY) ?? '{}') } catch { return {} }
@@ -106,6 +131,7 @@ function saveBoardThreadSeen(map: Record<string, string>) {
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [unreadChats, setUnreadChats] = useState<UnreadChat[]>([])
+  const [outbidChats, setOutbidChats] = useState<OutbidChat[]>([])
   const [board, setBoard] = useState<BoardSummary | null>(null)
   const [boardThreads, setBoardThreads] = useState<BoardThreadUnread[]>([])
   const [unverifiedItems, setUnverifiedItems] = useState<UnverifiedItems | null>(null)
@@ -142,7 +168,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const check = async () => {
       try {
-        const res = await client.get<{ unread_chats: UnreadChat[]; board: BoardSummary | null; board_threads?: BoardThreadUnread[]; unverified_items?: UnverifiedItems | null; unorganized_label_count?: number; excluded_suggestion_count?: number; expired_count?: number }>(
+        const res = await client.get<{ unread_chats: UnreadChat[]; outbid_chats?: OutbidChat[]; board: BoardSummary | null; board_threads?: BoardThreadUnread[]; unverified_items?: UnverifiedItems | null; unorganized_label_count?: number; excluded_suggestion_count?: number; expired_count?: number }>(
           '/notifications/summary'
         )
         const seen = loadChatSeen()
@@ -150,6 +176,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           (c) => !seen[c.chat_id] || seen[c.chat_id] < c.last_message_at
         )
         setUnreadChats(chats)
+        setOutbidChats(res.data.outbid_chats ?? [])
         setBoard(res.data.board)
         setBoardThreads(res.data.board_threads ?? [])
         setUnverifiedItems(res.data.unverified_items ?? null)
@@ -209,6 +236,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setSeenVersion((v) => v + 1)
   }
 
+  const markOutbidSeen = (chatId: number) => {
+    const latest = outbidChats.find((c) => c.chat_id === chatId)?.outbid_at
+    const seen = loadOutbidSeen()
+    seen[chatId] = latest ?? new Date().toISOString()
+    saveOutbidSeen(seen)
+    setSeenVersion((v) => v + 1)
+  }
+
   // 指定ユーザー向けお知らせを既読にする。楽観的に画面から消し、サーバーへ反映する。
   const markAnnouncementRead = (id: number) => {
     setAnnouncements((prev) => prev.filter((a) => a.id !== id))
@@ -240,6 +275,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       .map((c) => c.buy_request_id as number)
   )
   const hasBuyerUnread = unreadChats.some((c) => c.buyer_id === user?.id)
+  const outbidSeen = loadOutbidSeen()
+  const unreadOutbidChatIds = new Set(
+    outbidChats
+      .filter((c) => !outbidSeen[c.chat_id] || outbidSeen[c.chat_id] < c.outbid_at)
+      .map((c) => c.chat_id)
+  )
   const boardSeenAt = localStorage.getItem(BOARD_SEEN_KEY) ?? ''
   const hasNewBoard = !!board && board.latest_post_at > boardSeenAt
 
@@ -262,6 +303,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       unreadListingIds,
       unreadBuyRequestIds,
       hasBuyerUnread,
+      outbidChats,
+      unreadOutbidChatIds,
+      markOutbidSeen,
       markAsRead,
       hasNewBoard,
       markBoardSeen,
@@ -269,7 +313,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       markBoardThreadSeen,
       notifPermission,
       requestNotifPermission,
-      totalUnread: unreadChatIds.size,
+      totalUnread: unreadChatIds.size + unreadOutbidChatIds.size,
       expiredCount,
       unverifiedEquipmentCount: unverifiedItems?.equipment ?? 0,
       unverifiedTechniqueCount: unverifiedItems?.technique ?? 0,

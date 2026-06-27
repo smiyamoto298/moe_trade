@@ -3,8 +3,8 @@ import { USE_MOCK, mockChats } from './mock'
 import type { TradeChat } from '../types'
 
 export const chatApi = {
-  // 出品に対する自分のチャットを取得（なければ作成）
-  getOrCreate: (listingId: number, server: string): Promise<{ data: TradeChat }> => {
+  // 出品に対する自分のチャットを取得（なければ作成）。オークションでは bidPrice を渡して入札する。
+  getOrCreate: (listingId: number, server: string, bidPrice?: number): Promise<{ data: TradeChat }> => {
     if (USE_MOCK) {
       const found = mockChats.find((c) => c.listing_id === listingId && c.buyer_id === 99 && c.server === server)
       if (found) return Promise.resolve({ data: { ...found } })
@@ -17,8 +17,12 @@ export const chatApi = {
       mockChats.push(newChat)
       return Promise.resolve({ data: newChat })
     }
-    return client.post<TradeChat>(`/listings/${listingId}/chats`, { server })
+    return client.post<TradeChat>(`/listings/${listingId}/chats`, bidPrice != null ? { server, bid_price: bidPrice } : { server })
   },
+
+  // オークションの入札額を更新する（マイ取引から。より有利な額のみ）
+  bid: (chatId: number, bidPrice: number): Promise<{ data: TradeChat }> =>
+    client.post<TradeChat>(`/chats/${chatId}/bid`, { bid_price: bidPrice }),
 
   // 出品者向け：出品に対する全チャット一覧
   listByListing: (listingId: number): Promise<{ data: TradeChat[] }> => {

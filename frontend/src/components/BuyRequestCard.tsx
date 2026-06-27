@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { BuyRequest } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel } from '../utils/constants'
 
 interface Props {
   buyRequest: BuyRequest
@@ -28,8 +28,8 @@ export default function BuyRequestCard({ buyRequest }: Props) {
 
           {/* 取引方法・サーバー */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs bg-surface text-gray-300 px-2 py-0.5 rounded">
-              {TRADE_TYPE_LABEL[buyRequest.trade_type]}
+            <span className={`px-2 py-0.5 rounded whitespace-nowrap ${buyRequest.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
+              {buyRequest.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[buyRequest.trade_type]}
             </span>
             {buyRequest.servers.map((s) => (
               <span key={s.server} className={`text-xs px-2 py-0.5 rounded ${SERVER_COLORS[s.server]}`}>
@@ -48,13 +48,22 @@ export default function BuyRequestCard({ buyRequest }: Props) {
 
         {/* 右：買取希望価格・期限 */}
         <div className="text-right shrink-0 flex flex-col items-end justify-between">
-          <div>
-            <p className="text-[10px] text-emerald-400/80 leading-none mb-0.5">買取希望</p>
-            <p className="text-xl font-bold text-emerald-400">{buyRequest.price.toLocaleString()}</p>
-            <p className="text-xs text-gray-400">{buyRequest.currency}</p>
-          </div>
-          <p className={`text-xs mt-2 ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
-            残り{daysLeft}日
+          {buyRequest.trade_type === 'auction' ? (
+            <div>
+              <p className="text-[10px] text-amber-300/80 leading-none mb-0.5">現在価格</p>
+              <p className="text-xl font-bold text-amber-300">{(buyRequest.current_price ?? buyRequest.price).toLocaleString()}</p>
+              <p className="text-xs text-gray-400">{buyRequest.currency}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">入札 {buyRequest.bid_count ?? 0}件{buyRequest.buyout_price != null && ` ・即決 ${buyRequest.buyout_price.toLocaleString()}`}</p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-[10px] text-emerald-400/80 leading-none mb-0.5">買取希望</p>
+              <p className="text-xl font-bold text-emerald-400">{buyRequest.price.toLocaleString()}</p>
+              <p className="text-xs text-gray-400">{buyRequest.currency}</p>
+            </div>
+          )}
+          <p className={`text-xs mt-2 whitespace-nowrap ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+            {remainingLabel(buyRequest.expires_at, buyRequest.trade_type === 'auction')}
           </p>
         </div>
       </div>

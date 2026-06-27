@@ -16,8 +16,10 @@ interface Props {
   currentUserId: number | null
   isOwner: boolean
   kind?: 'listing' | 'buy_request'
-  // 取引対象（出品/買取）。取引方法（即決/交渉可）・価格・サーバー連絡先キャラの参照に使う。
-  source?: { trade_type: string; price: number; servers?: { server: string; character?: { character_name: string } | null }[] } | null
+  // 取引対象（出品/買取）。取引方法（即決/交渉可/オークション）・価格・サーバー連絡先キャラの参照に使う。
+  source?: { trade_type: string; price: number; buyout_price?: number | null; servers?: { server: string; character?: { character_name: string } | null }[] } | null
+  // オークションの現在価格（最良入札 or 開始価格）。入札パネルでの表示に使う。
+  currentPrice?: number | null
   // 取引成立時に呼ばれる（同じ出品の他チャットも更新するため）
   onDeal?: (updatedChats: TradeChat[]) => void
   onStatusChange?: (chat: TradeChat) => void
@@ -28,7 +30,7 @@ interface Props {
   hasWaitingNext?: boolean
 }
 
-export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', source, onDeal, onStatusChange, onListingsChanged, hasWaitingNext = false }: Props) {
+export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', source, currentPrice, onDeal, onStatusChange, onListingsChanged, hasWaitingNext = false }: Props) {
   const { confirm } = useDialog()
   const [chat, setChat] = useState(initialChat)
   const [input, setInput] = useState('')
@@ -116,6 +118,30 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
   // 取引対象の取引方法・価格（propsのsource優先、なければchatに埋め込まれたlisting/buy_requestを参照）
   const sourceObj = source ?? ((chat as any).listing ?? (chat as any).buy_request) ?? null
   const isNegotiable = sourceObj?.trade_type === 'negotiable'
+  const isAuction = sourceObj?.trade_type === 'auction'
+  const higherIsBetter = kind !== 'buy_request'
+
+  // ---- オークション入札の更新（入札者＝買い手側）----
+  const [bidInput, setBidInput] = useState('')
+  const [bidError, setBidError] = useState('')
+  const [bidding, setBidding] = useState(false)
+  const updateBid = async () => {
+    const amount = Number(bidInput)
+    if (!(amount >= 1) || bidding) return
+    setBidError('')
+    setBidding(true)
+    try {
+      const res = await chatApi.bid(chat.id, amount)
+      setChat((prev) => mergeChat(prev, res.data))
+      setBidInput('')
+      onStatusChange?.(res.data)
+    } catch (err: unknown) {
+      const r = (err as { response?: { data?: { message?: string } } })?.response
+      setBidError(r?.data?.message ?? '入札の更新に失敗しました。')
+    } finally {
+      setBidding(false)
+    }
+  }
 
   const finalizeDeal = async (finalPrice?: number) => {
     const res = await chatApi.deal(chat.id, finalPrice)
@@ -226,8 +252,12 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {/* 出品者のみ */}
-          {isOwner && isOpen && !otherDealCompleted && (
+          {/* オークションの登録者は手動成立・見送り不可（期限日/即決で自動成立） */}
+          {isOwner && isOpen && isAuction && (
+            <span className="text-xs text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded px-2.5 py-1">🔨 オークション（自動成立）</span>
+          )}
+          {/* 出品者のみ（オークションを除く） */}
+          {isOwner && isOpen && !isAuction && !otherDealCompleted && (
             <>
               <button onClick={handleDeal} className="text-xs bg-primary-500/20 hover:bg-primary-500/40 border border-primary-500/50 text-primary-400 rounded px-2.5 py-1 transition-colors">
                 取引成立
@@ -323,6 +353,37 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
             </button>
             <button onClick={() => setDealPriceOpen(false)} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 transition-colors">キャンセル</button>
           </div>
+        </div>
+      )}
+
+      {/* オークション入札の更新（入札者＝買い手側のみ・open のとき） */}
+      {!isOwner && isAuction && isOpen && !otherDealCompleted && (
+        <div className="mx-4 my-2 p-3 bg-amber-900/15 border border-amber-700/40 rounded-lg text-xs space-y-2">
+          <p className="text-amber-200">
+            あなたの入札: <span className="font-bold text-amber-100">{(chat.bid_price ?? 0).toLocaleString()} AC</span>
+            {chat.outbid_at && <span className="ml-2 text-red-300">⚠ 現在価格：{(currentPrice ?? chat.bid_price ?? 0).toLocaleString()}AC</span>}
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={bidInput}
+              onChange={(e) => { setBidInput(e.target.value.replace(/[^\d]/g, '')); if (bidError) setBidError('') }}
+              onKeyDown={(e) => { if (e.key === 'Enter') updateBid() }}
+              placeholder={higherIsBetter ? '現在より高い額' : '現在より安い額'}
+              className="w-32 bg-surface border border-surface-border rounded px-2 py-1.5 text-sm text-white text-right placeholder-gray-600 focus:outline-none focus:border-primary-500"
+            />
+            <span className="text-gray-400">AC</span>
+            <button
+              onClick={updateBid}
+              disabled={!(Number(bidInput) >= 1) || bidding}
+              className="text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white px-3 py-1.5 rounded transition-colors"
+            >
+              入札を更新
+            </button>
+          </div>
+          <p className="text-gray-500">入札は{higherIsBetter ? 'より高い' : 'より安い'}額のみ更新できます（取り下げ不可）。{sourceObj?.buyout_price != null && `即決価格 ${sourceObj.buyout_price.toLocaleString()} で即時成立。`}</p>
+          {bidError && <p className="text-red-400">{bidError}</p>}
         </div>
       )}
 

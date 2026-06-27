@@ -15,14 +15,22 @@ use Illuminate\Support\Collection;
  */
 class TradeChat extends Model
 {
-    protected $fillable = ['listing_id', 'buy_request_id', 'buyer_id', 'server', 'request_ip', 'status', 'seller_completed', 'buyer_completed'];
+    protected $fillable = ['listing_id', 'buy_request_id', 'buyer_id', 'server', 'request_ip', 'status', 'seller_completed', 'buyer_completed', 'bid_price', 'outbid_at'];
 
     protected function casts(): array
     {
         return [
             'seller_completed' => 'boolean',
             'buyer_completed'  => 'boolean',
+            'bid_price'        => 'integer',
+            'outbid_at'        => 'datetime',
         ];
+    }
+
+    /** オークションの入札チャットかどうか（入札額を持つ＝オークション）。 */
+    public function isAuctionBid(): bool
+    {
+        return $this->bid_price !== null;
     }
 
     public function listing()
@@ -111,6 +119,10 @@ class TradeChat extends Model
     /** open だが先着1番目ではない（順番待ち）。owner からは匿名・操作不可。 */
     public function isWaiting(): bool
     {
+        // オークションの入札は先着順の順番待ちの概念を持たない（全入札が価格で並列に競う）。
+        if ($this->isAuctionBid()) {
+            return false;
+        }
         return $this->status === 'open' && !$this->isFirstInQueue();
     }
 
@@ -123,6 +135,11 @@ class TradeChat extends Model
      */
     public static function annotateOwnerQueue(Collection $groupChats): Collection
     {
+        // オークションは先着順ではなく価格順で全入札が並列に競う。owner からは全入札が見える（ロックしない）。
+        if ($groupChats->contains(fn($c) => $c->bid_price !== null)) {
+            return self::annotateAuction($groupChats);
+        }
+
         $open = $groupChats
             ->where('status', 'open')
             ->sortBy(fn($c) => [(string) $c->created_at, $c->id])
@@ -155,6 +172,31 @@ class TradeChat extends Model
     }
 
     /**
+     * 落札落選の通知用：自分の入札が不成立（declined）になったオークションに、
+     * 落札価格（同じ取引対象の deal チャットの入札額）を `won_price` として付与する。
+     * $sourceKey は 'listing_id' か 'buy_request_id'。
+     */
+    public static function annotateWonPrice(Collection $chats, string $sourceKey): void
+    {
+        $ids = $chats
+            ->filter(fn($c) => $c->status === 'declined' && $c->bid_price !== null && $c->{$sourceKey} !== null)
+            ->pluck($sourceKey)->unique()->values()->all();
+        if (empty($ids)) {
+            return;
+        }
+        $won = self::whereIn($sourceKey, $ids)
+            ->where('status', 'deal')
+            ->whereNotNull('bid_price')
+            ->pluck('bid_price', $sourceKey);
+
+        foreach ($chats as $c) {
+            if ($c->status === 'declined' && $c->{$sourceKey} !== null) {
+                $c->won_price = $won[$c->{$sourceKey}] ?? null;
+            }
+        }
+    }
+
+    /**
      * buyer 視点：自分のチャットに、取引対象の open キュー内での順番待ち情報を付与する。
      * $sourceKey は 'listing_id' か 'buy_request_id'。
      *   - queue_position: 自分の先着順位（1始まり）。open 以外は null。
@@ -166,19 +208,50 @@ class TradeChat extends Model
         if (empty($sourceIds)) {
             return;
         }
+        // 出品/買取いずれの入札か（高いほど有利＝listing / 安いほど有利＝buy_request）
+        $higherIsBetter = $sourceKey === 'listing_id';
         $allOpen = self::where('status', 'open')
             ->whereIn($sourceKey, $sourceIds)
             ->orderBy('created_at')
             ->orderBy('id')
-            ->get(['id', $sourceKey]);
+            ->get(['id', $sourceKey, 'bid_price']);
         $grouped = $allOpen->groupBy($sourceKey);
 
         foreach ($chats as $c) {
-            // values() で 0 始まりに振り直し、先着順での順位（rank）を正しく得る
-            $queue = ($grouped->get($c->{$sourceKey}) ?? collect())->values();
+            $queue = ($grouped->get($c->{$sourceKey}) ?? collect());
+            // オークション（入札額あり）は価格順、それ以外は先着順で順位を求める。
+            if ($queue->contains(fn($q) => $q->bid_price !== null)) {
+                $queue = $queue->sortBy(fn($q) => $higherIsBetter ? -$q->bid_price : $q->bid_price)->values();
+            } else {
+                $queue = $queue->values();
+            }
             $c->queue_total = $queue->count();
             $idx = $queue->search(fn($q) => $q->id === $c->id);
             $c->queue_position = $idx === false ? null : $idx + 1;
         }
+    }
+
+    /**
+     * オークションの順位付け（owner 視点）。価格順（出品=高い順 / 買取=安い順）で
+     * queue_position を付け、is_locked は常に false（owner は全入札を見られる）。
+     */
+    private static function annotateAuction(Collection $groupChats): Collection
+    {
+        $higherIsBetter = $groupChats->first()?->listing_id !== null;
+        $open = $groupChats
+            ->where('status', 'open')
+            ->sortBy(fn($c) => $higherIsBetter ? -$c->bid_price : $c->bid_price)
+            ->values();
+        $total = $open->count();
+        $position = [];
+        foreach ($open as $i => $c) {
+            $position[$c->id] = $i + 1;
+        }
+        foreach ($groupChats as $c) {
+            $c->queue_position = $position[$c->id] ?? null;
+            $c->queue_total = $total;
+            $c->is_locked = false;
+        }
+        return $groupChats;
     }
 }

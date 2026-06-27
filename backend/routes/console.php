@@ -24,3 +24,12 @@ Schedule::command('announcements:purge-expired')
 Schedule::command('listings:expire')
     ->hourly()
     ->timezone('Asia/Tokyo');
+
+// オークションの自動成立／取り下げ（15分ごと）。
+// 期限日は 15 分単位に丸めて登録されるため（App\Support\Auction::roundDeadline）、
+// 締切到来後ほぼ遅延なく最良入札で取引成立／入札なしで取り下げになる。
+// ※ schedule:run を cron 登録している環境で有効。
+//    コマンドを直接 cron 実行する環境では deploy/cron-resolve-auctions.sh を使用。
+Schedule::command('auctions:resolve')
+    ->everyFifteenMinutes()
+    ->timezone('Asia/Tokyo');

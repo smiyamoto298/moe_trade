@@ -3,6 +3,51 @@ import type { TradeType, Server, AssetPlacement, AssetFunction } from '../types'
 export const TRADE_TYPE_LABEL: Record<TradeType, string> = {
   fixed: '即決',
   negotiable: '交渉可',
+  auction: 'オークション',
+}
+
+/**
+ * datetime-local の値（"YYYY-MM-DDTHH:mm"）を15分単位に切り上げて返す。
+ * オークションの期限日は解決バッチ（15分ごと）に合わせて15分単位にする。
+ * datetime-local の step 属性はキーボード入力を制限しないため、ここでスナップする。
+ * 空文字・不正値はそのまま返す。
+ */
+/**
+ * 一覧に表示する残り期限ラベル。通常は「残りN日」。
+ * オークションで残り1日以下のときは「残りH時間M分」（1時間未満は「残りM分」/1分未満は「残り1分未満」）で表示する。
+ */
+export function remainingLabel(expiresAt: string, isAuction: boolean): string {
+  const diff = new Date(expiresAt).getTime() - Date.now()
+  if (isAuction && diff <= 24 * 60 * 60 * 1000) {
+    if (diff <= 0) return '締切'
+    const h = Math.floor(diff / (60 * 60 * 1000))
+    const m = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000))
+    if (h > 0) return `残り${h}時間${m}分`
+    if (m > 0) return `残り${m}分`
+    return '残り1分未満'
+  }
+  return `残り${Math.ceil(diff / (24 * 60 * 60 * 1000))}日`
+}
+
+/**
+ * オークションの期限日の初期値（翌日12:00・"YYYY-MM-DDTHH:mm"）。
+ * 1時間以上先・15分単位の有効な値で、フォーム選択時の出発点にする。
+ */
+export function defaultAuctionDeadline(): string {
+  const d = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T12:00`
+}
+
+export function snapToQuarterHour(value: string): string {
+  if (!value) return value
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return value
+  d.setSeconds(0, 0)
+  const rem = d.getMinutes() % 15
+  if (rem !== 0) d.setMinutes(d.getMinutes() + (15 - rem))
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export const SERVER_COLORS: Record<Server, string> = {

@@ -4,7 +4,7 @@ import { chatApi } from '../api/chat'
 import { buyRequestsApi } from '../api/buyRequests'
 import { charactersApi } from '../api/characters'
 import { useAuth } from '../contexts/AuthContext'
-import type { ListingServer, Server } from '../types'
+import type { ListingServer, Server, TradeType } from '../types'
 import { SERVER_COLORS } from '../utils/constants'
 
 const TIME_SLOTS = [
@@ -18,7 +18,17 @@ const TIME_SLOTS = [
 ]
 
 interface Props {
-  source: { id: number; servers: ListingServer[]; waiting_count?: number }
+  source: {
+    id: number
+    servers: ListingServer[]
+    waiting_count?: number
+    trade_type?: TradeType
+    price?: number
+    currency?: string
+    buyout_price?: number | null
+    current_price?: number | null
+    best_bid?: number | null
+  }
   kind?: 'listing' | 'buy_request'
   onComplete: () => void
   onCancel: () => void
@@ -32,6 +42,7 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
   const [server, setServer] = useState<Server | ''>('')
   const [timeSlot, setTimeSlot] = useState('いつでも')
   const [note, setNote] = useState('')
+  const [bid, setBid] = useState('')
   const [loading, setLoading] = useState(false)
   const [newCharName, setNewCharName] = useState('')
   const [error, setError] = useState('')
@@ -39,6 +50,21 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
   // 選択サーバーに自分のキャラクターが登録済みか
   const myChar = server ? user?.characters?.find((c) => c.server === server) : null
   const needsChar = server && !myChar
+
+  // ---- オークション ----
+  const isAuction = listing.trade_type === 'auction'
+  const higherIsBetter = kind !== 'buy_request' // 出品=高いほど有利 / 買取=安いほど有利
+  const current = listing.current_price ?? listing.price ?? 0
+  const hasBid = listing.best_bid != null
+  // 次に必要な最小/最大入札額（最良入札より有利。入札が無ければ開始価格=price）
+  const requiredBid = higherIsBetter
+    ? (hasBid ? (listing.best_bid as number) + 1 : (listing.price ?? 1))
+    : (hasBid ? (listing.best_bid as number) - 1 : (listing.price ?? 1))
+  const bidValid = !isAuction || (
+    bid !== '' && (higherIsBetter
+      ? Number(bid) >= (listing.price ?? 1) && (!hasBid || Number(bid) > (listing.best_bid as number))
+      : Number(bid) <= (listing.price ?? 1) && Number(bid) >= 1 && (!hasBid || Number(bid) < (listing.best_bid as number)))
+  )
 
   const handleServerChange = (s: Server) => {
     setServer(s)
@@ -48,6 +74,7 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
   const handleSubmit = async () => {
     if (!server) return
     if (needsChar && !newCharName.trim()) return
+    if (isAuction && !bidValid) return
     setError('')
     setLoading(true)
     try {
@@ -56,16 +83,22 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
         await charactersApi.upsert(server, newCharName.trim())
         await refresh()
       }
+      const bidPrice = isAuction ? Number(bid) : undefined
       const res = kind === 'buy_request'
-        ? await buyRequestsApi.createChat(listing.id, server)
-        : await chatApi.getOrCreate(listing.id, server)
-      const lines = [
-        `【取引希望】`,
-        `サーバー: ${server}`,
-        `希望時間帯: ${timeSlot}`,
-        ...(note ? [`備考: ${note}`] : []),
-      ]
-      await chatApi.sendMessage(res.data.id, lines.join('\n'))
+        ? await buyRequestsApi.createChat(listing.id, server, bidPrice)
+        : await chatApi.getOrCreate(listing.id, server, bidPrice)
+      // オークションは入札のみ（メッセージは送らない。備考があれば添える）
+      if (!isAuction) {
+        const lines = [
+          `【取引希望】`,
+          `サーバー: ${server}`,
+          `希望時間帯: ${timeSlot}`,
+          ...(note ? [`備考: ${note}`] : []),
+        ]
+        await chatApi.sendMessage(res.data.id, lines.join('\n'))
+      } else if (note) {
+        await chatApi.sendMessage(res.data.id, `【備考】${note}`)
+      }
       onComplete()
     } catch (err: unknown) {
       const res = (err as { response?: { status?: number; data?: { message?: string } } })?.response
@@ -96,12 +129,28 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
   return (
     <div className="bg-surface border border-primary-500/30 rounded-lg p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-white">取引を希望する</p>
+        <p className="text-sm font-semibold text-white">{isAuction ? 'オークションに入札する' : '取引を希望する'}</p>
         <button onClick={onCancel} className="text-xs text-gray-400 hover:text-white">✕</button>
       </div>
 
-      {/* すでに他の取引希望がある場合、順番待ち人数を案内する（先着順で対応されます） */}
-      {(listing.waiting_count ?? 0) > 0 && (
+      {/* オークション: 現在価格と入札の案内 */}
+      {isAuction && (
+        <div className="text-sm bg-amber-900/20 border border-amber-700/40 rounded-lg py-2 px-3 space-y-1">
+          <p className="text-amber-200">
+            現在価格: <span className="font-bold text-amber-100">{current.toLocaleString()} {listing.currency ?? 'AC'}</span>
+            {listing.buyout_price != null && <span className="ml-2 text-gray-300">即決: {listing.buyout_price.toLocaleString()}</span>}
+          </p>
+          <p className="text-xs text-amber-300/90">
+            {higherIsBetter
+              ? `${requiredBid.toLocaleString()} 以上で入札できます`
+              : `${requiredBid.toLocaleString()} 以下で入札できます`}
+            ・入札後は取り下げできません
+          </p>
+        </div>
+      )}
+
+      {/* 先着順の順番待ち（オークションは対象外） */}
+      {!isAuction && (listing.waiting_count ?? 0) > 0 && (
         <p className="text-center text-sm text-orange-300 bg-orange-900/20 border border-orange-700/40 rounded-lg py-2 px-3">
           ⏳ この取引は現在 {listing.waiting_count}人待ちです（先着順で対応されます）
         </p>
@@ -154,7 +203,35 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
         </div>
       </div>
 
-      {/* 希望時間帯 */}
+      {/* オークション: 入札額 */}
+      {isAuction && (
+        <div>
+          <label className="block text-xs text-gray-400 mb-1.5">入札額 <span className="text-red-400">*</span></label>
+          <input
+            type="number"
+            min={1}
+            value={bid}
+            onChange={(e) => setBid(e.target.value)}
+            placeholder={`${requiredBid.toLocaleString()} ${higherIsBetter ? '以上' : '以下'}`}
+            className="w-full bg-surface-card border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+          />
+          {bid !== '' && !bidValid && (
+            <p className="mt-1 text-xs text-red-400">
+              {higherIsBetter
+                ? `最低取引価格以上かつ現在価格（${current.toLocaleString()}）より高い額を入力してください。`
+                : `最高取引価格以下かつ現在価格（${current.toLocaleString()}）より安い額を入力してください。`}
+            </p>
+          )}
+          {listing.buyout_price != null && (
+            <p className="mt-1 text-xs text-gray-500">
+              即決価格（{listing.buyout_price.toLocaleString()}）{higherIsBetter ? '以上' : '以下'}で入札すると即時成立します。
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 希望時間帯（オークションは入札のみのため非表示） */}
+      {!isAuction && (
       <div>
         <label className="block text-xs text-gray-400 mb-1.5">希望時間帯</label>
         <div className="grid grid-cols-2 gap-1.5">
@@ -180,6 +257,7 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
           ))}
         </div>
       </div>
+      )}
 
       {/* 備考 */}
       <div>
@@ -205,10 +283,10 @@ export default function TradeRequestPanel({ source: listing, kind = 'listing', o
         </button>
         <button
           onClick={handleSubmit}
-          disabled={!server || loading || Boolean(needsChar && !newCharName.trim())}
+          disabled={!server || loading || Boolean(needsChar && !newCharName.trim()) || (isAuction && !bidValid)}
           className="text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-5 py-2 rounded-md transition-colors"
         >
-          {loading ? '送信中...' : '取引を希望する'}
+          {loading ? '送信中...' : isAuction ? '入札する' : '取引を希望する'}
         </button>
       </div>
     </div>

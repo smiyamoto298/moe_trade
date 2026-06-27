@@ -24,7 +24,7 @@ export default function MyPage() {
   const { user, refresh } = useAuth()
   const {
     unreadChatIds, unreadListingIds, unreadBuyRequestIds,
-    markAsRead, notifPermission, requestNotifPermission,
+    markAsRead, markOutbidSeen, unreadOutbidChatIds, outbidChats, notifPermission, requestNotifPermission,
   } = useNotification()
   const { confirm, alert } = useDialog()
   const { resetAllTours, startTour } = useTour()
@@ -52,6 +52,25 @@ export default function MyPage() {
   const [editTarget, setEditTarget] = useState<{ kind: 'listing' | 'buy_request'; record: Listing | BuyRequest } | null>(null)
   // 期限切れの再出品・再登録モーダル対象（価格・取引方法を設定し直す）
   const [renewTarget, setRenewTarget] = useState<{ kind: 'listing' | 'buy_request'; record: Listing | BuyRequest } | null>(null)
+
+  // オークション落札落選（自分の入札が declined）を確認済みにした chat_id（localStorage 永続）
+  const [dismissedLost, setDismissedLost] = useState<Set<number>>(() => {
+    try { return new Set<number>(JSON.parse(localStorage.getItem('mypage_auction_lost_seen') ?? '[]')) } catch { return new Set() }
+  })
+  const dismissLostAuction = (id: number) => {
+    setDismissedLost((prev) => {
+      const next = new Set(prev); next.add(id)
+      localStorage.setItem('mypage_auction_lost_seen', JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  // オークションの締切カウントダウン用に毎秒更新する現在時刻
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
 
   const startEditChars = () => {
     const draft: Record<string, string> = {}
@@ -184,7 +203,12 @@ export default function MyPage() {
     if (actioningId) return
     if (!(await confirm('出品を取り下げますか？', { title: '出品の取り下げ', confirmLabel: '取り下げる', danger: true }))) return
     setActioningId(id)
-    try { await listingsApi.cancel(id); fetchMyListings() } finally { setActioningId(null) }
+    try {
+      await listingsApi.cancel(id); fetchMyListings()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      await alert(msg ?? '取り下げに失敗しました。', { title: '取り下げできません' })
+    } finally { setActioningId(null) }
   }
 
   const handleRenewBuy = async (id: number) => {
@@ -197,7 +221,12 @@ export default function MyPage() {
     if (actioningId) return
     if (!(await confirm('買取を取り下げますか？', { title: '買取の取り下げ', confirmLabel: '取り下げる', danger: true }))) return
     setActioningId(id)
-    try { await buyRequestsApi.cancel(id); fetchMyListings() } finally { setActioningId(null) }
+    try {
+      await buyRequestsApi.cancel(id); fetchMyListings()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      await alert(msg ?? '取り下げに失敗しました。', { title: '取り下げできません' })
+    } finally { setActioningId(null) }
   }
 
   const [bulkCancelling, setBulkCancelling] = useState(false)
@@ -239,6 +268,7 @@ export default function MyPage() {
     setActiveChat(chat)
     setActiveSource(source ?? null)
     markAsRead(chat.id)
+    markOutbidSeen(chat.id)
   }
 
   const switchTab = (t: Tab) => { setTab(t); setActiveChat(null); setActiveSource(null) }
@@ -251,16 +281,27 @@ export default function MyPage() {
   // それを出品中カードに出すと「残り-N日」になるので、公開側 Listing::visible と
   // 同じ多層防御をフロントにも効かせ、再出品（期限切れ）導線へ寄せる。
   // completed / deal_failed は成立済みなので期限に関わらず active 扱いのまま残す。
-  const isExpired = (r: { status: string; expires_at?: string }) =>
-    r.status === 'expired' ||
-    (r.status === 'active' && !!r.expires_at && new Date(r.expires_at).getTime() < Date.now())
+  // オークションは期限到来後にバッチで自動成立/取り下げされる（再出品はしない）ため、
+  // 汎用の「期限切れ（再出品促し）」扱いには含めない。入札があっても期限切れ表示にならないようにする。
+  const isExpired = (r: { status: string; expires_at?: string; trade_type?: string }) =>
+    r.trade_type !== 'auction' && (
+      r.status === 'expired' ||
+      (r.status === 'active' && !!r.expires_at && new Date(r.expires_at).getTime() < Date.now())
+    )
+
+  // オークションは期限超過(active)・自動成立(completed)・入札なし終了(expired)のいずれも「取引中」枠に表示する。
+  const isOwnerVisible = (r: Listing | BuyRequest) =>
+    !isExpired(r) && (
+      ['active', 'completed', 'deal_failed'].includes(r.status) ||
+      (r.trade_type === 'auction' && r.status === 'expired')
+    )
 
   const active = listings
-    .filter((l) => !isExpired(l) && ['active', 'completed', 'deal_failed'].includes(l.status))
+    .filter(isOwnerVisible)
     .sort((a, b) => (unreadListingIds.has(b.id) ? 1 : 0) - (unreadListingIds.has(a.id) ? 1 : 0))
   const expired = listings.filter(isExpired)
   const activeBuy = buyRequests
-    .filter((b) => !isExpired(b) && ['active', 'completed', 'deal_failed'].includes(b.status))
+    .filter(isOwnerVisible)
     .sort((a, b) => (unreadBuyRequestIds.has(b.id) ? 1 : 0) - (unreadBuyRequestIds.has(a.id) ? 1 : 0))
   const expiredBuy = buyRequests.filter(isExpired)
 
@@ -293,6 +334,8 @@ export default function MyPage() {
 
   // buyer 視点：自分のチャットの順番待ちバッジ（待ち行列が2人以上のときだけ表示）
   const queueBadge = (c: TradeChat) => {
+    // オークションの入札は先着順の順番待ちではなく価格で競うため、専用バッジ（auctionBidBadge）で扱う
+    if (c.bid_price != null) return null
     if (c.status !== 'open' || c.queue_position == null || (c.queue_total ?? 0) <= 1) return null
     // 進行中の取引成立があるとき（他のユーザーと取引成立中）は順番待ち表示しない
     const src = c.listing ?? c.buy_request
@@ -300,6 +343,61 @@ export default function MyPage() {
     return (
       <span className="text-xs text-orange-300 bg-orange-900/20 border border-orange-700/30 rounded px-1.5 py-0.5 shrink-0">
         ⏳ 順番待ち {c.queue_position}番目 / 全{c.queue_total}人
+      </span>
+    )
+  }
+
+  // outbid 通知（価格更新）から chat_id → 現在価格を引くマップ
+  const outbidInfo = new Map(outbidChats.map((o) => [o.chat_id, o]))
+  // オークション入札チャットの現在価格（抜かれていれば通知の current_price、最良入札なら自分の入札額）
+  const auctionCurrentPrice = (c: TradeChat): number | null =>
+    outbidInfo.get(c.id)?.current_price ?? c.bid_price ?? null
+
+  // オークションの締切までの残り時間（1日以上は「N日H時間M分」、未満は「HH:MM:SS」）
+  const formatCountdown = (iso: string): string => {
+    const diff = new Date(iso).getTime() - nowMs
+    if (diff <= 0) return '締切'
+    // 1分未満は秒を出さず「1分未満」とだけ表示する
+    if (diff < 60_000) return '残り 1分未満'
+    const s = Math.floor(diff / 1000)
+    const d = Math.floor(s / 86400)
+    const h = Math.floor((s % 86400) / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const sec = s % 60
+    if (d > 0) return `残り ${d}日${h}時間${m}分`
+    return `残り ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  }
+
+  // buyer 視点：オークション入札チャットの締切カウントダウン（open のときのみ）
+  const auctionCountdown = (c: TradeChat) => {
+    if (c.bid_price == null || c.status !== 'open') return null
+    const src = c.listing ?? c.buy_request
+    if (!src?.expires_at) return null
+    const ended = new Date(src.expires_at).getTime() - nowMs <= 0
+    return (
+      <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${ended ? 'text-gray-400 bg-surface-border' : 'text-sky-300 bg-sky-900/20 border border-sky-700/30'}`}>
+        ⏱ {formatCountdown(src.expires_at)}
+      </span>
+    )
+  }
+
+  // buyer 視点：オークション入札のバッジ（価格更新された＝抜かれた / 現在の最良入札中）
+  const auctionBidBadge = (c: TradeChat) => {
+    if (c.bid_price == null || c.status !== 'open') return null
+    const src = c.listing ?? c.buy_request
+    if (src?.status === 'completed') return null
+    if (c.outbid_at) {
+      return (
+        <span className="text-xs text-red-300 bg-red-900/20 border border-red-700/40 rounded px-1.5 py-0.5 shrink-0">
+          ⚠ 現在価格：{auctionCurrentPrice(c)?.toLocaleString() ?? '—'}AC
+        </span>
+      )
+    }
+    // 抜かれていない＝現在の最良入札中（出品=最高 / 買取=最安）
+    const label = c.listing_id != null ? '現在の最高入札中' : '現在の最安入札中'
+    return (
+      <span className="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-700/30 rounded px-1.5 py-0.5 shrink-0">
+        ✓ {label}
       </span>
     )
   }
@@ -335,10 +433,99 @@ export default function MyPage() {
     )
   }
 
+  // オークションに入札が1件でもあるか（open/deal/declined 問わず）。入札があると取り下げ・編集はできない。
+  // ステータス（open）ではなく入札の有無で判定することで、成立後に listing の status が
+  // ローカルで古い（active のまま）状態でも取り下げボタンが出ないようにする。
+  const hasAnyBids = (chats: TradeChat[]) => chats.some((c) => c.bid_price != null)
+
+  // owner 視点：オークションは成立まで各入札チャットを表示せず「現在の入札価格」のみ表示する。
+  // 成立後（落札確定）に限り、落札者とのチャットを表示して受け渡しを進める。
+  const renderOwnerAuctionChats = (record: SourceRecord, chats: TradeChat[], higherIsBetter: boolean) => {
+    const bids = chats.filter((c) => c.bid_price != null && c.status === 'open')
+    const best = bids.length
+      ? bids.reduce((acc, c) => (higherIsBetter ? Math.max(acc, c.bid_price!) : Math.min(acc, c.bid_price!)),
+          higherIsBetter ? -Infinity : Infinity)
+      : null
+    const currentPrice = best ?? record.price
+    // 落札確定（自動成立 or 受け渡し中）／入札なし終了かどうか。
+    // status=expired はバッチが「入札なしで取り下げ」確定したもの。
+    const concluded = record.status === 'completed' || record.status === 'expired'
+      || chats.some((c) => c.status === 'deal' || c.status === 'deal_failed')
+    // 締切は過ぎたが、まだバッチが成立/取り下げを確定していない（集計待ち）状態。
+    const pastDeadline = record.status === 'active' && !!record.expires_at
+      && new Date(record.expires_at).getTime() <= nowMs
+
+    if (!concluded) {
+      return (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <div className="flex items-center justify-between flex-wrap gap-2 bg-amber-900/15 border border-amber-700/30 rounded px-3 py-2">
+            <span className="text-xs text-amber-200">{pastDeadline ? '⏳ オークション締切・集計中' : '🔨 オークション開催中'}</span>
+            <span className="text-sm text-amber-100 font-medium">
+              現在価格 {currentPrice.toLocaleString()} AC・入札 {bids.length}件
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {pastDeadline
+              ? `締切に達しました。まもなく${higherIsBetter ? '最高' : '最安'}入札で自動成立します。`
+              : `締切時に${higherIsBetter ? '最高' : '最安'}入札が自動成立します。落札者は成立後に表示されます。`}
+          </p>
+        </div>
+      )
+    }
+
+    // 成立後は落札（deal）チャットのみ表示。各入札（open/declined）は表示しない。
+    const dealChats = chats.filter((c) => c.status !== 'open' && c.status !== 'declined')
+    // 落札額（落札チャットの入札額）。落札成立メッセージに表示する。
+    const winner = chats.find((c) => c.status === 'deal' || c.status === 'deal_failed')
+    const wonPrice = winner?.bid_price ?? null
+    return (
+      <div className="mt-3 border-t border-surface-border pt-3 space-y-1.5">
+        {wonPrice != null ? (
+          <div className="flex items-center gap-2 bg-primary-500/15 border border-primary-500/40 rounded px-3 py-2">
+            <span className="text-lg shrink-0" aria-hidden>🎉</span>
+            <span className="text-sm font-semibold text-primary-300">{wonPrice.toLocaleString()} ACで落札されました</span>
+          </div>
+        ) : (
+          // 入札ゼロで終了：取り下げ、または最低/最高取引価格を変更して再出品できる。
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs text-gray-500">入札が無いまま終了しました。</p>
+            <div className="flex gap-1.5 shrink-0">
+              <button
+                onClick={() => setRenewTarget({ kind: higherIsBetter ? 'listing' : 'buy_request', record })}
+                className="text-xs bg-primary-500/80 hover:bg-primary-500 text-white px-3 py-1 rounded transition-colors"
+              >
+                再出品
+              </button>
+              <button
+                onClick={() => (higherIsBetter ? handleCancel(record.id) : handleCancelBuy(record.id))}
+                disabled={actioningId === record.id}
+                className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-3 py-1 rounded transition-colors"
+              >
+                {actioningId === record.id ? '処理中...' : '取り下げ'}
+              </button>
+            </div>
+          </div>
+        )}
+        {dealChats.length > 0 && (
+          <>
+            <p className="text-xs text-gray-400">落札者との取引</p>
+            {dealChats.map((c) => renderSellerChatRow(c, record))}
+          </>
+        )}
+      </div>
+    )
+  }
+
   const isOwnerTab = tab === 'listings' || tab === 'buy_requests'
   const chatKind: 'listing' | 'buy_request' = (tab === 'buy_requests' || tab === 'selling') ? 'buy_request' : 'listing'
 
-  const hasSellingOfferUnread = sellingOffers.some((c) => unreadChatIds.has(c.id))
+  const hasSellingOfferUnread = sellingOffers.some((c) => unreadChatIds.has(c.id) || unreadOutbidChatIds.has(c.id))
+
+  // オークションで他のユーザーが落札し、自分の入札が不成立（declined）になったもの。
+  // 入札（bid_price あり）かつ declined が「落札落選」。確認済み（localStorage）は除外。
+  const lostAuctions = [...buyingChats, ...sellingOffers].filter(
+    (c) => c.bid_price != null && c.status === 'declined' && !dismissedLost.has(c.id)
+  )
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
@@ -423,6 +610,34 @@ export default function MyPage() {
         </div>
       )}
 
+      {/* オークション落札落選の通知。他のユーザーが落札し自分の入札が不成立になったとき、
+          「確認済みにする」で個別に非表示にできる（localStorage）。 */}
+      {lostAuctions.length > 0 && (
+        <div className="space-y-2">
+          {lostAuctions.map((c) => {
+            const src = c.listing ?? c.buy_request
+            return (
+              <div key={c.id} className="bg-surface-card border border-surface-border rounded-lg px-4 py-3 flex flex-wrap items-center gap-3">
+                <span className="text-lg shrink-0" aria-hidden>🔨</span>
+                <div className="flex-1 min-w-[12rem]">
+                  <p className="text-sm text-gray-200">
+                    オークション「<span className="font-medium text-white">{src?.item?.name ?? 'アイテム'}</span>」は他のユーザーが落札しました。
+                    {c.won_price != null && <span className="text-amber-300">（落札価格: {c.won_price.toLocaleString()} AC）</span>}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">あなたの入札: {c.bid_price?.toLocaleString()} AC（不成立）</p>
+                </div>
+                <button
+                  onClick={() => dismissLostAuction(c.id)}
+                  className="text-xs bg-surface-border hover:bg-surface-border/80 text-gray-300 px-3 py-1.5 rounded transition-colors shrink-0"
+                >
+                  確認済みにする
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       <div className="bg-surface-card border border-surface-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-400">キャラクター</h2>
@@ -503,7 +718,7 @@ export default function MyPage() {
           className={`relative px-4 py-2 text-sm font-medium transition-colors ${tab === 'buying' ? 'text-white border-b-2 border-primary-500' : 'text-gray-400 hover:text-white'}`}
         >
           取引希望
-          {buyingChats.some((c) => unreadChatIds.has(c.id)) && (
+          {buyingChats.some((c) => unreadChatIds.has(c.id) || unreadOutbidChatIds.has(c.id)) && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">!</span>
           )}
         </button>
@@ -570,24 +785,35 @@ export default function MyPage() {
                               <p className="font-medium text-white truncate">{l.item.name}</p>
                               <p className="text-sm text-primary-500 mt-0.5">
                                 {l.price.toLocaleString()} {l.currency}
-                                <span className="text-gray-400 ml-2">{TRADE_TYPE_LABEL[l.trade_type]}</span>
+                                {l.trade_type === 'auction'
+                                  ? <span className="text-amber-300 ml-2">🔨 オークション</span>
+                                  : <span className="text-gray-400 ml-2">{TRADE_TYPE_LABEL[l.trade_type]}</span>}
                               </p>
                             </div>
                             <div className="text-right shrink-0 space-y-1.5">
                               {l.status === 'completed' && <span className="text-xs text-primary-500">✓ 取引完了</span>}
                               {l.status === 'deal_failed' && <span className="text-xs text-red-400">✕ 不成立</span>}
-                              {l.status === 'active' && <p className={`text-xs ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>残り{daysLeft}日</p>}
+                              {l.status === 'active' && <p className={`text-xs ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>{l.trade_type === 'auction' ? `${new Date(l.expires_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}締切` : `残り${daysLeft}日`}</p>}
                               <div className="flex gap-1.5">
-                                {l.status === 'active' && <>
+                                {l.status === 'active' && (l.trade_type === 'auction' ? (
+                                  // オークションは自動成立。入札があると取り下げ不可なので、入札があれば取り下げボタンを非表示。
+                                  hasAnyBids(chats) ? null : (
+                                    <button onClick={() => handleCancel(l.id)} disabled={actioningId === l.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-2 py-1 rounded transition-colors">{actioningId === l.id ? '処理中...' : '取り下げ'}</button>
+                                  )
+                                ) : (
+                                <>
                                   <button onClick={() => setEditTarget({ kind: 'listing', record: l })} className="text-xs bg-surface-border hover:bg-surface-border/80 text-gray-300 px-2 py-1 rounded transition-colors">編集</button>
                                   <button onClick={() => handleRenew(l.id)} disabled={actioningId === l.id} className="text-xs bg-surface-border hover:bg-surface-border/80 disabled:opacity-50 text-gray-300 px-2 py-1 rounded transition-colors">{actioningId === l.id ? '処理中...' : '期限更新'}</button>
                                   <button onClick={() => handleCancel(l.id)} disabled={actioningId === l.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-2 py-1 rounded transition-colors">{actioningId === l.id ? '処理中...' : '取り下げ'}</button>
-                                </>}
+                                </>
+                                ))}
                               </div>
                             </div>
                           </div>
 
-                          {chats.length > 0 && (
+                          {l.trade_type === 'auction' ? (
+                            renderOwnerAuctionChats(l, chats, true)
+                          ) : chats.length > 0 && (
                             <div className="mt-3 border-t border-surface-border pt-3 space-y-1.5">
                               <p className="text-xs text-gray-400">
                                 取引希望チャット ({chats.length}件)
@@ -648,7 +874,7 @@ export default function MyPage() {
                   {sortChats(buyingChats.filter((c) => showMyCompleted || unreadChatIds.has(c.id) || !(c.buyer_completed || c.status === 'deal_failed' || c.status === 'declined'))).map((c) => {
                     const chatListing = (c as any).listing
                     const sellerChar = chatListing?.servers?.find((s: any) => s.server === c.server)?.character?.character_name
-                    const isUnread = unreadChatIds.has(c.id)
+                    const isUnread = unreadChatIds.has(c.id) || unreadOutbidChatIds.has(c.id)
                     return (
                       <button
                         key={c.id}
@@ -667,6 +893,9 @@ export default function MyPage() {
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
                               {sellerChar && <span className="text-xs text-gray-300">{sellerChar}</span>}
+                              {c.bid_price != null && <span className="text-xs text-amber-300">入札 {c.bid_price.toLocaleString()}AC</span>}
+                              {auctionCountdown(c)}
+                              {auctionBidBadge(c)}
                               {queueBadge(c)}
                             </div>
                             <p className="text-xs text-gray-400 truncate">{c.messages?.at(-1)?.message ?? 'メッセージなし'}</p>
@@ -715,24 +944,35 @@ export default function MyPage() {
                               <p className="font-medium text-white truncate">{b.item.name}</p>
                               <p className="text-sm text-emerald-400 mt-0.5">
                                 買取 {b.price.toLocaleString()} {b.currency}
-                                <span className="text-gray-400 ml-2">{TRADE_TYPE_LABEL[b.trade_type]}</span>
+                                {b.trade_type === 'auction'
+                                  ? <span className="text-amber-300 ml-2">🔨 オークション</span>
+                                  : <span className="text-gray-400 ml-2">{TRADE_TYPE_LABEL[b.trade_type]}</span>}
                               </p>
                             </div>
                             <div className="text-right shrink-0 space-y-1.5">
                               {b.status === 'completed' && <span className="text-xs text-primary-500">✓ 取引完了</span>}
                               {b.status === 'deal_failed' && <span className="text-xs text-red-400">✕ 不成立</span>}
-                              {b.status === 'active' && <p className={`text-xs ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>残り{daysLeft}日</p>}
+                              {b.status === 'active' && <p className={`text-xs ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>{b.trade_type === 'auction' ? `${new Date(b.expires_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}締切` : `残り${daysLeft}日`}</p>}
                               <div className="flex gap-1.5">
-                                {b.status === 'active' && <>
+                                {b.status === 'active' && (b.trade_type === 'auction' ? (
+                                  // 入札があると取り下げ不可なので、入札があれば取り下げボタンを非表示。
+                                  hasAnyBids(chats) ? null : (
+                                    <button onClick={() => handleCancelBuy(b.id)} disabled={actioningId === b.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-2 py-1 rounded transition-colors">{actioningId === b.id ? '処理中...' : '取り下げ'}</button>
+                                  )
+                                ) : (
+                                <>
                                   <button onClick={() => setEditTarget({ kind: 'buy_request', record: b })} className="text-xs bg-surface-border hover:bg-surface-border/80 text-gray-300 px-2 py-1 rounded transition-colors">編集</button>
                                   <button onClick={() => handleRenewBuy(b.id)} disabled={actioningId === b.id} className="text-xs bg-surface-border hover:bg-surface-border/80 disabled:opacity-50 text-gray-300 px-2 py-1 rounded transition-colors">{actioningId === b.id ? '処理中...' : '期限更新'}</button>
                                   <button onClick={() => handleCancelBuy(b.id)} disabled={actioningId === b.id} className="text-xs bg-red-900/40 hover:bg-red-900/70 disabled:opacity-50 text-red-300 px-2 py-1 rounded transition-colors">{actioningId === b.id ? '処理中...' : '取り下げ'}</button>
-                                </>}
+                                </>
+                                ))}
                               </div>
                             </div>
                           </div>
 
-                          {chats.length > 0 && (
+                          {b.trade_type === 'auction' ? (
+                            renderOwnerAuctionChats(b, chats, false)
+                          ) : chats.length > 0 && (
                             <div className="mt-3 border-t border-surface-border pt-3 space-y-1.5">
                               <p className="text-xs text-gray-400">
                                 売却の申し出チャット ({chats.length}件)
@@ -793,7 +1033,7 @@ export default function MyPage() {
                   {sortChats(sellingOffers.filter((c) => showMyCompleted || unreadChatIds.has(c.id) || !(c.buyer_completed || c.status === 'deal_failed' || c.status === 'declined'))).map((c) => {
                     const br = (c as any).buy_request
                     const buyerChar = br?.servers?.find((s: any) => s.server === c.server)?.character?.character_name
-                    const isUnread = unreadChatIds.has(c.id)
+                    const isUnread = unreadChatIds.has(c.id) || unreadOutbidChatIds.has(c.id)
                     return (
                       <button
                         key={c.id}
@@ -812,6 +1052,9 @@ export default function MyPage() {
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[c.server]}`}>{c.server}</span>
                               {buyerChar && <span className="text-xs text-gray-300">{buyerChar}</span>}
+                              {c.bid_price != null && <span className="text-xs text-amber-300">入札 {c.bid_price.toLocaleString()}AC</span>}
+                              {auctionCountdown(c)}
+                              {auctionBidBadge(c)}
                               {queueBadge(c)}
                             </div>
                             <p className="text-xs text-gray-400 truncate">{c.messages?.at(-1)?.message ?? 'メッセージなし'}</p>
@@ -842,6 +1085,7 @@ export default function MyPage() {
                 isOwner={isOwnerTab}
                 kind={chatKind}
                 source={activeSource}
+                currentPrice={auctionCurrentPrice(activeChat)}
                 onDeal={(updatedChats) => {
                   const updated = updatedChats.find((c) => c.id === activeChat.id)
                   if (updated) setActiveChat({ ...activeChat, ...updated })

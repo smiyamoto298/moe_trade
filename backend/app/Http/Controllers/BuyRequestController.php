@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\DB;
  */
 class BuyRequestController extends Controller
 {
+    use \App\Http\Controllers\Concerns\HandlesAuctionBids;
+
     public function index(Request $request)
     {
         $includeCompleted = $request->boolean('include_completed', false);
@@ -91,7 +93,10 @@ class BuyRequestController extends Controller
         $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
 
         $result = $query->paginate(20);
-        $result->getCollection()->each(fn(BuyRequest $b) => $b->resolveServerContacts());
+        $result->getCollection()->each(function (BuyRequest $b) {
+            $b->resolveServerContacts();
+            $this->annotateAuction($b);
+        });
 
         return response()->json($result);
     }
@@ -148,7 +153,19 @@ class BuyRequestController extends Controller
         $buyRequest->resolveServerContacts();
         // 現在の売却申し出者数（順番待ち人数）。「この取引はN人待ちです」の表示に使う。
         $buyRequest->waiting_count = $buyRequest->chats()->where('status', 'open')->count();
+        $this->annotateAuction($buyRequest);
         return response()->json($buyRequest);
+    }
+
+    /** オークション買取に現在価格・最良入札・入札数を付与する（非オークションは何もしない）。 */
+    private function annotateAuction(BuyRequest $buyRequest): void
+    {
+        if (!$buyRequest->isAuction()) {
+            return;
+        }
+        $buyRequest->best_bid = \App\Support\Auction::bestBid($buyRequest);
+        $buyRequest->current_price = \App\Support\Auction::currentPrice($buyRequest);
+        $buyRequest->bid_count = \App\Support\Auction::bidCount($buyRequest);
     }
 
     public function store(Request $request)
@@ -164,25 +181,42 @@ class BuyRequestController extends Controller
 
         $data = $request->validate([
             'item_id'    => 'required|exists:items,id',
+            // オークションでは price = 最高取引価格（開始価格 兼 上限）
             'price'      => 'required|integer|min:1',
             'quantity'   => 'required|integer|min:1',
-            'trade_type' => 'required|in:fixed,negotiable',
+            'trade_type' => 'required|in:fixed,negotiable,auction',
+            // 即決価格（オークションのみ・任意）。買取は最高取引価格より低いこと。
+            'buyout_price' => ['nullable', 'integer', 'min:1', function ($attr, $value, $fail) use ($request) {
+                if ($request->trade_type === 'auction' && $value !== null && (int) $value >= (int) $request->price) {
+                    $fail('即決価格は最高取引価格より低く設定してください。');
+                }
+            }],
+            // 期限日（オークションのみ必須・未来日時・最長30日）
+            'expires_at' => ['required_if:trade_type,auction', 'nullable', 'date', 'after:now', function ($attr, $value, $fail) use ($request) {
+                if ($request->trade_type === 'auction' && $value !== null && \Illuminate\Support\Carbon::parse($value)->gt(now()->addDays(30))) {
+                    $fail('期限日は30日以内で設定してください。');
+                }
+            }],
             'comment'    => 'nullable|string|max:1000',
             'servers'    => 'required|array|min:1',
             'servers.*.server'       => 'required|in:Emerald,Diamond,Pearl',
             'servers.*.character_id' => 'nullable|exists:user_characters,id',
         ]);
 
-        $buyRequest = DB::transaction(function () use ($data, $user) {
+        $isAuction = $data['trade_type'] === 'auction';
+
+        $buyRequest = DB::transaction(function () use ($data, $user, $isAuction) {
             $buyRequest = BuyRequest::create([
                 'user_id'    => $user->id,
                 'item_id'    => $data['item_id'],
                 'price'      => $data['price'],
+                'buyout_price' => $isAuction ? ($data['buyout_price'] ?? null) : null,
                 'quantity'   => $data['quantity'],
                 'trade_type' => $data['trade_type'],
                 'comment'    => $data['comment'] ?? null,
                 'currency'   => 'AC',
-                'expires_at' => now()->addMonth(),
+                // オークションはユーザー指定の期限日（解決バッチに合わせ15分単位へ丸め）、それ以外は1ヶ月後
+                'expires_at' => $isAuction ? \App\Support\Auction::roundDeadline($data['expires_at']) : now()->addMonth(),
             ]);
 
             foreach ($data['servers'] as $srv) {
@@ -204,15 +238,23 @@ class BuyRequestController extends Controller
         $buyRequest = BuyRequest::findOrFail($id);
         $this->authorize('update', $buyRequest);
 
+        // オークションは入札が1件でもあると変更できない。
+        if ($buyRequest->isAuction() && $buyRequest->chats()->where('status', 'open')->whereNotNull('bid_price')->exists()) {
+            return response()->json(['message' => '入札があるオークションは変更できません。'], 400);
+        }
+
         $data = $request->validate([
-            // 買取の編集では値上げのみ可能（値下げするには取り下げて再登録する）
+            // 買取の編集では値上げのみ可能（値下げするには取り下げて再登録する）。
+            // オークション（入札前）は最高取引価格の変更を許容するため値上げ制約を適用しない。
             'price'      => ['sometimes', 'integer', 'min:1', function ($attr, $value, $fail) use ($buyRequest) {
-                if ((int) $value < (int) $buyRequest->price) {
+                if (!$buyRequest->isAuction() && (int) $value < (int) $buyRequest->price) {
                     $fail('買取の編集では値上げのみ可能です。値下げするには一度取り下げて再登録してください。');
                 }
             }],
+            'buyout_price' => 'sometimes|nullable|integer|min:1',
+            'expires_at' => 'sometimes|date|after:now',
             'quantity'   => 'sometimes|integer|min:1',
-            'trade_type' => 'sometimes|in:fixed,negotiable',
+            'trade_type' => 'sometimes|in:fixed,negotiable,auction',
             'comment'    => 'nullable|string|max:1000',
             'servers'    => 'sometimes|array|min:1',
             'servers.*.server'       => 'required|in:Emerald,Diamond,Pearl',
@@ -251,6 +293,11 @@ class BuyRequestController extends Controller
             abort(403);
         }
 
+        // オークションは入札が1件でもあると取り下げできない（期限日に自動成立する）。
+        if ($buyRequest->isAuction() && $buyRequest->chats()->where('status', 'open')->whereNotNull('bid_price')->exists()) {
+            return response()->json(['message' => '入札があるオークションは取り下げできません。期限日に自動的に取引成立します。'], 400);
+        }
+
         $buyRequest->update(['status' => 'cancelled']);
         return response()->json(null, 204);
     }
@@ -258,6 +305,39 @@ class BuyRequestController extends Controller
     public function renew(Request $request, int $id)
     {
         $buyRequest = BuyRequest::where('user_id', $request->user()->id)->findOrFail($id);
+
+        // オークションは「入札が無いまま終了した」場合のみ、最高取引価格を上げて再登録できる。
+        // （出品の最低取引価格を下げるのと対称：買取は上限を上げる方が売り手に有利で集まりやすい）
+        if ($buyRequest->isAuction()) {
+            if ($buyRequest->chats()->whereNotNull('bid_price')->exists()) {
+                return response()->json(['message' => '入札があったオークションは再登録できません。'], 400);
+            }
+            $data = $request->validate([
+                'price' => ['required', 'integer', 'min:1', function ($attr, $value, $fail) use ($buyRequest) {
+                    if ((int) $value <= (int) $buyRequest->price) {
+                        $fail('再登録では最高取引価格を上げてください。');
+                    }
+                }],
+                'buyout_price' => ['nullable', 'integer', 'min:1', function ($attr, $value, $fail) use ($request) {
+                    if ($value !== null && (int) $value >= (int) $request->price) {
+                        $fail('即決価格は最高取引価格より低く設定してください。');
+                    }
+                }],
+                'expires_at' => ['required', 'date', 'after:now', function ($attr, $value, $fail) {
+                    if (\Illuminate\Support\Carbon::parse($value)->gt(now()->addDays(30))) {
+                        $fail('期限日は30日以内で設定してください。');
+                    }
+                }],
+            ]);
+            $buyRequest->update([
+                'status'       => 'active',
+                'price'        => $data['price'],
+                'buyout_price' => $data['buyout_price'] ?? null,
+                'expires_at'   => \App\Support\Auction::roundDeadline($data['expires_at']),
+                'bumped_at'    => now(),
+            ]);
+            return response()->json($buyRequest);
+        }
 
         // 再登録（期限切れ）時は価格・取引方法を任意で変更できる。
         // 単なる期限更新（active のまま延長）ではこれらを省略すると現状維持。
@@ -307,6 +387,11 @@ class BuyRequestController extends Controller
         }
         if ($buyRequest->user_id === $user->id) {
             return response()->json(['message' => '自分の買取には取引希望できません。'], 400);
+        }
+
+        // オークションは取引希望＝入札（価格を競う）。専用フローへ。
+        if ($buyRequest->isAuction()) {
+            return $this->placeBid($request, $buyRequest, $user);
         }
 
         $data = $request->validate([

@@ -13,7 +13,7 @@ import Spinner from '../components/Spinner'
 import type { Listing, Item, ItemType, ItemCategory, ItemHashtag, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
 import { itemTypeOf } from '../utils/itemType'
-import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, remainingLabel } from '../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../components/equipmentCells'
 import InlineHashtags from '../components/InlineHashtags'
 
@@ -1162,8 +1162,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         {/* 取引方法・サーバー */}
                         <td className="listing-col-wide px-4 py-3 min-w-[8.5rem]">
                           <div data-tour="listings-tradetype" className="flex flex-wrap gap-1 mb-1">
-                            <span className="text-xs bg-surface text-gray-300 px-2 py-0.5 rounded">
-                              {TRADE_TYPE_LABEL[l.trade_type]}
+                            <span className={`px-2 py-0.5 rounded whitespace-nowrap ${l.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
+                              {l.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[l.trade_type]}
                             </span>
                           </div>
                           <div className="flex flex-col gap-1">
@@ -1182,9 +1182,17 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
                         {/* 価格・期限 */}
                         <td className="px-3 py-3 text-right">
-                          <p className="text-base font-bold text-primary-500 whitespace-nowrap">{l.price} {l.currency}</p>
-                          <p className={`text-xs mt-0.5 ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
-                            残り{daysLeft}日
+                          {l.trade_type === 'auction' ? (
+                            <>
+                              <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
+                              <p className="text-base font-bold text-amber-300 whitespace-nowrap">{(l.current_price ?? l.price).toLocaleString()} {l.currency}</p>
+                              <p className="text-[10px] text-gray-500 whitespace-nowrap">入札 {l.bid_count ?? 0}件{l.buyout_price != null && ` ・即決 ${l.buyout_price.toLocaleString()}`}</p>
+                            </>
+                          ) : (
+                            <p className="text-base font-bold text-primary-500 whitespace-nowrap">{l.price} {l.currency}</p>
+                          )}
+                          <p className={`text-xs mt-0.5 whitespace-nowrap ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+                            {remainingLabel(l.expires_at, l.trade_type === 'auction')}
                           </p>
                         </td>
 
