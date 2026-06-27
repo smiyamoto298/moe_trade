@@ -74,6 +74,8 @@ export interface Item {
   name: string
   description: string
   image_url: string | null
+  // 公式DB: MasterOfEpic公式サイト（moepic.com）のアイテムページへのリンク
+  official_url: string | null
   base_stats: Record<string, number>
   special_conditions: string[]
   dyeable: boolean | null

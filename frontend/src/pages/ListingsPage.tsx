@@ -16,6 +16,7 @@ import { itemTypeOf } from '../utils/itemType'
 import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, remainingLabel } from '../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../components/equipmentCells'
 import InlineHashtags from '../components/InlineHashtags'
+import OfficialDbLink from '../components/OfficialDbLink'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -1015,15 +1016,18 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                               <PartNamesLabel names={l.item.set_members!.map((m) => m.category.name)} />
                             </div>
                           )}
-                          {/* ハッシュタグ（クリックでまとめて編集。ログイン時のみ） */}
-                          <InlineHashtags
-                            itemId={l.item.id}
-                            hashtags={l.item.hashtags}
-                            editable={!!user}
-                            size="sm"
-                            className="mt-1"
-                            onSaved={(hashtags) => updateItemHashtags(l.item.id, hashtags)}
-                          />
+                          {/* 公式DBリンクとハッシュタグは同じ行にまとめる（改行で縦に広がらないように） */}
+                          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
+                            {l.item.official_url && <OfficialDbLink url={l.item.official_url} />}
+                            {/* ハッシュタグ（クリックでまとめて編集。ログイン時のみ） */}
+                            <InlineHashtags
+                              itemId={l.item.id}
+                              hashtags={l.item.hashtags}
+                              editable={!!user}
+                              size="sm"
+                              onSaved={(hashtags) => updateItemHashtags(l.item.id, hashtags)}
+                            />
+                          </div>
                         </td>
 
                         {isAllMode ? (

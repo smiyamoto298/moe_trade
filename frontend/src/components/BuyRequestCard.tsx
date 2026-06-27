@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { BuyRequest } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel } from '../utils/constants'
+import OfficialDbLink from './OfficialDbLink'
 
 interface Props {
   buyRequest: BuyRequest
@@ -24,6 +25,11 @@ export default function BuyRequestCard({ buyRequest }: Props) {
           <div>
             <p className="text-xs text-gray-400">{item.category.name}</p>
             <h3 className="font-medium text-white">{item.name}</h3>
+            {item.official_url && (
+              <div className="mt-0.5">
+                <OfficialDbLink url={item.official_url} />
+              </div>
+            )}
           </div>
 
           {/* 取引方法・サーバー */}

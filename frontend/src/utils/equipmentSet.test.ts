@@ -21,6 +21,7 @@ const piece = (partName: string, over: Partial<Item> = {}): Item => ({
   name: `${partName}の部位`,
   description: '',
   image_url: null,
+  official_url: null,
   base_stats: {},
   special_conditions: [],
   dyeable: null,

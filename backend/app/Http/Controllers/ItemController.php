@@ -138,6 +138,7 @@ class ItemController extends Controller
             'name'                     => 'required|string|max:200|unique:items,name',
             'description'              => 'nullable|string',
             'image_url'                => 'nullable|url|max:500',
+            'official_url'             => $this->officialUrlRule(),
             'base_stats'               => 'nullable|array',
             'special_conditions'       => 'nullable|array',
             'special_conditions.*'     => 'string',
@@ -267,6 +268,7 @@ class ItemController extends Controller
             'name'                     => ['sometimes', 'string', 'max:200', \Illuminate\Validation\Rule::unique('items', 'name')->ignore($item->id)],
             'description'              => 'nullable|string',
             'image_url'                => 'nullable|url|max:500',
+            'official_url'             => $this->officialUrlRule(),
             'base_stats'               => 'nullable|array',
             'special_conditions'       => 'nullable|array',
             'dyeable'                  => 'nullable|boolean',
@@ -445,6 +447,24 @@ class ItemController extends Controller
             $set->load('bonusEffects', 'category', 'setMembers.category', 'setMembers.bonusEffects'),
             201
         );
+    }
+
+    /**
+     * 公式DB（MasterOfEpic公式サイトのアイテムページ）URL のバリデーションルール。
+     * 誰でも編集できるwiki型項目のため、外部誘導の悪用を防ぐ目的で
+     * 公式サイト（moepic.com とそのサブドメイン）のリンクのみ許可する。
+     */
+    private function officialUrlRule(): array
+    {
+        return [
+            'nullable', 'url', 'max:500',
+            function ($attribute, $value, $fail) {
+                $host = parse_url($value, PHP_URL_HOST);
+                if (!$host || !preg_match('/(^|\.)moepic\.com$/i', $host)) {
+                    $fail('公式DBのURLは公式サイト（moepic.com）のリンクを入力してください。');
+                }
+            },
+        ];
     }
 
     /**

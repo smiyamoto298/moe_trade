@@ -27,6 +27,7 @@ const makeItem = (over: Partial<Item> = {}): Item => ({
   name: '炎の大剣',
   description: '燃え盛る刀身の大剣。',
   image_url: null,
+  official_url: null,
   base_stats: { atk: 100 },
   special_conditions: [],
   dyeable: null,

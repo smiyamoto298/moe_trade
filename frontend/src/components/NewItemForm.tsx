@@ -62,6 +62,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     category_id: '',
     name: initialName,
     description: '',
+    official_url: '',
     base_stats: {} as Record<string, string>,
     special_conditions: [] as string[],
     skill_requirements: {} as Record<string, string>,
@@ -182,6 +183,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         category_id: Number(form.category_id),
         name: form.name,
         description: form.description,
+        official_url: form.official_url.trim() || null,
         base_stats: isPlain ? Object.fromEntries(
           Object.entries(form.base_stats).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)])
         ) : {},
@@ -308,6 +310,18 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
           className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
           placeholder="アイテムの説明（任意）"
         />
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">公式DB</label>
+        <input
+          type="url"
+          value={form.official_url}
+          onChange={(e) => setField('official_url', e.target.value)}
+          className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+          placeholder="http://moepic.com/... （公式サイトのアイテムページURL・任意）"
+        />
+        <p className="text-[10px] text-gray-500 mt-0.5">MasterOfEpic公式サイト（moepic.com）のアイテムページのURLを入力してください。</p>
       </div>
 
       {/* 「その他」種別：適切な種別がない場合の案内 */}

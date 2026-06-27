@@ -106,6 +106,80 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手', 'is_exclusive' => true]);
     }
 
+    public function test_公式DBのURLは公式サイトのリンクなら保存できる(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => '公式DB付きの剣',
+            'official_url' => 'http://moepic.com/db/item/1234',
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('official_url', 'http://moepic.com/db/item/1234');
+
+        $this->assertDatabaseHas('items', [
+            'name'         => '公式DB付きの剣',
+            'official_url' => 'http://moepic.com/db/item/1234',
+        ]);
+    }
+
+    public function test_公式DBのURLはサブドメインも許可する(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => 'サブドメイン公式DBの剣',
+            'official_url' => 'https://wiki.moepic.com/item/5678',
+        ])->assertStatus(201)
+            ->assertJsonPath('official_url', 'https://wiki.moepic.com/item/5678');
+    }
+
+    public function test_公式DBのURLが公式サイト以外なら422になる(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => '不正リンクの剣',
+            'official_url' => 'https://evil.example.com/phish',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('official_url');
+
+        // moepic.com を含むだけの紛らわしいドメインも拒否する
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => '偽装ドメインの剣',
+            'official_url' => 'https://moepic.com.evil.example/x',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('official_url');
+    }
+
+    public function test_公式DBのURLは編集で設定_変更できる(): void
+    {
+        $user = $this->makeUser();
+        $item = $this->makeItem([
+            'verified_status' => 'unverified',
+            'submitted_by'    => $user->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/items/{$item->id}", ['official_url' => 'http://moepic.com/db/item/99'])
+            ->assertOk()
+            ->assertJsonPath('official_url', 'http://moepic.com/db/item/99');
+
+        // 不正なURLへの更新は拒否される
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/items/{$item->id}", ['official_url' => 'https://example.com/x'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('official_url');
+    }
+
     public function test_付加効果のWarAge無効フラグを保存して取得できる(): void
     {
         $user = $this->makeUser();

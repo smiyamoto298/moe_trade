@@ -2,6 +2,7 @@ import type { Item } from '../types'
 import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, formatBonusEffectDescription } from '../utils/constants'
 import { OTHER_RECIPE } from '../utils/itemType'
 import EquipmentSetBreakdown from './EquipmentSetBreakdown'
+import OfficialDbLink from './OfficialDbLink'
 
 /**
  * アイテムの基本情報カード（カテゴリ・名前・説明・装備セット内訳・アセット情報・
@@ -17,7 +18,13 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
   return (
     <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
       <p className="text-sm text-gray-400 mb-1">{item.category.name}</p>
-      <h1 data-tour={tourId} className="text-2xl font-bold text-white mb-4">{item.name}</h1>
+      <h1 data-tour={tourId} className="text-2xl font-bold text-white mb-2">{item.name}</h1>
+
+      {item.official_url && (
+        <div className="mb-4">
+          <OfficialDbLink url={item.official_url} size="md" />
+        </div>
+      )}
 
       {item.description && (
         <p className="text-sm text-gray-300 mb-4">{item.description}</p>

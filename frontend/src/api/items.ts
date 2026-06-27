@@ -78,6 +78,7 @@ export const itemsApi = {
     category_id: number
     name: string
     description: string
+    official_url?: string | null
     base_stats: Record<string, number>
     special_conditions: string[]
     is_equipment_set?: boolean
@@ -118,6 +119,7 @@ export const itemsApi = {
         name: data.name,
         description: data.description,
         image_url: null,
+        official_url: data.official_url ?? null,
         base_stats: data.base_stats,
         special_conditions: data.special_conditions,
         dyeable: null,
@@ -147,6 +149,7 @@ export const itemsApi = {
     category_id?: number
     name?: string
     description?: string
+    official_url?: string | null
     base_stats?: Record<string, number>
     special_conditions?: string[]
     mithril?: boolean
@@ -177,6 +180,7 @@ export const itemsApi = {
       const item = mockItems.find((i) => i.id === id)!
       if (data.name !== undefined) item.name = data.name
       if (data.description !== undefined) item.description = data.description
+      if (data.official_url !== undefined) item.official_url = data.official_url
       if (data.base_stats !== undefined) item.base_stats = data.base_stats
       if (data.special_conditions !== undefined) item.special_conditions = data.special_conditions
       if (data.mithril !== undefined) item.mithril = data.mithril
@@ -205,6 +209,7 @@ export const itemsApi = {
         name: data.name,
         description: data.description,
         image_url: null,
+        official_url: null,
         base_stats: {},
         special_conditions: [],
         dyeable: null,
