@@ -20,7 +20,7 @@ vi.mock('../contexts/AuthContext', () => ({
 
 const source = {
   id: 1,
-  servers: [{ server: 'Emerald' as const, character: { character_name: 'Me' } }],
+  servers: [{ server: 'Emerald' as const, character_id: 1, character: { id: 1, character_name: 'Me' } }],
   trade_type: 'auction' as const,
   price: 1000,
   currency: 'AC',
