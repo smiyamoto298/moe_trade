@@ -286,7 +286,7 @@ export default function NewListingPage() {
                 setForm((p) => ({
                   ...p,
                   trade_type: tt,
-                  // オークションに切り替えた時、期限日が未入力なら翌日12:00を初期値にする（1時間以上先・15分単位）
+                  // オークションに切り替えた時、期限日が未入力なら1週間後の12:00を初期値にする（1時間以上先・15分単位）
                   expires_at: tt === 'auction' && !p.expires_at ? defaultAuctionDeadline() : p.expires_at,
                 }))
               }}

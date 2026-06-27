@@ -18,6 +18,7 @@ import {
   NO_WARAGE_EFFECT_NOTE,
   snapToQuarterHour,
   remainingLabel,
+  defaultAuctionDeadline,
 } from './constants'
 
 // design.md のマスタ定義（追加効果キー・特殊条件・スキル・マスタリ・アセット選択肢）と
@@ -63,6 +64,17 @@ describe('snapToQuarterHour（オークション期限日を15分単位に切り
   it('空文字・不正値はそのまま返す', () => {
     expect(snapToQuarterHour('')).toBe('')
     expect(snapToQuarterHour('not-a-date')).toBe('not-a-date')
+  })
+})
+
+describe('defaultAuctionDeadline（オークション期限日の初期値）', () => {
+  it('1週間後の12:00を返す', () => {
+    const v = defaultAuctionDeadline()
+    expect(v).toMatch(/^\d{4}-\d{2}-\d{2}T12:00$/)
+    const expected = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const expectedDate = `${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}`
+    expect(v).toBe(`${expectedDate}T12:00`)
   })
 })
 

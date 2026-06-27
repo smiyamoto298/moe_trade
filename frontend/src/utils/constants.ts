@@ -30,11 +30,11 @@ export function remainingLabel(expiresAt: string, isAuction: boolean): string {
 }
 
 /**
- * オークションの期限日の初期値（翌日12:00・"YYYY-MM-DDTHH:mm"）。
+ * オークションの期限日の初期値（1週間後の12:00・"YYYY-MM-DDTHH:mm"）。
  * 1時間以上先・15分単位の有効な値で、フォーム選択時の出発点にする。
  */
 export function defaultAuctionDeadline(): string {
-  const d = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T12:00`
 }
