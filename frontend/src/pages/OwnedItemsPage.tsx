@@ -11,6 +11,7 @@ import NewItemForm from '../components/NewItemForm'
 import CandidateSelectModal from '../components/CandidateSelectModal'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
+import OfficialDbLink from '../components/OfficialDbLink'
 import { BaseStatBadges } from '../components/equipmentCells'
 import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts, ExclusionType } from '../types'
 import { parseItemBox, isTransferNg, isTruncatedName, truncatedBase } from '../utils/itemBoxPaste'
@@ -171,19 +172,23 @@ export default function OwnedItemsPage() {
     }
   }, [inventory.accounts, pasteAccountId])
 
-  // ---- 一覧表示時の自動再紐づけ ----
-  // 登録アイテムと未紐づけ（itemId=null）の行を、一覧を表示するタイミングで登録アイテムへ再照合し、
-  // 一致したものを自動でリンクする。取り込み時点では未登録だったアイテムが後から新規登録された場合などに、
-  // ページを開き直すだけで登録アイテム情報（カテゴリ・追加効果・相場・出品判定）が紐づく。
+  // ---- 一覧表示時の自動再紐づけ・スナップショット更新 ----
+  // 一覧を表示するタイミングで、各行の名称を登録アイテムへ再照合する。
+  // ・未紐づけ（itemId=null）の行 → 一致したものを自動でリンクする（取り込み時点では未登録だった
+  //   アイテムが後から新規登録された場合などに、ページを開き直すだけで登録アイテム情報が紐づく）。
+  // ・紐づけ済みの行 → 登録アイテムの最新情報でスナップショットを更新する（ローカル保存だと item は
+  //   リンク時点の凍結スナップショットのため、公式DBリンク等の後付け項目が反映されない問題への対処。
+  //   照合は保存された名称ではなく登録アイテム名で行う）。
   // 末尾「...」の省略名は誤紐づけを避けるため対象外（候補ボタンで手動選択する）。
   const relinkedRef = useRef(false)
   useEffect(() => {
     if (loading || relinkedRef.current) return
     relinkedRef.current = true
+    // 未紐づけ行は貼り付け名、紐づけ済み行は登録アイテム名で照合する
     const names = Array.from(new Set(
       latestRef.current.items
-        .filter((i) => i.itemId == null && !isTruncatedName(i.name))
-        .map((i) => i.name)
+        .filter((i) => i.item != null || !isTruncatedName(i.name))
+        .map((i) => i.item?.name ?? i.name)
     ))
     if (names.length === 0) return
     let active = true
@@ -192,14 +197,26 @@ export default function OwnedItemsPage() {
         if (!active) return
         const map = res.data
         if (Object.keys(map).length === 0) return
-        commit((p) => ({
-          ...p,
-          items: p.items.map((i) =>
-            i.itemId == null && !isTruncatedName(i.name) && map[i.name]
-              ? { ...i, itemId: map[i.name].id, item: map[i.name] }
-              : i
-          ),
-        }))
+        let changed = false
+        const nextItems = latestRef.current.items.map((i) => {
+          if (i.item != null) {
+            // 紐づけ済み: 登録アイテム名で最新スナップショットに置き換える。
+            // 内容が変わらない場合は無駄な保存を避けるため据え置く。
+            const fresh = map[i.item.name]
+            if (fresh && JSON.stringify(fresh) !== JSON.stringify(i.item)) {
+              changed = true
+              return { ...i, itemId: fresh.id, item: fresh }
+            }
+            return i
+          }
+          // 未紐づけ: 完全名が一致したらリンクする
+          if (!isTruncatedName(i.name) && map[i.name]) {
+            changed = true
+            return { ...i, itemId: map[i.name].id, item: map[i.name] }
+          }
+          return i
+        })
+        if (changed) commit((p) => ({ ...p, items: nextItems }))
       })
       .catch(() => {})
     return () => { active = false }
@@ -968,6 +985,11 @@ export default function OwnedItemsPage() {
                             )}
                           </div>
                           <p className="text-[11px] text-gray-500">{row.item!.category.name}</p>
+                          {row.item!.official_url && (
+                            <div className="mt-0.5">
+                              <OfficialDbLink url={row.item!.official_url} />
+                            </div>
+                          )}
                           {(Object.keys(row.item!.base_stats).length > 0 || row.item!.mithril) && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               <BaseStatBadges item={row.item!} />

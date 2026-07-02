@@ -124,16 +124,22 @@ describe('OwnedItemsPage 自動再紐づけ', () => {
     expect(mockedMatch).not.toHaveBeenCalled()
   })
 
-  it('既に紐づけ済みの行は再照合しない', async () => {
+  it('紐づけ済みの行はスナップショット更新のため再照合するが、内容が同じなら保存しない', async () => {
+    const item = makeItem()
     mockedLoad.mockResolvedValue({
       mode: 'local',
-      data: makeInventory([unlinkedRow({ itemId: 12, item: makeItem() })]),
+      data: makeInventory([unlinkedRow({ itemId: 12, item })]),
     })
+    // 再照合で同一内容が返る（変化なし）
+    mockedMatch.mockResolvedValue({ data: { '炎の大剣': makeItem() } })
 
     renderPage()
 
+    // 登録アイテム名で再照合される
+    await waitFor(() => expect(mockedMatch).toHaveBeenCalledWith(['炎の大剣']))
+    // 内容が変わらないので保存（commit→saveInventory）は走らない
     await waitFor(() => expect(mockedLoad).toHaveBeenCalled())
-    expect(mockedMatch).not.toHaveBeenCalled()
+    expect(mockedSave).not.toHaveBeenCalled()
   })
 })
 
@@ -336,6 +342,61 @@ describe('OwnedItemsPage 種別の変更', () => {
       const saved = mockedSave.mock.calls.at(-1)?.[1] as InventoryData
       expect(saved.exclusions.some((e) => e.name === '光の杖')).toBe(false)
     }, { timeout: 2500 })
+  })
+})
+
+describe('OwnedItemsPage 公式DBリンク', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  // design.md「公式DB（公式サイトリンク）」: 登録アイテムに紐づく行のアイテム名欄に
+  // OfficialDbLink（📖 公式DB）を表示する。official_url 未設定なら表示しない。
+  it('official_url を持つ紐づけ済み行に公式DBリンクを表示する', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    const linked = makeItem({ id: 12, name: '炎の大剣', official_url: 'https://moepic.com/item/12' })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ itemId: 12, item: linked })]),
+    })
+
+    renderPage()
+
+    const link = await screen.findByTitle('公式サイトのアイテムページを新しいウィンドウで開く')
+    expect(link).toBeInTheDocument()
+  })
+
+  it('紐づけ済み行の古いスナップショットを再照合で更新し、後付けの official_url を反映する', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    // ローカル保存された item は official_url を持たない古いスナップショット
+    const stale = makeItem({ id: 12, name: '炎の大剣', official_url: null })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ itemId: 12, item: stale })]),
+    })
+    // 再照合では official_url を持つ最新のアイテムが返る
+    mockedMatch.mockResolvedValue({ data: { '炎の大剣': makeItem({ id: 12, name: '炎の大剣', official_url: 'https://moepic.com/item/12' }) } })
+
+    renderPage()
+
+    // 紐づけ済み行も登録アイテム名で再照合される
+    await waitFor(() => expect(mockedMatch).toHaveBeenCalledWith(['炎の大剣']))
+    // 更新後は公式DBリンクが表示される
+    expect(await screen.findByTitle('公式サイトのアイテムページを新しいウィンドウで開く')).toBeInTheDocument()
+  })
+
+  it('official_url が無い行には公式DBリンクを表示しない', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    const linked = makeItem({ id: 12, name: '炎の大剣', official_url: null })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ itemId: 12, item: linked })]),
+    })
+    // 再照合でも official_url は付かない（据え置き）
+    mockedMatch.mockResolvedValue({ data: { '炎の大剣': makeItem({ id: 12, name: '炎の大剣', official_url: null }) } })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('炎の大剣')).toBeInTheDocument())
+    expect(screen.queryByTitle('公式サイトのアイテムページを新しいウィンドウで開く')).not.toBeInTheDocument()
   })
 })
 
