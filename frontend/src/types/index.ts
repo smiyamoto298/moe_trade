@@ -68,6 +68,12 @@ export interface ItemHashtag {
   created_by?: number | null
 }
 
+// レシピの1エントリ。レシピ名・そのレシピ名専用の必要スキル値を持つ。
+export interface RecipeEntry {
+  name: string | null
+  skill_requirements: Record<string, number>
+}
+
 export interface Item {
   id: number
   category: ItemCategory
@@ -95,8 +101,10 @@ export interface Item {
   special_function?: AssetFunction | null // 特殊機能（単一）
   // ---- 「その他」種別固有（該当種別以外では null） ----
   pet_name?: string | null               // 未開封ペット: ペット名
-  recipe_name?: string | null            // レシピ: レシピ名
-  recipe_binder?: string | null          // レシピ: バインダー（項目名管理）
+  recipe_name?: string | null            // レシピ: レシピ名（recipe_entries 第1エントリからの派生互換値）
+  recipe_binder?: string | null          // レガシー: レシピはバインダーを持たなくなった（列は残置・常に null）
+  // レシピ: {レシピ名, 必要スキル値} の組を複数保持。レシピ以外では null/未定義。
+  recipe_entries?: RecipeEntry[] | null
   verified_status: VerifiedStatus
   submitted_by: number | null
   // editor/admin が編集・確認すると true。true の間は登録者(user)が上書き編集できない（排他制御）。

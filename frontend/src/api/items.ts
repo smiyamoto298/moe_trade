@@ -95,6 +95,7 @@ export const itemsApi = {
     pet_name?: string | null
     recipe_name?: string | null
     recipe_binder?: string | null
+    recipe_entries?: { name: string | null; skill_requirements: Record<string, number> }[]
     bonus_effects?: {
       effect_name: string
       values: { value: number | string; value_unit: string; label?: string }[]
@@ -161,6 +162,7 @@ export const itemsApi = {
     pet_name?: string | null
     recipe_name?: string | null
     recipe_binder?: string | null
+    recipe_entries?: { name: string | null; skill_requirements: Record<string, number> }[]
     is_equipment_set?: boolean
     set_piece_category_ids?: number[]
     bonus_effects?: {

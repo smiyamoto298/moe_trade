@@ -6,12 +6,13 @@ import { useDialog } from '../../contexts/DialogContext'
 import ComboInput from '../../components/ComboInput'
 import Spinner from '../../components/Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces, membersToForm } from '../../components/EquipmentSetPiecesEditor'
+import RecipeEntriesEditor, { type RecipeEntryForm, recipeEntriesToPayload, itemToRecipeEntries } from '../../components/RecipeEntriesEditor'
+import SkillRequirementInputs from '../../components/SkillRequirementInputs'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../../types'
 import { applyCopyRename, type CopyRename } from '../../utils/copyRename'
 import { parseHashtags, formatHashtags } from '../../utils/hashtags'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
-import { useBinderLabels } from '../../hooks/useBinderLabels'
 import { OTHER_PET, OTHER_RECIPE } from '../../utils/itemType'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
@@ -58,7 +59,6 @@ export default function AdminItemEditPage() {
   const { alert, confirm } = useDialog()
   const { user } = useAuth()
   const bonusValueLabelOptions = useBonusValueLabels()
-  const binderLabelOptions = useBinderLabels()
   // editor / admin は全アイテムを編集でき、「確認済みにする」も可能
   const isEditor = user?.role === 'editor' || user?.role === 'admin'
   const isNew = !id
@@ -90,12 +90,12 @@ export default function AdminItemEditPage() {
     storage_count: '',
     special_function: '' as '' | AssetFunction,
     pet_name: '',
-    recipe_name: '',
-    recipe_binder: '',
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
   // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
+  // レシピの {バインダー, レシピ名, 必要スキル値} エントリ（複数）
+  const [recipeEntries, setRecipeEntries] = useState<RecipeEntryForm[]>([])
   // ハッシュタグ（admin/editor は固定タグ・通常タグの両方を1つのテキストボックスで編集。例: #和風 #袴）
   const [fixedTagsText, setFixedTagsText] = useState('')
   const [userTagsText, setUserTagsText] = useState('')
@@ -125,10 +125,10 @@ export default function AdminItemEditPage() {
         storage_count: item.storage_count != null ? String(item.storage_count) : '',
         special_function: (item.special_function ?? '') as '' | AssetFunction,
         pet_name: item.pet_name ?? '',
-        recipe_name: item.recipe_name ?? '',
-        recipe_binder: item.recipe_binder ?? '',
       })
       if (!asCopy) setVerifiedStatus(item.verified_status)
+      // レシピのエントリを復元（recipe_entries 優先、無ければ旧単一フィールドから合成）
+      setRecipeEntries(itemToRecipeEntries(item))
       // ハッシュタグをテキストボックスへ復元（コピー時も引き継ぐ）
       const tags = item.hashtags ?? []
       setFixedTagsText(formatHashtags(tags.filter((h) => h.is_fixed)))
@@ -210,7 +210,8 @@ export default function AdminItemEditPage() {
   // 装備品（効果系の入力欄を出す通常アイテム）。装備セット本体は効果を持たない（部位側で設定）。
   const isPlain = !isSkill && !isAsset && !isEquipSet && !isOther
   // 必要スキル値の入力欄を出す種別（テクニック＋レシピ）。レシピは作成に必要なスキル値を持つ。
-  const showSkillRequirements = isSkill || isRecipe
+  // 共有の必要スキル値グリッドはテクニックのみ。レシピはレシピ名ごとに RecipeEntriesEditor 内で入力する。
+  const showSkillRequirements = isSkill
 
   // 一覧に戻るとき、編集中アイテムの種別タブを復元するための state
   const listState = {
@@ -433,8 +434,8 @@ export default function AdminItemEditPage() {
         special_function: isAsset ? (form.special_function || null) : null,
         // 「その他」種別固有
         pet_name: isPet ? (form.pet_name.trim() || null) : null,
-        recipe_name: isRecipe ? (form.recipe_name.trim() || null) : null,
-        recipe_binder: isRecipe ? (form.recipe_binder.trim() || null) : null,
+        // レシピは recipe_entries を送る（recipe_name/recipe_binder/skill_requirements はサーバ側で派生）
+        ...(isRecipe && { recipe_entries: recipeEntriesToPayload(recipeEntries) }),
         bonus_effects: isPlain ? bonusEffects
           .filter((e) => e.effect_name.trim())
           .map((e) => ({
@@ -590,33 +591,15 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* レシピ：バインダー（項目名管理）・レシピ名 */}
+        {/* レシピ：バインダー・レシピ名・必要スキル値の組を複数登録 */}
         {isRecipe && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-300">レシピ情報</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">バインダー</label>
-              <ComboInput
-                id="recipe-binder"
-                value={form.recipe_binder}
-                onChange={(val) => setField('recipe_binder', val)}
-                options={binderLabelOptions}
-                placeholder="バインダー名"
-                className="bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">レシピ名</label>
-              <input
-                type="text"
-                value={form.recipe_name}
-                onChange={(e) => setField('recipe_name', e.target.value)}
-                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
-                placeholder="レシピ名"
-              />
-            </div>
-          </div>
+          <p className="text-[10px] text-gray-500">レシピ名を複数登録できます。必要スキル値はレシピ名ごとに設定できます。</p>
+          <RecipeEntriesEditor
+            value={recipeEntries}
+            onChange={setRecipeEntries}
+          />
         </div>
         )}
 
@@ -851,36 +834,17 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* スキル要件（テクニック＋レシピ） */}
+        {/* スキル要件（テクニックのみ。レシピはレシピ情報内でレシピ名ごとに入力） */}
         {showSkillRequirements && (
           <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
             <h2 className="text-sm font-semibold text-gray-300">必要スキル値</h2>
-            {isRecipe && (
-              <p className="text-xs text-gray-500">このレシピの作成に必要なスキル値があれば入力してください。</p>
-            )}
-            {SKILL_GROUPS.map((group) => (
-              <div key={group.group}>
-                <p className="text-xs text-gray-500 mb-2">{group.group}</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {group.skills.map((skill) => (
-                    <div key={skill} className="flex items-center gap-2">
-                      <label className="text-xs text-gray-300 w-20 shrink-0">{skill}</label>
-                      <input
-                        type="number"
-                        min={0} max={100}
-                        placeholder="—"
-                        value={form.skill_requirements[skill] ?? ''}
-                        onChange={(e) => setForm((p) => ({
-                          ...p,
-                          skill_requirements: { ...p.skill_requirements, [skill]: e.target.value }
-                        }))}
-                        className="w-16 bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-primary-500"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <SkillRequirementInputs
+              values={form.skill_requirements}
+              onChange={(skill, val) => setForm((p) => ({
+                ...p,
+                skill_requirements: { ...p.skill_requirements, [skill]: val },
+              }))}
+            />
           </div>
         )}
 

@@ -5,10 +5,11 @@ import { useAuth } from '../contexts/AuthContext'
 import ComboInput from './ComboInput'
 import Spinner from './Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces } from './EquipmentSetPiecesEditor'
+import RecipeEntriesEditor, { type RecipeEntryForm, recipeEntriesToPayload } from './RecipeEntriesEditor'
+import SkillRequirementInputs from './SkillRequirementInputs'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
-import { useBinderLabels } from '../hooks/useBinderLabels'
 import { OTHER_PET, OTHER_RECIPE } from '../utils/itemType'
 
 interface BonusValueForm {
@@ -53,7 +54,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   // editor/admin は構成部位の入力を必須とする。一般ユーザーは未入力でも登録でき、運営に任せられる。
   const isStaff = user?.role === 'editor' || user?.role === 'admin'
   const bonusValueLabelOptions = useBonusValueLabels()
-  const binderLabelOptions = useBinderLabels()
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -75,12 +75,12 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     storage_count: '',
     special_function: '' as '' | AssetFunction,
     pet_name: '',
-    recipe_name: '',
-    recipe_binder: '',
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
   // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
+  // レシピの {バインダー, レシピ名, 必要スキル値} エントリ（複数）
+  const [recipeEntries, setRecipeEntries] = useState<RecipeEntryForm[]>([])
 
   useEffect(() => {
     setMastersLoading(true)
@@ -108,8 +108,9 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   })()
   // 装備品（効果系の入力欄を出す通常アイテム）。装備セット本体は効果を持たない（部位側で設定）。
   const isPlain = !isSkill && !isAsset && !isEquipSet && !isOther
-  // 必要スキル値の入力欄を出す種別（テクニック＋レシピ）。レシピは作成に必要なスキル値を持つ。
-  const showSkillRequirements = isSkill || isRecipe
+  // 共有の必要スキル値グリッドを出す種別（テクニックのみ）。
+  // レシピの必要スキル値はレシピ名ごとに RecipeEntriesEditor 内で個別に入力する。
+  const showSkillRequirements = isSkill
 
   const setField = (key: keyof typeof form, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -207,8 +208,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         special_function: isAsset ? (form.special_function || null) : null,
         // 「その他」種別固有
         pet_name: isPet ? (form.pet_name.trim() || null) : null,
-        recipe_name: isRecipe ? (form.recipe_name.trim() || null) : null,
-        recipe_binder: isRecipe ? (form.recipe_binder.trim() || null) : null,
+        // レシピは recipe_entries を送る（recipe_name/recipe_binder/skill_requirements はサーバ側で派生）
+        ...(isRecipe && { recipe_entries: recipeEntriesToPayload(recipeEntries) }),
         bonus_effects: isPlain ? bonusEffects
           .filter((e) => e.effect_name.trim())
           .map((e) => ({
@@ -350,33 +351,15 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         </div>
       )}
 
-      {/* レシピ：バインダー（項目名管理）・レシピ名 */}
+      {/* レシピ：レシピ名・必要スキル値の組を複数登録 */}
       {isRecipe && (
         <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-2">
           <p className="text-xs font-semibold text-primary-400">レシピ情報</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">バインダー</label>
-              <ComboInput
-                id="new-recipe-binder"
-                value={form.recipe_binder}
-                onChange={(val) => setField('recipe_binder', val)}
-                options={binderLabelOptions}
-                placeholder="バインダー名"
-                className="bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">レシピ名</label>
-              <input
-                type="text"
-                value={form.recipe_name}
-                onChange={(e) => setField('recipe_name', e.target.value)}
-                className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
-                placeholder="レシピ名"
-              />
-            </div>
-          </div>
+          <p className="text-[10px] text-gray-500">レシピ名を複数登録できます。必要スキル値はレシピ名ごとに設定できます。</p>
+          <RecipeEntriesEditor
+            value={recipeEntries}
+            onChange={setRecipeEntries}
+          />
         </div>
       )}
 
@@ -405,32 +388,13 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
       {showSkillRequirements && (
         <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-3">
           <p className="text-xs font-semibold text-primary-400">必要スキル値</p>
-          {isRecipe && (
-            <p className="text-[10px] text-gray-500">このレシピの作成に必要なスキル値があれば入力してください。</p>
-          )}
-          {SKILL_GROUPS.map((group) => (
-            <div key={group.group}>
-              <p className="text-xs text-gray-500 mb-1.5">{group.group}</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                {group.skills.map((skill) => (
-                  <div key={skill} className="flex items-center gap-1.5">
-                    <label className="text-xs text-gray-300 w-20 shrink-0 truncate" title={skill}>{skill}</label>
-                    <input
-                      type="number"
-                      min={0} max={100}
-                      placeholder="—"
-                      value={form.skill_requirements[skill] ?? ''}
-                      onChange={(e) => setForm((p) => ({
-                        ...p,
-                        skill_requirements: { ...p.skill_requirements, [skill]: e.target.value }
-                      }))}
-                      className="w-14 bg-surface border border-surface-border rounded px-1.5 py-1 text-xs text-white focus:outline-none focus:border-primary-500"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+          <SkillRequirementInputs
+            values={form.skill_requirements}
+            onChange={(skill, val) => setForm((p) => ({
+              ...p,
+              skill_requirements: { ...p.skill_requirements, [skill]: val },
+            }))}
+          />
         </div>
       )}
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import type { Item, ItemBonusEffect } from '../types'
-import { BonusEffectList } from './equipmentCells'
+import type { Item, ItemBonusEffect, RecipeEntry } from '../types'
+import { BonusEffectList, OtherInfoCell } from './equipmentCells'
 
 // 付加効果のテキスト値が長い（5文字以上）場合、一覧では [詳細] にしてホバーで全文を出す。
 // 単位付き数値や4文字以下のテキストはそのまま表示する。
@@ -47,5 +47,44 @@ describe('BonusEffectList', () => {
 
     expect(screen.getByText('+15%')).toBeInTheDocument()
     expect(screen.queryByText('詳細')).not.toBeInTheDocument()
+  })
+})
+
+function itemWithRecipeEntries(entries: RecipeEntry[] | null, extra: Partial<Item> = {}): Item {
+  return { recipe_entries: entries, ...extra } as unknown as Item
+}
+
+describe('OtherInfoCell', () => {
+  it('recipe_entries を複数エントリ分（レシピ名/必要スキル値）表示する', () => {
+    const item = itemWithRecipeEntries([
+      { name: '上級ポーション', skill_requirements: { 薬調合: 70 } },
+      { name: 'パン', skill_requirements: { 料理: 40 } },
+    ])
+    render(<OtherInfoCell item={item} />)
+
+    expect(screen.getByText('上級ポーション')).toBeInTheDocument()
+    expect(screen.getByText('パン')).toBeInTheDocument()
+    // 各エントリ固有のスキルが出る
+    expect(screen.getByText('薬調合:')).toBeInTheDocument()
+    expect(screen.getByText('料理:')).toBeInTheDocument()
+    expect(screen.getByText('70')).toBeInTheDocument()
+    expect(screen.getByText('40')).toBeInTheDocument()
+  })
+
+  it('recipe_entries が無い旧データは recipe_name/skill_requirements から表示する', () => {
+    const item = itemWithRecipeEntries(null, {
+      recipe_name: '鉄の剣',
+      skill_requirements: { 鍛冶: 60 },
+    })
+    render(<OtherInfoCell item={item} />)
+
+    expect(screen.getByText('鉄の剣')).toBeInTheDocument()
+    expect(screen.getByText('鍛冶:')).toBeInTheDocument()
+    expect(screen.getByText('60')).toBeInTheDocument()
+  })
+
+  it('レシピ情報もペット名も無ければダッシュを表示する', () => {
+    render(<OtherInfoCell item={itemWithRecipeEntries(null)} />)
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

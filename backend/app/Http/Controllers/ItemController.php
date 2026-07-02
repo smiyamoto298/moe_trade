@@ -161,6 +161,11 @@ class ItemController extends Controller
             'pet_name'                 => 'nullable|string|max:100',
             'recipe_name'              => 'nullable|string|max:200',
             'recipe_binder'            => 'nullable|string|max:100',
+            // レシピ: {レシピ名, 必要スキル値} の組を複数（送られた場合は派生カラムをこれから算出）
+            'recipe_entries'                       => 'nullable|array',
+            'recipe_entries.*.name'                => 'nullable|string|max:200',
+            'recipe_entries.*.skill_requirements'  => 'nullable|array',
+            'recipe_entries.*.skill_requirements.*'=> 'integer|min:0|max:100',
             'bonus_effects'            => 'nullable|array',
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
@@ -179,6 +184,9 @@ class ItemController extends Controller
         ], [
             'name.unique' => '同じ名前のアイテムが既に登録されています。',
         ]);
+
+        // レシピ: recipe_entries から派生カラム（recipe_name/recipe_binder/skill_requirements）を算出
+        $data = $this->normalizeRecipeEntries($data);
 
         $user = $request->user();
         // editor/admin は登録時に確認済み/確認中を選べる（verified フラグ）。
@@ -218,9 +226,6 @@ class ItemController extends Controller
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
-
-            // レシピのバインダー名を候補テーブルに自動追加（付加効果の項目名と同じ仕組み）
-            \App\Models\BinderLabel::syncFromBinder($data['recipe_binder'] ?? null);
 
             if ($isSet) {
                 $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $verifyOnCreate, $verifyOnCreate);
@@ -290,6 +295,11 @@ class ItemController extends Controller
             'pet_name'                 => 'nullable|string|max:100',
             'recipe_name'              => 'nullable|string|max:200',
             'recipe_binder'            => 'nullable|string|max:100',
+            // レシピ: {レシピ名, 必要スキル値} の組を複数（送られた場合は派生カラムをこれから算出）
+            'recipe_entries'                       => 'nullable|array',
+            'recipe_entries.*.name'                => 'nullable|string|max:200',
+            'recipe_entries.*.skill_requirements'  => 'nullable|array',
+            'recipe_entries.*.skill_requirements.*'=> 'integer|min:0|max:100',
             'bonus_effects'            => 'nullable|array',
             'bonus_effects.*.effect_name' => 'required|string|max:200',
             'bonus_effects.*.values'      => 'nullable|array',
@@ -306,6 +316,9 @@ class ItemController extends Controller
         ], [
             'name.unique' => '同じ名前のアイテムが既に登録されています。',
         ]);
+
+        // レシピ: recipe_entries が送られた場合のみ派生カラムを算出（部分更新の他フィールドは壊さない）
+        $data = $this->normalizeRecipeEntries($data);
 
         $isSet = array_key_exists('pieces', $data)
             && (($data['is_equipment_set'] ?? $item->is_equipment_set));
@@ -339,11 +352,6 @@ class ItemController extends Controller
                 }
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
-            }
-
-            // レシピのバインダー名を候補テーブルに自動追加（付加効果の項目名と同じ仕組み）
-            if (array_key_exists('recipe_binder', $data)) {
-                \App\Models\BinderLabel::syncFromBinder($data['recipe_binder']);
             }
 
             if ($isSet) {
@@ -465,6 +473,56 @@ class ItemController extends Controller
                 }
             },
         ];
+    }
+
+    /**
+     * レシピの recipe_entries から派生カラム(recipe_name/skill_requirements)を算出して $data に反映する。
+     * recipe_entries が送られていない場合は $data をそのまま返す（後方互換：単一フィールド挙動）。
+     *
+     * - 空エントリ（レシピ名・スキルすべて空）は除去する。
+     * - recipe_name は第1エントリから派生する（一覧・詳細の後方互換表示用）。レシピはバインダーを持たないため
+     *   recipe_binder は常に null にする（列は残置）。
+     * - skill_requirements は全エントリの必要スキル値を各スキル最大値で集約する
+     *   （出品一覧「その他」タブの必要スキル値フィルタで「いずれかのエントリが該当すればヒット」を近似する）。
+     */
+    private function normalizeRecipeEntries(array $data): array
+    {
+        if (!array_key_exists('recipe_entries', $data)) {
+            return $data;
+        }
+
+        $entries = [];
+        foreach ((array) ($data['recipe_entries'] ?? []) as $entry) {
+            $name   = isset($entry['name']) ? trim((string) $entry['name']) : '';
+            $skills = [];
+            foreach ((array) ($entry['skill_requirements'] ?? []) as $k => $v) {
+                $skills[$k] = (int) $v;
+            }
+            if ($name === '' && $skills === []) {
+                continue; // 空エントリは捨てる
+            }
+            $entries[] = [
+                'name'   => $name === '' ? null : $name,
+                'skill_requirements' => $skills,
+            ];
+        }
+
+        $data['recipe_entries'] = $entries === [] ? null : $entries;
+
+        // 派生：第1エントリの name。レシピはバインダーを持たない。
+        $data['recipe_name']   = $entries[0]['name'] ?? null;
+        $data['recipe_binder'] = null;
+
+        // 派生：全エントリ skill の各キー最大値で集約
+        $aggregated = [];
+        foreach ($entries as $e) {
+            foreach ($e['skill_requirements'] as $k => $v) {
+                $aggregated[$k] = isset($aggregated[$k]) ? max($aggregated[$k], $v) : $v;
+            }
+        }
+        $data['skill_requirements'] = $aggregated === [] ? null : $aggregated;
+
+        return $data;
     }
 
     /**

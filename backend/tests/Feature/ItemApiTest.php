@@ -987,53 +987,86 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseHas('items', ['name' => '未開封のもこもこ羊', 'pet_name' => 'もこもこ羊']);
     }
 
-    public function test_レシピはレシピ名とバインダーを保存しバインダー候補が自動追加される(): void
+    public function test_レシピはエントリ_レシピ名と必要スキル値を保存する(): void
     {
         $user   = $this->makeUser();
         $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
         $recipe = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $other->id, 'sort_order' => 1]);
 
         $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
-            'category_id'   => $recipe->id,
-            'name'          => '上級ポーションのレシピ',
-            'recipe_name'   => '上級ポーション',
-            'recipe_binder' => '薬調合',
+            'category_id'    => $recipe->id,
+            'name'           => '上級ポーションのレシピ',
+            'recipe_entries' => [
+                ['name' => '上級ポーション', 'skill_requirements' => ['薬調合' => 70]],
+            ],
         ]);
 
+        // 派生カラム recipe_name は第1エントリから算出される。レシピはバインダーを持たない。
         $res->assertStatus(201)
             ->assertJsonPath('recipe_name', '上級ポーション')
-            ->assertJsonPath('recipe_binder', '薬調合');
-        // バインダー名は候補テーブル（binder_labels）に自動追加される
-        $this->assertDatabaseHas('binder_labels', ['label' => '薬調合']);
-
-        // 同じバインダー名で別レシピを登録しても候補は重複しない
-        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
-            'category_id'   => $recipe->id,
-            'name'          => '中級ポーションのレシピ',
-            'recipe_binder' => '薬調合',
-        ])->assertStatus(201);
-        $this->assertSame(1, \App\Models\BinderLabel::where('label', '薬調合')->count());
+            ->assertJsonPath('recipe_binder', null)
+            ->assertJsonPath('recipe_entries.0.name', '上級ポーション');
+        $item = Item::find($res->json('id'));
+        $this->assertSame(['薬調合' => 70], $item->recipe_entries[0]['skill_requirements']);
+        // バインダーは扱わないので候補テーブルには何も追加されない
+        $this->assertSame(0, \App\Models\BinderLabel::count());
     }
 
-    public function test_レシピは必要スキル値を保存できる(): void
+    public function test_レシピはエントリごとに必要スキル値を保存し集約する(): void
     {
         $user   = $this->makeUser();
         $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
         $recipe = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $other->id, 'sort_order' => 1]);
 
         $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
-            'category_id'        => $recipe->id,
-            'name'               => '上級ポーションのレシピ',
-            'recipe_name'        => '上級ポーション',
-            'skill_requirements' => ['薬調合' => 70, '料理' => 30],
+            'category_id'    => $recipe->id,
+            'name'           => 'ポーション各種のレシピ',
+            'recipe_entries' => [
+                ['name' => '上級ポーション', 'skill_requirements' => ['薬調合' => 70, '料理' => 30]],
+                ['name' => '万能薬',       'skill_requirements' => ['薬調合' => 50, '医術' => 40]],
+            ],
         ]);
 
-        $res->assertStatus(201)
-            ->assertJsonPath('recipe_name', '上級ポーション');
-        $this->assertSame(
-            ['薬調合' => 70, '料理' => 30],
-            Item::find($res->json('id'))->skill_requirements
-        );
+        $res->assertStatus(201);
+        $item = Item::find($res->json('id'));
+
+        // recipe_entries はそのまま保存される（エントリ単位のスキルを保持）
+        $this->assertCount(2, $item->recipe_entries);
+        $this->assertSame(['薬調合' => 70, '料理' => 30], $item->recipe_entries[0]['skill_requirements']);
+        $this->assertSame(['薬調合' => 50, '医術' => 40], $item->recipe_entries[1]['skill_requirements']);
+
+        // 派生カラムは第1エントリの name（バインダーは持たない）
+        $this->assertSame('上級ポーション', $item->recipe_name);
+        $this->assertNull($item->recipe_binder);
+
+        // 検索用 skill_requirements は各スキルの最大値で集約される（薬調合は70）
+        $this->assertSame(['薬調合' => 70, '料理' => 30, '医術' => 40], $item->skill_requirements);
+    }
+
+    public function test_レシピ更新でエントリを差し替えると派生カラムも更新される(): void
+    {
+        $editor = $this->makeUserWithRole('editor');
+        $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $recipe = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $other->id, 'sort_order' => 1]);
+
+        $id = $this->actingAs($editor, 'sanctum')->postJson('/api/items', [
+            'category_id'    => $recipe->id,
+            'name'           => '差し替え前レシピ',
+            'recipe_entries' => [
+                ['name' => '上級ポーション', 'skill_requirements' => ['薬調合' => 70]],
+            ],
+        ])->json('id');
+
+        $this->actingAs($editor, 'sanctum')->putJson("/api/items/{$id}", [
+            'recipe_entries' => [
+                ['name' => '鉄の剣', 'skill_requirements' => ['鍛冶' => 60]],
+            ],
+        ])->assertOk();
+
+        $item = Item::find($id);
+        $this->assertSame('鉄の剣', $item->recipe_name);
+        $this->assertSame(['鍛冶' => 60], $item->skill_requirements);
+        $this->assertCount(1, $item->recipe_entries);
     }
 
     public function test_バインダー候補一覧は公開取得できる(): void

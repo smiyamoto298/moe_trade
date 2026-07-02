@@ -11,9 +11,13 @@ import OfficialDbLink from './OfficialDbLink'
  * 確認バッジ（UnverifiedBadge）や取引情報はページ固有なので呼び出し側で表示する。
  */
 export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: string }) {
-  // レシピの必要スキル値（テクニックの同項目と区別するため、レシピ種別のみ表示する）
-  const recipeSkills = item.category.name === OTHER_RECIPE
-    ? Object.entries(item.skill_requirements ?? {})
+  // レシピ：recipe_entries があればエントリごとに、無ければ旧単一フィールドから合成して表示する。
+  const recipeEntries = item.category.name === OTHER_RECIPE
+    ? (item.recipe_entries && item.recipe_entries.length > 0
+        ? item.recipe_entries
+        : (item.recipe_name || (item.skill_requirements && Object.keys(item.skill_requirements).length > 0)
+            ? [{ name: item.recipe_name ?? null, skill_requirements: item.skill_requirements ?? {} }]
+            : []))
     : []
   return (
     <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
@@ -66,42 +70,45 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
         </div>
       )}
 
-      {/* 「その他」種別情報（未開封ペット: ペット名 / レシピ: バインダー・レシピ名・必要スキル値） */}
-      {(item.pet_name || item.recipe_name || item.recipe_binder || recipeSkills.length > 0) && (
+      {/* 「その他」種別情報（未開封ペット: ペット名 / レシピ: バインダー・レシピ名・必要スキル値の組を複数） */}
+      {(item.pet_name || recipeEntries.length > 0) && (
         <div className="mb-4">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{item.category.name}情報</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {item.pet_name && (
+          {item.pet_name && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
                 <span className="text-gray-400">ペット名</span>
                 <span className="text-white font-medium">{item.pet_name}</span>
               </div>
-            )}
-            {item.recipe_binder && (
-              <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
-                <span className="text-gray-400">バインダー</span>
-                <span className="text-white font-medium">{item.recipe_binder}</span>
-              </div>
-            )}
-            {item.recipe_name && (
-              <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
-                <span className="text-gray-400">レシピ名</span>
-                <span className="text-white font-medium">{item.recipe_name}</span>
-              </div>
-            )}
-          </div>
-          {recipeSkills.length > 0 && (
-            <div className="mt-2">
-              <p className="text-xs text-gray-500 mb-1">必要スキル値</p>
-              <div className="flex flex-wrap gap-1">
-                {recipeSkills.map(([skill, val]) => (
-                  <span key={skill} className="text-xs bg-primary-500/10 border border-primary-500/30 rounded px-2 py-0.5 text-primary-300">
-                    {skill}: <span className="text-white font-medium">{val}</span>
-                  </span>
-                ))}
-              </div>
             </div>
           )}
+          {recipeEntries.map((entry, i) => {
+            const skills = Object.entries(entry.skill_requirements ?? {})
+            return (
+              <div key={i} className={i > 0 ? 'mt-3 pt-3 border-t border-surface-border' : ''}>
+                {entry.name && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
+                      <span className="text-gray-400">レシピ名</span>
+                      <span className="text-white font-medium">{entry.name}</span>
+                    </div>
+                  </div>
+                )}
+                {skills.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-500 mb-1">必要スキル値</p>
+                    <div className="flex flex-wrap gap-1">
+                      {skills.map(([skill, val]) => (
+                        <span key={skill} className="text-xs bg-primary-500/10 border border-primary-500/30 rounded px-2 py-0.5 text-primary-300">
+                          {skill}: <span className="text-white font-medium">{val}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

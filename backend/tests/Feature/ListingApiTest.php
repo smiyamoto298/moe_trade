@@ -713,6 +713,42 @@ class ListingApiTest extends TestCase
         $this->assertSame([], $names($res2));
     }
 
+    public function test_複数エントリのレシピはいずれかのエントリの必要スキルでヒットする(): void
+    {
+        $otherTop = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $recipe   = ItemCategory::create(['name' => 'レシピ', 'parent_id' => $otherTop->id, 'sort_order' => 1]);
+
+        // 2エントリ（薬調合70 と 料理40）を持つレシピ。skill_requirements は集約値（各スキル最大値）。
+        $multi = $this->makeItem([
+            'name'           => '各種ポーションのレシピ',
+            'category_id'    => $recipe->id,
+            'skill_requirements' => ['薬調合' => 70, '料理' => 40],
+            'recipe_entries' => [
+                ['name' => '上級ポーション', 'skill_requirements' => ['薬調合' => 70]],
+                ['name' => 'パン',           'skill_requirements' => ['料理' => 40]],
+            ],
+        ]);
+        $this->makeListing(null, $multi);
+
+        $names = fn($res) => collect($res->json('data'))->pluck('item.name')->all();
+
+        // 料理（第2エントリのスキル）で絞ってもヒットする（集約による「いずれか該当」）
+        $res = $this->getJson('/api/listings?' . http_build_query([
+            'item_type'  => 'other',
+            'skill_keys' => ['料理'],
+        ]));
+        $res->assertOk();
+        $this->assertSame(['各種ポーションのレシピ'], $names($res));
+
+        // 薬調合（第1エントリのスキル）でもヒットする
+        $res2 = $this->getJson('/api/listings?' . http_build_query([
+            'item_type'  => 'other',
+            'skill_keys' => ['薬調合'],
+        ]));
+        $res2->assertOk();
+        $this->assertSame(['各種ポーションのレシピ'], $names($res2));
+    }
+
     public function test_出品詳細は出品中と取引成立のみ公開され他は404(): void
     {
         // active は閲覧可

@@ -12,7 +12,7 @@ class Item extends Model
         'is_equipment_set', 'set_piece_category_ids',
         'skill_requirements', 'mastery_requirements',
         'placement', 'asset_width', 'asset_height', 'storage_count', 'special_function',
-        'pet_name', 'recipe_name', 'recipe_binder',
+        'pet_name', 'recipe_name', 'recipe_binder', 'recipe_entries',
         'verified_status', 'submitted_by', 'verified_by', 'verified_at',
         'locked_by_staff',
     ];
@@ -28,6 +28,7 @@ class Item extends Model
             'set_piece_category_ids' => 'array',
             'skill_requirements' => 'array',
             'mastery_requirements' => 'array',
+            'recipe_entries' => 'array',
             'asset_width' => 'integer',
             'asset_height' => 'integer',
             'storage_count' => 'integer',
