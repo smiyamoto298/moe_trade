@@ -279,6 +279,7 @@ export default function AdminItemEditPage() {
             // （保存時は convert-to-set で、このアイテム自身をメンバーに含む新しいセットを作成する）
             ...(!isNew && id ? { id: Number(id) } : {}),
             category_id: partCatId, name: form.name.trim(), mithril: form.mithril, dyeable: form.dyeable ?? false,
+            official_url: form.official_url,
           }]
         }
       }

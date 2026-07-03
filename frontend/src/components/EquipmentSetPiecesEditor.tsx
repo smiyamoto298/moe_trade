@@ -18,6 +18,7 @@ export interface EquipmentSetPartForm {
   name: string         // 部位ごとの名前
   mithril: boolean     // ミスリル（部位ごと）
   dyeable: boolean     // 染色可（部位ごと。チェック＝染色可）
+  official_url: string // 公式DB（部位ごとのアイテムページURL。空＝未設定）
 }
 interface BonusValueForm {
   value: string
@@ -109,6 +110,7 @@ export function membersToForm(members: Item[]): EquipmentSetForm {
   const parts: EquipmentSetPartForm[] = members.map((m) => ({
     id: m.id, category_id: m.category.id, name: m.name,
     mithril: m.mithril, dyeable: m.dyeable ?? false,
+    official_url: m.official_url ?? '',
   }))
   const baseStatsGroups = buildGroups<BaseStatsGroupForm>(members, baseKey, (m) => ({
     partCategoryIds: [],
@@ -142,6 +144,7 @@ export function formToPieces(form: EquipmentSetForm): EquipmentSetPieceInput[] {
       ...(p.id ? { id: p.id } : {}),
       category_id: p.category_id,
       name: p.name.trim(),
+      official_url: p.official_url.trim() || null,
       base_stats: Object.fromEntries(
         Object.entries(bg.base_stats).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)])
       ),
@@ -201,7 +204,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
         bonusGroups: bonusGroups.map((g) => ({ ...g, partCategoryIds: g.partCategoryIds.filter((id) => id !== categoryId) })),
       })
     } else {
-      onChange({ ...value, parts: [...parts, { category_id: categoryId, name: '', mithril: false, dyeable: false }] })
+      onChange({ ...value, parts: [...parts, { category_id: categoryId, name: '', mithril: false, dyeable: false, official_url: '' }] })
     }
   }
   const updatePart = (categoryId: number, patch: Partial<EquipmentSetPartForm>) =>
@@ -309,20 +312,29 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
         {parts.length > 0 && (
           <div className="space-y-1.5 mt-1">
             {orderedParts.map((p) => (
-              <div key={p.category_id} className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-amber-300 w-20 shrink-0 truncate" title={partName(p.category_id)}>{partName(p.category_id)}</span>
-                <input type="text" placeholder="部位アイテム名"
-                  value={p.name}
-                  onChange={(e) => updatePart(p.category_id, { name: e.target.value })}
-                  className="flex-1 min-w-[8rem] bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
-                <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
-                  <input type="checkbox" checked={p.mithril} onChange={(e) => updatePart(p.category_id, { mithril: e.target.checked })} className="accent-primary-500" />
-                  ミスリル
-                </label>
-                <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
-                  <input type="checkbox" checked={p.dyeable} onChange={(e) => updatePart(p.category_id, { dyeable: e.target.checked })} className="accent-primary-500" />
-                  染色可
-                </label>
+              <div key={p.category_id} className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-amber-300 w-20 shrink-0 truncate" title={partName(p.category_id)}>{partName(p.category_id)}</span>
+                  <input type="text" placeholder="部位アイテム名"
+                    value={p.name}
+                    onChange={(e) => updatePart(p.category_id, { name: e.target.value })}
+                    className="flex-1 min-w-[8rem] bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
+                  <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
+                    <input type="checkbox" checked={p.mithril} onChange={(e) => updatePart(p.category_id, { mithril: e.target.checked })} className="accent-primary-500" />
+                    ミスリル
+                  </label>
+                  <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
+                    <input type="checkbox" checked={p.dyeable} onChange={(e) => updatePart(p.category_id, { dyeable: e.target.checked })} className="accent-primary-500" />
+                    染色可
+                  </label>
+                </div>
+                <div className="flex items-center gap-2 pl-[5.5rem]">
+                  <span className="text-[10px] text-gray-500 shrink-0">公式DB</span>
+                  <input type="url" placeholder="http://moepic.com/... （部位のアイテムページURL・任意）"
+                    value={p.official_url}
+                    onChange={(e) => updatePart(p.category_id, { official_url: e.target.value })}
+                    className="flex-1 min-w-[8rem] bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
+                </div>
               </div>
             ))}
           </div>

@@ -684,6 +684,55 @@ class ItemApiTest extends TestCase
         $this->assertEqualsCanonicalizing([$cats['sword']->id], Item::find($setId)->set_piece_category_ids);
     }
 
+    public function test_装備セットの部位ごとに公式DBを保存できる(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '公式DBセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id'  => $cats['sword']->id,
+                    'name'         => '公式DBの剣',
+                    'official_url' => 'http://moepic.com/db/item/1111',
+                ],
+                [
+                    'category_id' => $cats['sword']->id,
+                    'name'        => '公式DBなしの盾',
+                ],
+            ],
+        ]);
+
+        $res->assertStatus(201)->assertJsonCount(2, 'set_members');
+        // 部位アイテムに公式DBが保存される（未設定の部位は null）
+        $this->assertDatabaseHas('items', ['name' => '公式DBの剣', 'official_url' => 'http://moepic.com/db/item/1111']);
+        $this->assertDatabaseHas('items', ['name' => '公式DBなしの盾', 'official_url' => null]);
+    }
+
+    public function test_装備セットの部位公式DBはmoepic以外を拒否する(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '不正URLセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id'  => $cats['sword']->id,
+                    'name'         => '不正URLの剣',
+                    'official_url' => 'https://evil.example.com/phish',
+                ],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('pieces.0.official_url');
+    }
+
     public function test_装備セット更新で部位を更新追加除外できる_除外部位は削除されない(): void
     {
         $admin    = $this->makeUserWithRole('admin');

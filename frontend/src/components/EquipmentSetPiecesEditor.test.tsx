@@ -27,8 +27,8 @@ describe('EquipmentSetPiecesEditor 構成部位の名前入力欄の並び順', 
   it('追加順に関係なくカテゴリ（チェックボックス）の並び順で表示する', () => {
     // 脚(13) → 頭(11) の順で追加された parts でも、表示はカテゴリ順（頭→脚）になる
     const value = makeForm([
-      { category_id: 13, name: '脚装備', mithril: false, dyeable: false },
-      { category_id: 11, name: '頭装備', mithril: false, dyeable: false },
+      { category_id: 13, name: '脚装備', mithril: false, dyeable: false, official_url: '' },
+      { category_id: 11, name: '頭装備', mithril: false, dyeable: false, official_url: '' },
     ])
     render(
       <EquipmentSetPiecesEditor
@@ -41,5 +41,26 @@ describe('EquipmentSetPiecesEditor 構成部位の名前入力欄の並び順', 
 
     const names = screen.getAllByPlaceholderText('部位アイテム名').map((el) => (el as HTMLInputElement).value)
     expect(names).toEqual(['頭装備', '脚装備'])
+  })
+
+  it('部位ごとに公式DBの入力欄を表示し、値をカテゴリ順で並べる', () => {
+    const value = makeForm([
+      { category_id: 13, name: '脚装備', mithril: false, dyeable: false, official_url: 'http://moepic.com/leg' },
+      { category_id: 11, name: '頭装備', mithril: false, dyeable: false, official_url: 'http://moepic.com/head' },
+    ])
+    render(
+      <EquipmentSetPiecesEditor
+        categories={categories}
+        value={value}
+        onChange={() => {}}
+        bonusValueLabelOptions={[]}
+      />
+    )
+
+    const urls = screen
+      .getAllByPlaceholderText(/moepic\.com/)
+      .map((el) => (el as HTMLInputElement).value)
+    // カテゴリ順（頭→脚）で並ぶ
+    expect(urls).toEqual(['http://moepic.com/head', 'http://moepic.com/leg'])
   })
 })

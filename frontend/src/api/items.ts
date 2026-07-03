@@ -7,6 +7,7 @@ export interface EquipmentSetPieceInput {
   id?: number              // 既存部位アイテムを更新する場合のID（新規は未指定）
   category_id: number      // 部位カテゴリ
   name: string             // 部位ごとの名前
+  official_url?: string | null // 部位ごとの公式DBリンク（moepic.com のアイテムページ）
   base_stats: Record<string, number>
   special_conditions: string[]
   dyeable?: boolean | null

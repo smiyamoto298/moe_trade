@@ -536,6 +536,7 @@ class ItemController extends Controller
             'pieces.*.id'                     => 'nullable|integer|exists:items,id',
             'pieces.*.category_id'            => 'required_with:pieces|integer|exists:item_categories,id',
             'pieces.*.name'                   => 'required_with:pieces|string|max:200',
+            'pieces.*.official_url'           => $this->officialUrlRule(),
             'pieces.*.base_stats'             => 'nullable|array',
             'pieces.*.special_conditions'     => 'nullable|array',
             'pieces.*.special_conditions.*'   => 'string',
@@ -614,6 +615,7 @@ class ItemController extends Controller
             $payload = [
                 'category_id'        => $piece['category_id'],
                 'name'               => $piece['name'],
+                'official_url'       => $piece['official_url'] ?? null,
                 'base_stats'         => $piece['base_stats'] ?? [],
                 'special_conditions' => $piece['special_conditions'] ?? [],
                 'dyeable'            => $piece['dyeable'] ?? null,
