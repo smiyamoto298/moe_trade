@@ -9,6 +9,7 @@ import { SERVERS } from '../../types'
 import { SPECIAL_CONDITIONS, MASTERY_BY_CODE } from '../../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../../components/equipmentCells'
 import InlineHashtags from '../../components/InlineHashtags'
+import OfficialDbLink from '../../components/OfficialDbLink'
 import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
 
 type Filter = 'all' | 'unverified' | 'verified'
@@ -567,14 +568,17 @@ export default function AdminItemsPage() {
                   className={`hover:bg-surface-border/30 transition-colors ${item.verified_status === 'unverified' ? 'bg-yellow-900/5' : ''}`}
                 >
                   <td className="px-4 py-3">
-                    {/* アイテム名はテキスト表示にし、その下にアイテム恒久ページ（公開・SEOの正規ランディング先）への詳細リンクを置く */}
+                    {/* アイテム名はテキスト表示にし、その下にアイテム恒久ページ（公開・SEOの正規ランディング先）への詳細リンクと公式DBリンクを置く */}
                     <span className="text-white font-medium">{item.name}</span>
-                    <Link
-                      to={`/items/${item.id}`}
-                      className="block text-xs text-primary-500 hover:underline transition-colors mt-0.5 w-fit"
-                    >
-                      詳細を見る
-                    </Link>
+                    <div className="mt-0.5 flex items-center gap-2 w-fit">
+                      <Link
+                        to={`/items/${item.id}`}
+                        className="text-xs text-primary-500 hover:underline transition-colors"
+                      >
+                        詳細を見る
+                      </Link>
+                      <OfficialDbLink url={item.official_url} />
+                    </div>
                     {/* 狭い画面用: 畳んだ「種別・状態・取引情報」列をアイテム名の下にまとめて表示する */}
                     <div className="resp-narrow-only mt-1 flex flex-wrap items-center gap-1.5">
                       <span className="text-xs text-gray-400">{item.category.name}</span>

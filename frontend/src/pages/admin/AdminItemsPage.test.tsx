@@ -322,6 +322,27 @@ describe('AdminItemsPage 取引情報の表示', () => {
   })
 })
 
+describe('AdminItemsPage 公式DBリンク', () => {
+  // design.md「公式DB（公式サイトリンク）」: アイテム管理一覧のアイテム名欄にも
+  // OfficialDbLink（📖 公式DB）を表示する。official_url 未設定なら表示しない。
+  it('official_url を持つ行に公式DBリンクを表示し、無い行には表示しない', async () => {
+    mockedList.mockResolvedValue({
+      data: [
+        makeItem({ id: 1, name: '炎の大剣', official_url: 'https://moepic.com/item/1' }),
+        makeItem({ id: 2, name: '氷の盾' }),
+      ],
+    })
+    renderPage()
+    await waitForLoaded()
+
+    const withUrl = (await screen.findByText('炎の大剣')).closest('tr')!
+    expect(within(withUrl).getByTitle('公式サイトのアイテムページを新しいウィンドウで開く')).toBeInTheDocument()
+
+    const withoutUrl = (await screen.findByText('氷の盾')).closest('tr')!
+    expect(within(withoutUrl).queryByTitle('公式サイトのアイテムページを新しいウィンドウで開く')).not.toBeInTheDocument()
+  })
+})
+
 describe('AdminItemsPage 行操作アイコン', () => {
   const rowFor = async (name: string) => (await screen.findByText(name)).closest('tr')!
 

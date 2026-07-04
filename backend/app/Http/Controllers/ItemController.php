@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BuyRequest;
 use App\Models\Item;
+use App\Support\OfficialUrl;
 use App\Models\Listing;
 use App\Models\MarketPrice;
 use App\Models\TradeHistory;
@@ -133,6 +134,8 @@ class ItemController extends Controller
 
     public function store(Request $request)
     {
+        $this->normalizeOfficialUrlInput($request);
+
         $data = $request->validate([
             'category_id'              => 'required|exists:item_categories,id',
             'name'                     => 'required|string|max:200|unique:items,name',
@@ -226,6 +229,10 @@ class ItemController extends Controller
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
+            if (!$isSet) {
+                // 追加効果「その他」の自由入力項目名を候補テーブルに自動追加
+                \App\Models\BonusValueLabel::syncFromBaseStats($data['base_stats'] ?? []);
+            }
 
             if ($isSet) {
                 $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $verifyOnCreate, $verifyOnCreate);
@@ -267,6 +274,8 @@ class ItemController extends Controller
             }
             abort(403, 'このアイテムを編集する権限がありません。');
         }
+
+        $this->normalizeOfficialUrlInput($request);
 
         $data = $request->validate([
             'category_id'              => 'sometimes|exists:item_categories,id',
@@ -353,6 +362,10 @@ class ItemController extends Controller
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
+            if (!$isSet && isset($data['base_stats'])) {
+                // 追加効果「その他」の自由入力項目名を候補テーブルに自動追加
+                \App\Models\BonusValueLabel::syncFromBaseStats((array) $data['base_stats']);
+            }
 
             if ($isSet) {
                 $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $isAdmin, $user->isEditor());
@@ -399,6 +412,8 @@ class ItemController extends Controller
         if ($item->is_equipment_set) {
             return response()->json(['message' => 'このアイテムは既に装備セットです。'], 422);
         }
+
+        $this->normalizeOfficialUrlInput($request);
 
         $data = $request->validate([
             'category_id' => 'required|exists:item_categories,id',
@@ -455,6 +470,30 @@ class ItemController extends Controller
             $set->load('bonusEffects', 'category', 'setMembers.category', 'setMembers.bonusEffects'),
             201
         );
+    }
+
+    /**
+     * リクエスト中の公式DB URL（official_url / pieces.*.official_url）を正規化する。
+     * 公式サイトからコピーした javascript:Move('URL','KEY') 形式のリンクを
+     * 通常の URL（URL?hidden_key=KEY）へ変換してからバリデーションに掛ける。
+     */
+    private function normalizeOfficialUrlInput(Request $request): void
+    {
+        if ($request->has('official_url')) {
+            $request->merge(['official_url' => OfficialUrl::normalize($request->input('official_url'))]);
+        }
+
+        $pieces = $request->input('pieces');
+        if (is_array($pieces)) {
+            $request->merge([
+                'pieces' => array_map(function ($piece) {
+                    if (is_array($piece) && array_key_exists('official_url', $piece)) {
+                        $piece['official_url'] = OfficialUrl::normalize($piece['official_url']);
+                    }
+                    return $piece;
+                }, $pieces),
+            ]);
+        }
     }
 
     /**
@@ -648,6 +687,8 @@ class ItemController extends Controller
                 }
                 \App\Models\BonusValueLabel::syncFromBonusEffects($piece['bonus_effects']);
             }
+            // 部位の追加効果「その他」の自由入力項目名を候補テーブルに自動追加
+            \App\Models\BonusValueLabel::syncFromBaseStats($piece['base_stats'] ?? []);
 
             $sync[$pieceItem->id] = ['sort_order' => $sort];
             $categoryIds[] = (int) $piece['category_id'];

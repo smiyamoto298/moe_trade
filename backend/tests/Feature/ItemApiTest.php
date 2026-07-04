@@ -180,6 +180,63 @@ class ItemApiTest extends TestCase
             ->assertJsonValidationErrors('official_url');
     }
 
+    public function test_公式DBにjavascriptMove形式を貼ると通常URLに変換して保存される(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        // 公式サイトの「リンクをコピー」で得られる javascript:Move('URL','KEY') 形式は
+        // GET で開ける URL?hidden_key=KEY に変換して保存する（javascript: URL は保存しない）
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => 'Moveリンクの剣',
+            'official_url' => "javascript:Move('https://moepic.com/top/news_detail.php','43ddbb90e533')",
+        ])->assertStatus(201)
+            ->assertJsonPath('official_url', 'https://moepic.com/top/news_detail.php?hidden_key=43ddbb90e533');
+
+        // 公式サイト内リンクに多いルート相対パス形式も moepic.com のオリジンで解決される
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => 'ルート相対Moveリンクの剣',
+            'official_url' => "javascript:Move('/top/news_detail.php','167cd417483f')",
+        ])->assertStatus(201)
+            ->assertJsonPath('official_url', 'https://moepic.com/top/news_detail.php?hidden_key=167cd417483f');
+
+        // 編集（update）でも同様に変換される
+        $item = $this->makeItem([
+            'verified_status' => 'unverified',
+            'submitted_by'    => $user->id,
+        ]);
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/items/{$item->id}", [
+                'official_url' => "javascript:Move('https://moepic.com/top/news_detail.php','abc123')",
+            ])
+            ->assertOk()
+            ->assertJsonPath('official_url', 'https://moepic.com/top/news_detail.php?hidden_key=abc123');
+    }
+
+    public function test_公式DBのjavascriptMove形式でも公式サイト以外や生のjavascriptは拒否する(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        // Move() の中身が moepic.com 以外なら変換後のホスト検証で拒否される
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => '外部Moveリンクの剣',
+            'official_url' => "javascript:Move('https://evil.example.com/x','abc')",
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('official_url');
+
+        // Move 形式でない javascript: URL はそのまま拒否される（XSS防止）
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'  => $cats['sword']->id,
+            'name'         => '生JSリンクの剣',
+            'official_url' => 'javascript:alert(1)',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('official_url');
+    }
+
     public function test_付加効果のWarAge無効フラグを保存して取得できる(): void
     {
         $user = $this->makeUser();
@@ -731,6 +788,31 @@ class ItemApiTest extends TestCase
                 ],
             ],
         ])->assertStatus(422)->assertJsonValidationErrors('pieces.0.official_url');
+    }
+
+    public function test_装備セットの部位公式DBもjavascriptMove形式を通常URLに変換する(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => 'Moveリンクセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id'  => $cats['sword']->id,
+                    'name'         => 'Moveリンクの部位剣',
+                    'official_url' => "javascript:Move('https://moepic.com/top/news_detail.php','deadbeef')",
+                ],
+            ],
+        ])->assertStatus(201);
+
+        $this->assertDatabaseHas('items', [
+            'name'         => 'Moveリンクの部位剣',
+            'official_url' => 'https://moepic.com/top/news_detail.php?hidden_key=deadbeef',
+        ]);
     }
 
     public function test_装備セット更新で部位を更新追加除外できる_除外部位は削除されない(): void

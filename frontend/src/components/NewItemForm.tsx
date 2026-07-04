@@ -11,6 +11,7 @@ import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
 import { OTHER_PET, OTHER_RECIPE } from '../utils/itemType'
+import { normalizeOfficialUrl } from '../utils/officialUrl'
 
 interface BonusValueForm {
   value: string
@@ -318,11 +319,11 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         <input
           type="url"
           value={form.official_url}
-          onChange={(e) => setField('official_url', e.target.value)}
+          onChange={(e) => setField('official_url', normalizeOfficialUrl(e.target.value))}
           className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
           placeholder="http://moepic.com/... （公式サイトのアイテムページURL・任意）"
         />
-        <p className="text-[10px] text-gray-500 mt-0.5">MasterOfEpic公式サイト（moepic.com）のアイテムページのURLを入力してください。</p>
+        <p className="text-[10px] text-gray-500 mt-0.5">MasterOfEpic公式サイト（moepic.com）のアイテムページのURLを入力してください。公式サイトでコピーした javascript:Move('URL','KEY') 形式のリンクは自動で通常のURLに変換されます。</p>
       </div>
 
       {/* 「その他」種別：適切な種別がない場合の案内 */}

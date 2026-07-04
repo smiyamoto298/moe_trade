@@ -2,6 +2,7 @@ import ComboInput from './ComboInput'
 import type { Item, ItemCategory } from '../types'
 import type { EquipmentSetPieceInput } from '../api/items'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
+import { normalizeOfficialUrl } from '../utils/officialUrl'
 
 // ───────────────────────────────────────────────────────────
 // 装備セットの構成部位エディタ。
@@ -332,7 +333,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                   <span className="text-[10px] text-gray-500 shrink-0">公式DB</span>
                   <input type="url" placeholder="http://moepic.com/... （部位のアイテムページURL・任意）"
                     value={p.official_url}
-                    onChange={(e) => updatePart(p.category_id, { official_url: e.target.value })}
+                    onChange={(e) => updatePart(p.category_id, { official_url: normalizeOfficialUrl(e.target.value) })}
                     className="flex-1 min-w-[8rem] bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
                 </div>
               </div>
