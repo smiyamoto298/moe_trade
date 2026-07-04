@@ -387,10 +387,13 @@ class AuctionTest extends TestCase
         $admin = $this->makeUserWithRole('admin');
         $listing = $this->makeAuctionListing(['price' => 1000]);
 
-        // 新規出品（created_at）で宣伝ポストの集計（既定は当日0:00〜現在）に含まれる
+        // 新規出品（created_at）で宣伝ポストの集計（既定は当日0:00〜現在）に含まれる。
+        // オークションは通常の新規出品（listing_count）とは別の
+        // 【オークション現在価格】セクション（auction_count）に集計される。
         $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/promo-tweets');
         $res->assertOk();
-        $this->assertGreaterThanOrEqual(1, $res->json('listing_count'));
+        $this->assertGreaterThanOrEqual(1, $res->json('auction_count'));
+        $this->assertSame(0, $res->json('listing_count'));
     }
 
     public function test_期限切れのオークションは期限切れ件数に数えない(): void
