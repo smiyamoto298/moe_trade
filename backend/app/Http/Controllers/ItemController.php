@@ -229,6 +229,10 @@ class ItemController extends Controller
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
             }
+            if (!$isSet) {
+                // 追加効果「その他」の自由入力項目名を候補テーブルに自動追加
+                \App\Models\BonusValueLabel::syncFromBaseStats($data['base_stats'] ?? []);
+            }
 
             if ($isSet) {
                 $this->syncSetPieces($item, $data['pieces'] ?? [], $user, $verifyOnCreate, $verifyOnCreate);
@@ -357,6 +361,10 @@ class ItemController extends Controller
                 }
                 // 未登録の項目名（values[*].label）を候補テーブルに自動追加
                 \App\Models\BonusValueLabel::syncFromBonusEffects($data['bonus_effects']);
+            }
+            if (!$isSet && isset($data['base_stats'])) {
+                // 追加効果「その他」の自由入力項目名を候補テーブルに自動追加
+                \App\Models\BonusValueLabel::syncFromBaseStats((array) $data['base_stats']);
             }
 
             if ($isSet) {
@@ -679,6 +687,8 @@ class ItemController extends Controller
                 }
                 \App\Models\BonusValueLabel::syncFromBonusEffects($piece['bonus_effects']);
             }
+            // 部位の追加効果「その他」の自由入力項目名を候補テーブルに自動追加
+            \App\Models\BonusValueLabel::syncFromBaseStats($piece['base_stats'] ?? []);
 
             $sync[$pieceItem->id] = ['sort_order' => $sort];
             $categoryIds[] = (int) $piece['category_id'];
