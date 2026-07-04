@@ -3,6 +3,7 @@ import { itemsApi } from '../api/items'
 import { useDialog } from '../contexts/DialogContext'
 import { useAuth } from '../contexts/AuthContext'
 import ComboInput from './ComboInput'
+import CustomStatsEditor from './CustomStatsEditor'
 import Spinner from './Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces } from './EquipmentSetPiecesEditor'
 import RecipeEntriesEditor, { type RecipeEntryForm, recipeEntriesToPayload } from './RecipeEntriesEditor'
@@ -10,6 +11,7 @@ import SkillRequirementInputs from './SkillRequirementInputs'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
+import { mergeBaseStats, type CustomStatRow } from '../utils/customStats'
 import { OTHER_PET, OTHER_RECIPE } from '../utils/itemType'
 import { normalizeOfficialUrl } from '../utils/officialUrl'
 
@@ -55,6 +57,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   // editor/admin は構成部位の入力を必須とする。一般ユーザーは未入力でも登録でき、運営に任せられる。
   const isStaff = user?.role === 'editor' || user?.role === 'admin'
   const bonusValueLabelOptions = useBonusValueLabels()
+  // 追加効果「その他」の項目名候補
+  const statLabelOptions = useBonusValueLabels('stat')
   const [categories, setCategories] = useState<ItemCategory[]>([])
   const [mastersLoading, setMastersLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -78,6 +82,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     pet_name: '',
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
+  // 追加効果「その他」（項目名の自由入力。保存時 base_stats へマージ）
+  const [customStats, setCustomStats] = useState<CustomStatRow[]>([])
   // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
   // レシピの {バインダー, レシピ名, 必要スキル値} エントリ（複数）
@@ -186,9 +192,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         name: form.name,
         description: form.description,
         official_url: form.official_url.trim() || null,
-        base_stats: isPlain ? Object.fromEntries(
-          Object.entries(form.base_stats).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)])
-        ) : {},
+        base_stats: isPlain ? mergeBaseStats(form.base_stats, customStats) : {},
         // 特殊条件は装備品・アセットで使用（テクニックは無し）
         special_conditions: isSkill ? [] : form.special_conditions,
         dyeable: isPlain ? form.dyeable : null,
@@ -381,6 +385,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
             value={equipSetForm}
             onChange={setEquipSetForm}
             bonusValueLabelOptions={bonusValueLabelOptions}
+            statLabelOptions={statLabelOptions}
           />
         </div>
       )}
@@ -578,6 +583,15 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
               ))}
             </div>
           ))}
+        </div>
+        {/* その他（自由入力の項目名） */}
+        <div className="mt-3">
+          <CustomStatsEditor
+            idPrefix="new-item"
+            rows={customStats}
+            onChange={setCustomStats}
+            labelOptions={statLabelOptions}
+          />
         </div>
       </details>
 

@@ -19,7 +19,7 @@ const categories: ItemCategory[] = [
 
 const makeForm = (parts: EquipmentSetForm['parts']): EquipmentSetForm => ({
   parts,
-  baseStatsGroups: [{ partCategoryIds: [], base_stats: {}, special_conditions: [] }],
+  baseStatsGroups: [{ partCategoryIds: [], base_stats: {}, custom_stats: [], special_conditions: [] }],
   bonusGroups: [{ partCategoryIds: [], bonus_effects: [] }],
 })
 
@@ -36,6 +36,7 @@ describe('EquipmentSetPiecesEditor 構成部位の名前入力欄の並び順', 
         value={value}
         onChange={() => {}}
         bonusValueLabelOptions={[]}
+        statLabelOptions={[]}
       />
     )
 
@@ -54,6 +55,7 @@ describe('EquipmentSetPiecesEditor 構成部位の名前入力欄の並び順', 
         value={value}
         onChange={() => {}}
         bonusValueLabelOptions={[]}
+        statLabelOptions={[]}
       />
     )
 

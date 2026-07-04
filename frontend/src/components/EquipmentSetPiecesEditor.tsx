@@ -1,7 +1,9 @@
 import ComboInput from './ComboInput'
+import CustomStatsEditor from './CustomStatsEditor'
 import type { Item, ItemCategory } from '../types'
 import type { EquipmentSetPieceInput } from '../api/items'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
+import { mergeBaseStats, splitBaseStats, type CustomStatRow } from '../utils/customStats'
 import { normalizeOfficialUrl } from '../utils/officialUrl'
 
 // ───────────────────────────────────────────────────────────
@@ -35,7 +37,8 @@ interface BonusEffectForm {
 }
 export interface BaseStatsGroupForm {
   partCategoryIds: number[] // この設定を適用する部位（グループ[0]は空＝残り全部位）
-  base_stats: Record<string, string>
+  base_stats: Record<string, string> // 固定パラメータ（BASE_STAT_LABELS のキー）のみ
+  custom_stats: CustomStatRow[]      // その他（自由入力の項目名。保存時 base_stats へマージ）
   special_conditions: string[]
 }
 export interface BonusGroupForm {
@@ -53,7 +56,7 @@ const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
 const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false })
 const emptyBaseGroup = (): BaseStatsGroupForm => ({
-  partCategoryIds: [], base_stats: {}, special_conditions: [],
+  partCategoryIds: [], base_stats: {}, custom_stats: [], special_conditions: [],
 })
 const emptyBonusGroup = (): BonusGroupForm => ({ partCategoryIds: [], bonus_effects: [] })
 
@@ -113,11 +116,16 @@ export function membersToForm(members: Item[]): EquipmentSetForm {
     mithril: m.mithril, dyeable: m.dyeable ?? false,
     official_url: m.official_url ?? '',
   }))
-  const baseStatsGroups = buildGroups<BaseStatsGroupForm>(members, baseKey, (m) => ({
-    partCategoryIds: [],
-    base_stats: Object.fromEntries(Object.entries(m.base_stats ?? {}).map(([k, v]) => [k, String(v)])),
-    special_conditions: m.special_conditions ?? [],
-  }), emptyBaseGroup)
+  const baseStatsGroups = buildGroups<BaseStatsGroupForm>(members, baseKey, (m) => {
+    // 固定パラメータとその他（自由入力キー）を分離して復元する
+    const { fixed, custom } = splitBaseStats(m.base_stats)
+    return {
+      partCategoryIds: [],
+      base_stats: fixed,
+      custom_stats: custom,
+      special_conditions: m.special_conditions ?? [],
+    }
+  }, emptyBaseGroup)
   const bonusGroups = buildGroups<BonusGroupForm>(members, bonusKey, (m) => ({
     partCategoryIds: [],
     bonus_effects: (m.bonus_effects ?? []).map((e) => ({
@@ -146,9 +154,7 @@ export function formToPieces(form: EquipmentSetForm): EquipmentSetPieceInput[] {
       category_id: p.category_id,
       name: p.name.trim(),
       official_url: p.official_url.trim() || null,
-      base_stats: Object.fromEntries(
-        Object.entries(bg.base_stats).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)])
-      ),
+      base_stats: mergeBaseStats(bg.base_stats, bg.custom_stats),
       special_conditions: bg.special_conditions,
       dyeable: p.dyeable,
       mithril: p.mithril,
@@ -173,9 +179,11 @@ interface Props {
   value: EquipmentSetForm
   onChange: (form: EquipmentSetForm) => void
   bonusValueLabelOptions: string[]
+  // 追加効果「その他」の項目名候補（管理画面の「追加効果の項目名」で管理）
+  statLabelOptions: string[]
 }
 
-export default function EquipmentSetPiecesEditor({ categories, value, onChange, bonusValueLabelOptions }: Props) {
+export default function EquipmentSetPiecesEditor({ categories, value, onChange, bonusValueLabelOptions, statLabelOptions }: Props) {
   const { parts, baseStatsGroups, bonusGroups } = value
 
   // 選択可能な部位カテゴリ（武器・防具・装飾品などの子カテゴリ）
@@ -384,6 +392,14 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                 </div>
               ))}
             </div>
+
+            {/* その他（自由入力の項目名） */}
+            <CustomStatsEditor
+              idPrefix={`set-stat-${gi}`}
+              rows={g.custom_stats}
+              onChange={(rows) => updateBase(gi, { custom_stats: rows })}
+              labelOptions={statLabelOptions}
+            />
 
             <details className="group">
               <summary className="cursor-pointer text-xs font-semibold text-gray-300 py-1 flex items-center gap-1 select-none">

@@ -106,6 +106,44 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手', 'is_exclusive' => true]);
     }
 
+    public function test_追加効果のその他は自由入力キーでbase_statsに保存されstat候補へ自動追加される(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'その他効果付きの剣',
+            'base_stats'  => ['atk' => 10, '釣り' => 5],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('base_stats.atk', 10)
+            ->assertJsonPath('base_stats.釣り', 5);
+
+        // 自由入力キー（釣り）だけが「追加効果の項目名」候補（kind=stat・未整理）として自動追加される
+        $this->assertDatabaseHas('bonus_value_labels', ['kind' => 'stat', 'label' => '釣り', 'is_organized' => false]);
+        $this->assertDatabaseMissing('bonus_value_labels', ['label' => 'atk']);
+    }
+
+    public function test_更新でもその他の項目名がstat候補へ自動追加される(): void
+    {
+        $user = $this->makeUserWithRole('editor');
+        $cats = $this->makeCategoryTree();
+        $item = Item::create([
+            'category_id' => $cats['sword']->id,
+            'name' => '更新対象の剣', 'base_stats' => [], 'special_conditions' => [],
+            'verified_status' => 'unverified', 'submitted_by' => $user->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/items/{$item->id}", ['base_stats' => ['採掘' => 3]])
+            ->assertOk()
+            ->assertJsonPath('base_stats.採掘', 3);
+
+        $this->assertDatabaseHas('bonus_value_labels', ['kind' => 'stat', 'label' => '採掘', 'is_organized' => false]);
+    }
+
     public function test_公式DBのURLは公式サイトのリンクなら保存できる(): void
     {
         $user = $this->makeUser();
@@ -739,6 +777,30 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '炎纏い']);
         // 派生キャッシュ（部位カテゴリ）が更新される
         $this->assertEqualsCanonicalizing([$cats['sword']->id], Item::find($setId)->set_piece_category_ids);
+    }
+
+    public function test_装備セットの部位のその他項目名もstat候補へ自動追加される(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => 'その他効果のセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id' => $cats['sword']->id,
+                    'name'        => 'その他効果の剣',
+                    'base_stats'  => ['atk' => 10, '泳ぎ' => 2],
+                ],
+            ],
+        ])->assertStatus(201);
+
+        $piece = Item::where('name', 'その他効果の剣')->firstOrFail();
+        $this->assertSame(2, $piece->base_stats['泳ぎ']);
+        $this->assertDatabaseHas('bonus_value_labels', ['kind' => 'stat', 'label' => '泳ぎ', 'is_organized' => false]);
     }
 
     public function test_装備セットの部位ごとに公式DBを保存できる(): void

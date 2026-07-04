@@ -1,5 +1,5 @@
 import { useEffect, useState, type DragEvent } from 'react'
-import { bonusValueLabelsApi, type BonusValueLabel } from '../../api/bonusValueLabels'
+import { bonusValueLabelsApi, type BonusValueLabel, type BonusValueLabelKind } from '../../api/bonusValueLabels'
 import { useDialog } from '../../contexts/DialogContext'
 import { compareJa } from '../../utils/collator'
 
@@ -12,7 +12,24 @@ interface Row {
 
 const toRow = (b: BonusValueLabel): Row => ({ id: b.id, label: b.label, draft: b.label })
 
-export default function BonusValueLabelsAdminPage() {
+// タブ（項目名の種別）ごとの表示文言。effectLabel は統合の説明文で使う効果名。
+const KIND_TABS: { kind: BonusValueLabelKind; title: string; usage: string; effectLabel: string }[] = [
+  {
+    kind: 'bonus',
+    title: '付加効果の項目名',
+    usage: 'ここで登録した項目名が、アイテム登録の「付加効果 → 項目名」の入力候補と、一覧の絞り込み候補に表示されます。',
+    effectLabel: '付加効果',
+  },
+  {
+    kind: 'stat',
+    title: '追加効果の項目名',
+    usage: 'ここで登録した項目名が、アイテム登録の「追加効果 → その他 → 項目名」の入力候補に表示されます。',
+    effectLabel: '追加効果',
+  },
+]
+
+/** 1種別分の2ペイン（整理済み/未整理）管理。タブ切替時は key={kind} で作り直す。 */
+function LabelsPane({ kind, usage, effectLabel }: { kind: BonusValueLabelKind; usage: string; effectLabel: string }) {
   const { confirm, alert } = useDialog()
   // 左ペイン（整理済み・並び順あり）／右ペイン（未整理・文字順）
   const [organized, setOrganized] = useState<Row[]>([])
@@ -27,10 +44,14 @@ export default function BonusValueLabelsAdminPage() {
   const [dropIndex, setDropIndex] = useState<number | null>(null) // 左ペインの挿入位置
   const [overRight, setOverRight] = useState(false)
 
+  // 統合モーダル: 統合元（未整理の項目）。null なら非表示。
+  const [mergeSource, setMergeSource] = useState<Row | null>(null)
+  const [merging, setMerging] = useState(false)
+
   const load = () => {
     setLoading(true)
     bonusValueLabelsApi
-      .adminList()
+      .adminList(kind)
       .then((r) => {
         const rows = r.data
         setOrganized(rows.filter((b) => b.is_organized).map(toRow))
@@ -43,7 +64,7 @@ export default function BonusValueLabelsAdminPage() {
       })
       .finally(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(load, [kind])
 
   const setDraft = (id: number, val: string) => {
     const upd = (rows: Row[]) => rows.map((r) => (r.id === id ? { ...r, draft: val } : r))
@@ -61,7 +82,7 @@ export default function BonusValueLabelsAdminPage() {
     setAdding(true)
     try {
       // 手動追加は「未整理（右）」に入る
-      const res = await bonusValueLabelsApi.create(label)
+      const res = await bonusValueLabelsApi.create(label, kind)
       setUnorganized((p) => [...p, toRow(res.data)].sort((a, b) => compareJa(a.label, b.label)))
       setNewLabel('')
     } catch {
@@ -93,6 +114,41 @@ export default function BonusValueLabelsAdminPage() {
     }
   }
 
+  // 未整理の項目(mergeSource)を整理済みの項目(target)へ統合する。
+  // 統合元を使用しているアイテム側も更新され、統合元は削除される。
+  const openMerge = async (row: Row) => {
+    if (organized.length === 0) {
+      await alert('統合先にできる整理済みの項目がありません。先に統合先の項目を整理済みへ移動してください。', { title: '統合できません' })
+      return
+    }
+    setMergeSource(row)
+  }
+
+  const mergeInto = async (target: Row) => {
+    const source = mergeSource
+    if (!source || merging) return
+    const ok = await confirm(
+      `「${source.label}」を「${target.label}」に統合しますか？\n` +
+      `「${source.label}」を使用しているアイテムの${effectLabel}は「${target.label}」に更新され、「${source.label}」は削除されます。`,
+      { title: '項目名の統合', confirmLabel: '統合', danger: true },
+    )
+    if (!ok) return
+    setMerging(true)
+    try {
+      const res = await bonusValueLabelsApi.merge(source.id, target.id)
+      setUnorganized((p) => p.filter((r) => r.id !== source.id))
+      setMergeSource(null)
+      await alert(
+        `「${source.label}」を「${target.label}」に統合しました（アイテム${res.data.updated_count}件を更新）。`,
+        { title: '統合しました' },
+      )
+    } catch {
+      await alert('統合に失敗しました。', { title: 'エラー' })
+    } finally {
+      setMerging(false)
+    }
+  }
+
   const remove = async (row: Row) => {
     if (!(await confirm(`「${row.label}」を削除しますか？`, { title: '項目名の削除', confirmLabel: '削除', danger: true }))) return
     try {
@@ -117,7 +173,7 @@ export default function BonusValueLabelsAdminPage() {
     setOrganized(newOrganized)
     setUnorganized(newUnorganized)
     try {
-      await bonusValueLabelsApi.organize(organizedIds)
+      await bonusValueLabelsApi.organize(organizedIds, kind)
     } catch {
       await alert('並びの保存に失敗しました。', { title: 'エラー' })
       load()
@@ -181,7 +237,8 @@ export default function BonusValueLabelsAdminPage() {
     if (changed) void persistOrganized(organizedIds)
   }
 
-  const renderCard = (row: Row) => (
+  // withMerge: 未整理（右ペイン）のカードにだけ「統合」操作を出す
+  const renderCard = (row: Row, withMerge = false) => (
     <div
       key={row.id}
       className={`flex items-center gap-2 bg-surface-card border rounded-lg px-2 py-1.5 transition-colors ${
@@ -212,6 +269,15 @@ export default function BonusValueLabelsAdminPage() {
       >
         {savingId === row.id ? '保存中' : '保存'}
       </button>
+      {withMerge && (
+        <button
+          onClick={() => openMerge(row)}
+          title="整理済みの項目名へ統合（使用しているアイテムも更新）"
+          className="text-xs bg-amber-600/20 hover:bg-amber-600/40 border border-amber-600/40 text-amber-300 px-3 py-1.5 rounded transition-colors"
+        >
+          統合
+        </button>
+      )}
       <button
         onClick={() => remove(row)}
         className="text-xs bg-red-900/40 hover:bg-red-900/70 text-red-300 px-3 py-1.5 rounded transition-colors"
@@ -222,10 +288,9 @@ export default function BonusValueLabelsAdminPage() {
   )
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      <h1 className="text-xl font-bold text-white mb-2">付加効果 項目名の管理</h1>
+    <>
       <p className="text-sm text-gray-400 mb-5">
-        ここで登録した項目名が、アイテム登録の「付加効果 → 項目名」の入力候補と、一覧の絞り込み候補に表示されます。
+        {usage}
         右の<span className="text-gray-300">「未整理」</span>のカードを左の
         <span className="text-gray-300">「整理済み」</span>へドラッグして、任意の位置に並べてください。
         候補は<span className="text-gray-300">整理済み → 未整理</span>の順で表示されます。
@@ -305,13 +370,90 @@ export default function BonusValueLabelsAdminPage() {
                 <p className="text-center text-xs text-gray-600 py-8">未整理の項目はありません。</p>
               ) : (
                 <div className="space-y-1.5">
-                  {unorganized.map((row) => renderCard(row))}
+                  {unorganized.map((row) => renderCard(row, true))}
                 </div>
               )}
             </div>
           </section>
         </div>
       )}
+
+      {/* 統合先の選択モーダル（整理済みの項目から選ぶ） */}
+      {mergeSource && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => !merging && setMergeSource(null)}
+        >
+          <div
+            data-testid="merge-modal"
+            role="dialog"
+            aria-label="項目名の統合"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-surface-card border border-surface-border rounded-lg p-5"
+          >
+            <h3 className="text-sm font-bold text-white mb-1">「{mergeSource.label}」の統合先を選択</h3>
+            <p className="text-xs text-gray-400 mb-3">
+              整理済みの項目名から統合先を選んでください。
+              「{mergeSource.label}」を使用しているアイテムの{effectLabel}は統合先の項目名に更新され、
+              「{mergeSource.label}」は削除されます。
+            </p>
+            <div className="max-h-72 overflow-y-auto space-y-1 mb-4">
+              {organized.map((row) => (
+                <button
+                  key={row.id}
+                  onClick={() => mergeInto(row)}
+                  disabled={merging}
+                  className="w-full text-left text-sm text-white bg-surface border border-surface-border hover:border-primary-500 disabled:opacity-50 rounded px-3 py-1.5 transition-colors"
+                >
+                  {row.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setMergeSource(null)}
+                disabled={merging}
+                className="text-xs text-gray-400 hover:text-white px-3 py-1.5"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+export default function BonusValueLabelsAdminPage() {
+  const [kind, setKind] = useState<BonusValueLabelKind>('bonus')
+  const active = KIND_TABS.find((t) => t.kind === kind) ?? KIND_TABS[0]
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6">
+      <h1 className="text-xl font-bold text-white mb-3">項目名の管理</h1>
+
+      {/* 種別タブ（付加効果 / 追加効果） */}
+      <div className="flex gap-1 border-b border-surface-border mb-4" role="tablist">
+        {KIND_TABS.map((t) => (
+          <button
+            key={t.kind}
+            role="tab"
+            aria-selected={kind === t.kind}
+            onClick={() => setKind(t.kind)}
+            className={`px-4 py-2 text-sm rounded-t-md border border-b-0 transition-colors ${
+              kind === t.kind
+                ? 'bg-surface-card border-surface-border text-white font-semibold'
+                : 'bg-transparent border-transparent text-gray-400 hover:text-white'
+            }`}
+          >
+            {t.title}
+          </button>
+        ))}
+      </div>
+
+      {/* タブ切替時は key で作り直してドラッグ・編集状態をリセットする */}
+      <LabelsPane key={active.kind} kind={active.kind} usage={active.usage} effectLabel={active.effectLabel} />
     </div>
   )
 }

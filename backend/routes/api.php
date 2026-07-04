@@ -306,11 +306,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('board/posts/{id}',             [BoardController::class, 'destroyPost']);
     });
 
-    // 付加効果の項目名候補の管理（editor / admin）
+    // 項目名候補の管理（付加効果/追加効果・editor / admin）
     Route::middleware('role:editor')->group(function () {
         Route::get('admin/bonus-value-labels',            [BonusValueLabelController::class, 'adminIndex']);
         Route::post('admin/bonus-value-labels',           [BonusValueLabelController::class, 'store']);
         Route::post('admin/bonus-value-labels/organize',  [BonusValueLabelController::class, 'organize']);
+        // 未整理の項目名を整理済みの項目名へ統合（使用アイテム側も一括更新）
+        Route::post('admin/bonus-value-labels/{id}/merge', [BonusValueLabelController::class, 'merge']);
         Route::put('admin/bonus-value-labels/{id}',       [BonusValueLabelController::class, 'update']);
         Route::delete('admin/bonus-value-labels/{id}',    [BonusValueLabelController::class, 'destroy']);
 

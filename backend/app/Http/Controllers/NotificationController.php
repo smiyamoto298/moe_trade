@@ -205,8 +205,9 @@ class NotificationController extends Controller
             ];
         }
 
-        // ---- 項目名の管理: 未整理の付加効果ラベル件数（editor / admin のみ） ----
+        // ---- 項目名の管理: 未整理の項目名件数（editor / admin のみ） ----
         // bonus_value_labels のうち is_organized=false（自動追加されたまま整理されていない）件数。
+        // 付加効果（bonus）・追加効果その他（stat）の両種別を合算する。
         $unorganizedLabelCount = $user->isEditor()
             ? BonusValueLabel::where('is_organized', false)->count()
             : 0;

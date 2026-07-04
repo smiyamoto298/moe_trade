@@ -4,6 +4,7 @@ import { itemsApi } from '../../api/items'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import ComboInput from '../../components/ComboInput'
+import CustomStatsEditor from '../../components/CustomStatsEditor'
 import Spinner from '../../components/Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces, membersToForm } from '../../components/EquipmentSetPiecesEditor'
 import RecipeEntriesEditor, { type RecipeEntryForm, recipeEntriesToPayload, itemToRecipeEntries } from '../../components/RecipeEntriesEditor'
@@ -13,6 +14,7 @@ import { applyCopyRename, type CopyRename } from '../../utils/copyRename'
 import { parseHashtags, formatHashtags } from '../../utils/hashtags'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
+import { mergeBaseStats, splitBaseStats, type CustomStatRow } from '../../utils/customStats'
 import { OTHER_PET, OTHER_RECIPE } from '../../utils/itemType'
 import { normalizeOfficialUrl } from '../../utils/officialUrl'
 
@@ -60,6 +62,8 @@ export default function AdminItemEditPage() {
   const { alert, confirm } = useDialog()
   const { user } = useAuth()
   const bonusValueLabelOptions = useBonusValueLabels()
+  // 追加効果「その他」の項目名候補
+  const statLabelOptions = useBonusValueLabels('stat')
   // editor / admin は全アイテムを編集でき、「確認済みにする」も可能
   const isEditor = user?.role === 'editor' || user?.role === 'admin'
   const isNew = !id
@@ -93,6 +97,8 @@ export default function AdminItemEditPage() {
     pet_name: '',
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
+  // 追加効果「その他」（項目名の自由入力。保存時 base_stats へマージ）
+  const [customStats, setCustomStats] = useState<CustomStatRow[]>([])
   // 装備セットの構成部位（部位リスト＋追加効果/付加効果の設定グループ）
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
   // レシピの {バインダー, レシピ名, 必要スキル値} エントリ（複数）
@@ -105,13 +111,16 @@ export default function AdminItemEditPage() {
     // アイテム情報をフォーム状態へ展開する。asCopy のときは新規作成として複製するため、
     // 既存レコードに紐づくID（装備セット部位・付加効果）と確認状態を引き継がない。
     const fillFormFromItem = (item: Item, asCopy: boolean) => {
+      // base_stats を固定パラメータとその他（自由入力キー）に分離して復元する
+      const { fixed: fixedStats, custom: customStatRows } = splitBaseStats(item.base_stats)
+      setCustomStats(customStatRows)
       setForm({
         category_id: String(item.category.id),
         // コピー時はダイアログで入力した名前変更（置換・末尾追加）を適用する
         name: asCopy ? applyCopyRename(item.name, copyRename) : item.name,
         description: item.description ?? '',
         official_url: item.official_url ?? '',
-        base_stats: Object.fromEntries(Object.entries(item.base_stats).map(([k, v]) => [k, String(v)])),
+        base_stats: fixedStats,
         special_conditions: [...item.special_conditions],
         dyeable: item.dyeable,
         mithril: item.mithril ?? false,
@@ -242,7 +251,12 @@ export default function AdminItemEditPage() {
     // グループ[0] のみ置き換え、部位（parts）や追加済みの設定グループ[1..] はそのまま残す。
     if (prev === 'plain' && next === 'equipSet') {
       const baseStatsGroups = [
-        { partCategoryIds: [], base_stats: { ...form.base_stats }, special_conditions: [...form.special_conditions] },
+        {
+          partCategoryIds: [],
+          base_stats: { ...form.base_stats },
+          custom_stats: customStats.map((r) => ({ ...r })),
+          special_conditions: [...form.special_conditions],
+        },
         ...equipSetForm.baseStatsGroups.slice(1),
       ]
       const bonusGroups = [
@@ -266,6 +280,7 @@ export default function AdminItemEditPage() {
       const partCatId = Number(form.category_id)
       const hasPlainData = form.name.trim() !== ''
         || Object.keys(form.base_stats).length > 0
+        || customStats.some((r) => r.label.trim())
         || bonusEffects.some((e) => e.effect_name.trim())
       let parts = equipSetForm.parts
       if (hasPlainData) {
@@ -300,6 +315,7 @@ export default function AdminItemEditPage() {
         base_stats: { ...(bg?.base_stats ?? {}) },
         special_conditions: [...(bg?.special_conditions ?? [])],
       }))
+      setCustomStats((bg?.custom_stats ?? []).map((r) => ({ ...r })))
       setBonusEffects((ng?.bonus_effects ?? []).map((e) => ({
         effect_name: e.effect_name,
         values: e.values.length > 0 ? e.values.map((v) => ({ ...v })) : [emptyValue()],
@@ -411,11 +427,7 @@ export default function AdminItemEditPage() {
         name: form.name,
         description: form.description,
         official_url: form.official_url.trim() || null,
-        base_stats: isPlain ? Object.fromEntries(
-          Object.entries(form.base_stats)
-            .filter(([, v]) => v !== '')
-            .map(([k, v]) => [k, Number(v)])
-        ) : {},
+        base_stats: isPlain ? mergeBaseStats(form.base_stats, customStats) : {},
         special_conditions: isSkill ? [] : form.special_conditions,
         dyeable: isPlain ? form.dyeable : null,
         mithril: isPlain ? form.mithril : false,
@@ -622,6 +634,7 @@ export default function AdminItemEditPage() {
             value={equipSetForm}
             onChange={setEquipSetForm}
             bonusValueLabelOptions={bonusValueLabelOptions}
+            statLabelOptions={statLabelOptions}
           />
         </div>
         )}
@@ -707,6 +720,13 @@ export default function AdminItemEditPage() {
               </div>
             ))}
           </div>
+          {/* その他（自由入力の項目名） */}
+          <CustomStatsEditor
+            idPrefix="admin-item"
+            rows={customStats}
+            onChange={setCustomStats}
+            labelOptions={statLabelOptions}
+          />
         </div>
         )}
 
