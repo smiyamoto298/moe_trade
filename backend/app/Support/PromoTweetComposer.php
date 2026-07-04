@@ -9,6 +9,8 @@ namespace App\Support;
  * URLは t.co 短縮により一律23としてカウント）に収まるよう、アイテムが多い場合は
  * 複数ツイートへ自動分割し、全アイテムを漏れなく掲載する。
  * アイテムは出品「売)」・買取「買)」のプレフィックス付きで1つのリストにまとめる。
+ * オークションは【新規の取引】とは別の【オークション現在価格】セクションに、
+ * 現在価格（最良入札 or 開始価格）で掲載する（対象が無ければセクションごと省略）。
  * 分割時は本文末尾に「...続く」を付け、続きツイートは「（続き）」の行で始める。
  * ゲーム名タグ（#MasterofEpic）は複数ツイートに分割された場合、1通目だけに付ける
  * （2通目以降は1通目への返信として連なるため、ゲーム名タグの重複を避ける）。
@@ -23,13 +25,13 @@ class PromoTweetComposer
     /** URLは長さによらず t.co 短縮で23文字としてカウントされる */
     public const URL_WEIGHT = 23;
 
-    public const SECTION_TRADES = '【本日の取引成立】';
-    public const SECTION_ITEMS  = '【新規の取引】';
+    public const SECTION_ITEMS    = '【新規の取引】';
+    public const SECTION_AUCTIONS = '【オークション現在価格】';
 
     // 現在有効な出品・買取の登録総数（期間に依存しないスナップショット）
     public const SECTION_REGISTERED = '【現在の登録数】';
 
-    // 期間（累計）モード用の見出し
+    // 期間（累計）モードのみ取引成立数を掲載する（単日モードには出さない）
     public const SECTION_TRADES_RANGE = '【期間中の取引成立数】';
 
     /** ゲーム名のハッシュタグ。複数ツイートに分割される場合は1通目だけに付ける。 */
@@ -43,19 +45,23 @@ class PromoTweetComposer
 
     /**
      * @param string $dateLabel 「6/12」（単日）または「6/8〜6/12」（期間）のような日付表示
-     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $listings
-     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $buyRequests
-     * @param int $tradeCount 取引成立件数
+     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $listings 通常（非オークション）の新規出品
+     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $buyRequests 通常（非オークション）の新規買取
+     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $auctionListings オークション出品（price は現在価格）
+     * @param array<int, array{name: string, price: int, currency: string, count: int, negotiable?: bool}> $auctionBuyRequests オークション買取（price は現在価格）
+     * @param int $tradeCount 取引成立件数（期間モードのみ掲載される）
      * @param int $activeListingCount 現在有効な出品の総数
      * @param int $activeBuyRequestCount 現在有効な買取の総数
      * @param string $siteUrl 各ツイート末尾に付けるサイトURL
-     * @param bool $cumulative true なら期間（累計）モードの見出し（【期間中の〜】）を使う
+     * @param bool $cumulative true なら期間（累計）モード（【期間中の取引成立数】行を掲載する）
      * @return string[] ツイート文面（投稿順）
      */
     public function compose(
         string $dateLabel,
         array $listings,
         array $buyRequests,
+        array $auctionListings,
+        array $auctionBuyRequests,
         int $tradeCount,
         int $activeListingCount,
         int $activeBuyRequestCount,
@@ -79,14 +85,13 @@ class PromoTweetComposer
             return self::WEIGHT_LIMIT - $footerWeight - $ellipsisReserve;
         };
 
-        $tradesHeader = $cumulative ? self::SECTION_TRADES_RANGE : self::SECTION_TRADES;
-
         $tweets  = [];
-        $current = [
-            "📢MoE Trade（{$dateLabel}）",
-            $tradesHeader . "{$tradeCount}件",
-            self::SECTION_REGISTERED . "出品{$activeListingCount}件:買取{$activeBuyRequestCount}件",
-        ];
+        $current = ["📢MoE Trade（{$dateLabel}）"];
+        // 取引成立数は期間（累計）モードのみ掲載する（単日モードには出さない）
+        if ($cumulative) {
+            $current[] = self::SECTION_TRADES_RANGE . "{$tradeCount}件";
+        }
+        $current[] = self::SECTION_REGISTERED . "出品{$activeListingCount}件:買取{$activeBuyRequestCount}件";
 
         // 現在のツイートに行を追加できるか（改行1文字分を含めて）判定する
         $fits = function (array $lines, string ...$more) use (&$tweets, $budgetFor): bool {
@@ -104,33 +109,45 @@ class PromoTweetComposer
         };
 
         // 出品は「売)」・買取は「買)」のプレフィックス付きで1つのリストにまとめる
-        $lines = array_merge(
+        $itemLines = array_merge(
             array_map(fn (array $item) => self::itemLine($item, '売)'), $listings),
             array_map(fn (array $item) => self::itemLine($item, '買)'), $buyRequests),
         );
-        if ($lines === []) {
-            $lines = ['新着の出品・買取はなし'];
+        if ($itemLines === []) {
+            $itemLines = ['新着の出品・買取はなし'];
+        }
+        // オークションは現在価格で別セクションに掲載する（対象が無ければセクションごと省略）
+        $auctionLines = array_merge(
+            array_map(fn (array $item) => self::itemLine($item, '売)'), $auctionListings),
+            array_map(fn (array $item) => self::itemLine($item, '買)'), $auctionBuyRequests),
+        );
+
+        $sections = [[self::SECTION_ITEMS, $itemLines]];
+        if ($auctionLines !== []) {
+            $sections[] = [self::SECTION_AUCTIONS, $auctionLines];
         }
 
-        // 見出しがツイート末尾に孤立しないよう、最初の1行とセットで入るか確認する
-        if (!$fits($current, self::SECTION_ITEMS, $lines[0])) {
-            $flush(hasMore: true);
-        }
-        $current[] = self::SECTION_ITEMS;
-        $afterHeader = true; // 見出し直後の分割を防ぐ（見出しだけのツイートを作らない）
-
-        foreach ($lines as $line) {
-            if (!$fits($current, $line) && !$afterHeader) {
+        foreach ($sections as [$header, $lines]) {
+            // 見出しがツイート末尾に孤立しないよう、最初の1行とセットで入るか確認する
+            if (!$fits($current, $header, $lines[0])) {
                 $flush(hasMore: true);
-                $current[] = '（続き）';
             }
-            // 1行単独でも収まらない異常に長い行（長いアイテム名等）は切り詰める
-            if (!$fits($current, $line)) {
-                $prefix = implode("\n", $current) . "\n";
-                $line = self::truncateToWeight($line, $budgetFor(count($tweets)) - self::weight($prefix));
+            $current[] = $header;
+            $afterHeader = true; // 見出し直後の分割を防ぐ（見出しだけのツイートを作らない）
+
+            foreach ($lines as $line) {
+                if (!$fits($current, $line) && !$afterHeader) {
+                    $flush(hasMore: true);
+                    $current[] = '（続き）';
+                }
+                // 1行単独でも収まらない異常に長い行（長いアイテム名等）は切り詰める
+                if (!$fits($current, $line)) {
+                    $prefix = implode("\n", $current) . "\n";
+                    $line = self::truncateToWeight($line, $budgetFor(count($tweets)) - self::weight($prefix));
+                }
+                $current[] = $line;
+                $afterHeader = false;
             }
-            $current[] = $line;
-            $afterHeader = false;
         }
 
         $flush();

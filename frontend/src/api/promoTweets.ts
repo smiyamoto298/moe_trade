@@ -19,6 +19,8 @@ export interface PromoTweetsResponse {
   trade_count: number
   listing_count: number
   buy_request_count: number
+  // 【オークション現在価格】に載る進行中オークションの件数（出品＋買取）
+  auction_count: number
   tweets: PromoTweet[]
 }
 

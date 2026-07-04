@@ -90,10 +90,12 @@ class PromoTweetApiTest extends TestCase
             ->assertJsonPath('last_posted_at', null)
             ->assertJsonPath('trade_count', 2)
             ->assertJsonPath('listing_count', 1)
-            ->assertJsonPath('buy_request_count', 1);
+            ->assertJsonPath('buy_request_count', 1)
+            ->assertJsonPath('auction_count', 0);
 
         $all = implode("\n", array_column($res->json('tweets'), 'text'));
-        $this->assertStringContainsString('【本日の取引成立】2件', $all);
+        // 単日モードの文面に取引成立数は載せない（trade_count は参考値としてJSONにのみ残る）
+        $this->assertStringNotContainsString('取引成立', $all);
         // 現在有効な出品（剛力の剣＋過去の槍。取り下げの斧は cancelled で除外）と買取（守りの盾）の登録総数
         $this->assertStringContainsString('【現在の登録数】出品2件:買取1件', $all);
         $this->assertStringContainsString('【新規の取引】', $all);
@@ -119,6 +121,76 @@ class PromoTweetApiTest extends TestCase
         $res->assertOk()->assertJsonPath('listing_count', 3);
         $all = implode("\n", array_column($res->json('tweets'), 'text'));
         $this->assertStringContainsString('売)量産の矢 100AC ×3', $all);
+    }
+
+    public function test_オークションは新規の取引とは別に現在価格セクションへ載る(): void
+    {
+        $admin  = $this->makeUserWithRole('admin');
+        $seller = $this->makeUser();
+        $bidder = $this->makeUser();
+
+        // 当日のオークション出品（入札あり → 現在価格は最良入札額 1,100）
+        $swordItem = $this->makeItem(['name' => '競売の剣']);
+        $auction   = Listing::create([
+            'user_id'    => $seller->id,
+            'item_id'    => $swordItem->id,
+            'price'      => 1000,
+            'currency'   => 'AC',
+            'quantity'   => 1,
+            'trade_type' => 'auction',
+            'expires_at' => now()->addDays(3),
+        ]);
+        $auction->servers()->create(['server' => 'Emerald']);
+        $this->actingAs($bidder, 'sanctum')->postJson("/api/listings/{$auction->id}/chats", [
+            'server'    => 'Emerald',
+            'bid_price' => 1100,
+        ])->assertStatus(201);
+
+        // 当日のオークション買取（入札なし → 現在価格は開始価格 500）
+        $shieldItem = $this->makeItem(['name' => '競売の盾', 'category_id' => $swordItem->category_id]);
+        BuyRequest::create([
+            'user_id'    => $seller->id,
+            'item_id'    => $shieldItem->id,
+            'price'      => 500,
+            'currency'   => 'AC',
+            'quantity'   => 1,
+            'trade_type' => 'auction',
+            'expires_at' => now()->addDays(3),
+        ]);
+
+        // 当日だが終了済みのオークション（現在価格が無いので対象外）
+        $doneItem = $this->makeItem(['name' => '終了の斧', 'category_id' => $swordItem->category_id]);
+        Listing::create([
+            'user_id'    => $seller->id,
+            'item_id'    => $doneItem->id,
+            'price'      => 2000,
+            'currency'   => 'AC',
+            'quantity'   => 1,
+            'trade_type' => 'auction',
+            'status'     => 'completed',
+            'expires_at' => now()->addDays(3),
+        ]);
+
+        // 当日の通常出品（こちらは【新規の取引】に載る）
+        $spearItem = $this->makeItem(['name' => '通常の槍', 'category_id' => $swordItem->category_id]);
+        $this->makeListing($seller, $spearItem, ['price' => 800]);
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/promo-tweets');
+
+        $res->assertOk()
+            ->assertJsonPath('listing_count', 1)  // 通常出品のみ（オークションは含めない）
+            ->assertJsonPath('auction_count', 2); // 進行中のオークション出品＋買取
+
+        $all = implode("\n", array_column($res->json('tweets'), 'text'));
+        // オークションは現在価格（入札あり=最良入札額 / 入札なし=開始価格）で別セクションに載る
+        $this->assertStringContainsString(
+            "【オークション現在価格】\n売)競売の剣 1,100AC\n買)競売の盾 500AC",
+            $all
+        );
+        $this->assertStringContainsString("【新規の取引】\n売)通常の槍 800AC", $all);
+        $this->assertStringNotContainsString('終了の斧', $all);
+        // オークションが開始価格のまま【新規の取引】側に載っていないこと
+        $this->assertStringNotContainsString('競売の剣 1,000AC', $all);
     }
 
     public function test_since指定で集計開始時刻を絞り込める(): void

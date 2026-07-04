@@ -141,7 +141,7 @@ export default function PromoTweetsPage() {
         </div>
       </div>
       <p className="text-sm text-gray-400 mb-5">
-        {mode === 'day' ? '前回ツイート時刻から現在まで' : '指定した期間（累計）'}の「新規出品」「新規買取」「取引成立件数」「現在の登録数」をX（旧Twitter）の文字数制限内に分割した文面です。
+        {mode === 'day' ? '前回ツイート時刻から現在まで' : '指定した期間（累計）'}の「新規出品」「新規買取」「オークション現在価格」「現在の登録数」をX（旧Twitter）の文字数制限内に分割した文面です。
         「Xでポスト」を押すと投稿画面が開くので、内容を確認して順番に投稿してください（API不要・無料）。
         スマホではX公式アプリで開きます（アプリが無い場合はブラウザの投稿画面が開きます）。
         {mode === 'day' && '「Xでポスト」を押した時刻が前回ツイート時刻として自動記録され、次回はその時刻からの集計になります（開始時刻は手動で変更も可能）。'}
@@ -159,6 +159,8 @@ export default function PromoTweetsPage() {
           <div className="flex flex-wrap gap-4 text-sm text-gray-300 bg-surface-card border border-surface-border rounded-lg px-4 py-3 mb-5">
             <span>新規出品: <span className="font-bold text-white">{data.listing_count}件</span></span>
             <span>新規買取: <span className="font-bold text-white">{data.buy_request_count}件</span></span>
+            <span>オークション: <span className="font-bold text-white">{data.auction_count}件</span></span>
+            {/* 取引成立数は期間モードのみ文面に載る（単日モードでは参考表示） */}
             <span>取引成立: <span className="font-bold text-white">{data.trade_count}件</span></span>
             <span className="text-gray-500">ツイート数: {data.tweets.length}</span>
           </div>

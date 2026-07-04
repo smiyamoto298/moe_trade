@@ -6,6 +6,7 @@ use App\Models\BuyRequest;
 use App\Models\Listing;
 use App\Models\PromoTweetState;
 use App\Models\TradeHistory;
+use App\Support\Auction;
 use App\Support\PromoTweetComposer;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -55,26 +56,29 @@ class PromoTweetController extends Controller
         // 期間累計の上限は翌日0:00なので排他（<）、単日の上限は「現在」なので包含（<=）
         $endOp = $cumulative ? '<' : '<=';
 
-        // 「新着扱い」(bumped_at)＝値下げ/即決→交渉可で再出品された取引も新規と同様に宣伝対象に含める。
+        // 「新着扱い」(bumped_at)＝値下げ/即決→交渉可で再出品・入札で現在価格が更新された取引も宣伝対象に含める。
         // bumped_at 未設定の通常出品は created_at と同じ挙動。$endOp は '<' / '<=' の固定値（ユーザー入力ではない）。
         $freshness = 'COALESCE(bumped_at, created_at)';
+        $listingRows = Listing::with('item:id,name')
+            ->whereRaw("$freshness >= ?", [$start])
+            ->whereRaw("$freshness $endOp ?", [$end])
+            ->where('status', '!=', 'cancelled') // 取り下げ済みは宣伝しない
+            ->orderByRaw($freshness)
+            ->get();
+        $buyRequestRows = BuyRequest::with('item:id,name')
+            ->whereRaw("$freshness >= ?", [$start])
+            ->whereRaw("$freshness $endOp ?", [$end])
+            ->where('status', '!=', 'cancelled')
+            ->orderByRaw($freshness)
+            ->get();
+
+        // オークションは【新規の取引】ではなく【オークション現在価格】に現在価格で載せる。
+        // 終了済み（completed/expired）のオークションに「現在価格」は無いので進行中（active）のみ対象。
         // 同一アイテム・同一価格の出品（一括出品由来など）は「×N」に集約する
-        $listings = $this->aggregate(
-            Listing::with('item:id,name')
-                ->whereRaw("$freshness >= ?", [$start])
-                ->whereRaw("$freshness $endOp ?", [$end])
-                ->where('status', '!=', 'cancelled') // 取り下げ済みは宣伝しない
-                ->orderByRaw($freshness)
-                ->get()
-        );
-        $buyRequests = $this->aggregate(
-            BuyRequest::with('item:id,name')
-                ->whereRaw("$freshness >= ?", [$start])
-                ->whereRaw("$freshness $endOp ?", [$end])
-                ->where('status', '!=', 'cancelled')
-                ->orderByRaw($freshness)
-                ->get()
-        );
+        $listings           = $this->aggregate($listingRows->reject(fn ($row) => $row->isAuction()));
+        $buyRequests        = $this->aggregate($buyRequestRows->reject(fn ($row) => $row->isAuction()));
+        $auctionListings    = $this->aggregateAuctions($listingRows->filter(fn ($row) => $row->isAuction()));
+        $auctionBuyRequests = $this->aggregateAuctions($buyRequestRows->filter(fn ($row) => $row->isAuction()));
 
         // 相場対象の有効な取引のみカウント（同一IP等の無効分は含めない）
         $tradeCount = TradeHistory::where('is_valid', true)
@@ -95,6 +99,8 @@ class PromoTweetController extends Controller
             $dateLabel,
             $listings,
             $buyRequests,
+            $auctionListings,
+            $auctionBuyRequests,
             $tradeCount,
             $activeListingCount,
             $activeBuyRequestCount,
@@ -115,6 +121,8 @@ class PromoTweetController extends Controller
             'trade_count'       => $tradeCount,
             'listing_count'     => array_sum(array_column($listings, 'count')),
             'buy_request_count' => array_sum(array_column($buyRequests, 'count')),
+            'auction_count'     => array_sum(array_column($auctionListings, 'count'))
+                + array_sum(array_column($auctionBuyRequests, 'count')),
             'tweets'            => array_map(fn (string $text) => [
                 'text'   => $text,
                 'length' => PromoTweetComposer::weightedLength($text),
@@ -158,5 +166,19 @@ class PromoTweetController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * 進行中（active）のオークションを「現在価格（最良入札 or 開始価格）」で集約する。
+     * 終了済みに現在価格は無いため active のみ対象。件数は少数想定なので入札の都度クエリで良い。
+     *
+     * @return array<int, array{name: string, price: int, currency: string, count: int, negotiable: bool}>
+     */
+    private function aggregateAuctions($rows): array
+    {
+        return $this->aggregate(
+            $rows->filter(fn ($row) => $row->status === 'active')
+                ->each(fn ($row) => $row->price = Auction::currentPrice($row))
+        );
     }
 }

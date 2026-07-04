@@ -38,6 +38,8 @@ class PromoTweetComposerTest extends TestCase
             '6/12',
             [$this->item('剛力の剣', 12000)],
             [$this->item('守りの盾', 500)],
+            [$this->item('伝説の兜', 30000)],
+            [$this->item('古代の指輪', 8000)],
             3,
             42,
             17,
@@ -46,15 +48,37 @@ class PromoTweetComposerTest extends TestCase
 
         $this->assertCount(1, $tweets);
         $text = $tweets[0];
-        $this->assertStringContainsString('【本日の取引成立】3件', $text);
+        // 単日モードに取引成立数の行は出さない
+        $this->assertStringNotContainsString('取引成立', $text);
         $this->assertStringContainsString('【現在の登録数】出品42件:買取17件', $text);
         $this->assertStringContainsString("【新規の取引】\n売)剛力の剣 12,000AC", $text);
         $this->assertStringContainsString('買)守りの盾 500AC', $text);
+        // オークションは現在価格の別セクションに載る
+        $this->assertStringContainsString("【オークション現在価格】\n売)伝説の兜 30,000AC", $text);
+        $this->assertStringContainsString('買)古代の指輪 8,000AC', $text);
         $this->assertStringContainsString(self::URL, $text);
         $this->assertLessThanOrEqual(
             PromoTweetComposer::WEIGHT_LIMIT,
             PromoTweetComposer::weightedLength($text)
         );
+    }
+
+    public function test_オークションが無い場合はオークションセクションごと省略される(): void
+    {
+        $tweets = (new PromoTweetComposer())->compose(
+            '6/12',
+            [$this->item('剛力の剣', 12000)],
+            [],
+            [],
+            [],
+            0,
+            1,
+            0,
+            self::URL
+        );
+
+        $this->assertCount(1, $tweets);
+        $this->assertStringNotContainsString('【オークション現在価格】', $tweets[0]);
     }
 
     public function test_アイテムが多い場合は分割され全アイテムが漏れなく掲載される(): void
@@ -68,7 +92,7 @@ class PromoTweetComposerTest extends TestCase
             $buys[] = $this->item("買取アイテム{$i}号", 9999);
         }
 
-        $tweets = (new PromoTweetComposer())->compose('6/12', $listings, $buys, 5, 100, 50, self::URL);
+        $tweets = (new PromoTweetComposer())->compose('6/12', $listings, $buys, [], [], 5, 100, 50, self::URL);
 
         $this->assertGreaterThan(1, count($tweets));
 
@@ -120,11 +144,45 @@ class PromoTweetComposerTest extends TestCase
         $this->assertStringNotContainsString("【新規の取引】\n...続く", $all);
     }
 
+    public function test_オークションセクションも分割時に全件漏れなく掲載される(): void
+    {
+        $listings = [];
+        for ($i = 1; $i <= 15; $i++) {
+            $listings[] = $this->item("通常アイテム{$i}号", 1000);
+        }
+        $auctions = [];
+        for ($i = 1; $i <= 15; $i++) {
+            $auctions[] = $this->item("競売アイテム{$i}号", 5000);
+        }
+
+        $tweets = (new PromoTweetComposer())->compose('6/12', $listings, [], $auctions, [], 0, 0, 0, self::URL);
+
+        $this->assertGreaterThan(1, count($tweets));
+        foreach ($tweets as $tweet) {
+            $this->assertLessThanOrEqual(
+                PromoTweetComposer::WEIGHT_LIMIT,
+                PromoTweetComposer::weightedLength($tweet),
+                "制限超過: {$tweet}"
+            );
+        }
+
+        $all = implode("\n", $tweets);
+        for ($i = 1; $i <= 15; $i++) {
+            $this->assertStringContainsString("売)通常アイテム{$i}号", $all);
+            $this->assertStringContainsString("売)競売アイテム{$i}号", $all);
+        }
+        // オークション見出しは1回だけ載り、ツイート末尾（...続くの直前）に孤立しない
+        $this->assertSame(1, substr_count($all, '【オークション現在価格】'));
+        $this->assertStringNotContainsString("【オークション現在価格】\n...続く", $all);
+    }
+
     public function test_同一アイテムの複数出品は個数表示になる(): void
     {
         $tweets = (new PromoTweetComposer())->compose(
             '6/12',
             [$this->item('量産の矢', 100, 3)],
+            [],
+            [],
             [],
             0,
             0,
@@ -142,6 +200,8 @@ class PromoTweetComposerTest extends TestCase
             '6/12',
             [$negotiable, $this->item('守りの盾', 500)],
             [$this->item('量産の矢', 100, 3) + ['negotiable' => true]],
+            [],
+            [],
             0,
             0,
             0,
@@ -160,10 +220,10 @@ class PromoTweetComposerTest extends TestCase
 
     public function test_出品も買取も無い場合は「なし」と表示される(): void
     {
-        $tweets = (new PromoTweetComposer())->compose('6/12', [], [], 0, 0, 0, self::URL);
+        $tweets = (new PromoTweetComposer())->compose('6/12', [], [], [], [], 0, 0, 0, self::URL);
 
         $this->assertCount(1, $tweets);
-        $this->assertStringContainsString('【本日の取引成立】0件', $tweets[0]);
+        $this->assertStringNotContainsString('取引成立', $tweets[0]);
         $this->assertStringContainsString('【現在の登録数】出品0件:買取0件', $tweets[0]);
         $this->assertStringContainsString("【新規の取引】\n新着の出品・買取はなし", $tweets[0]);
     }
@@ -174,6 +234,8 @@ class PromoTweetComposerTest extends TestCase
             '6/8〜6/12',
             [$this->item('剛力の剣', 12000)],
             [$this->item('守りの盾', 500)],
+            [],
+            [],
             7,
             42,
             17,
@@ -197,6 +259,8 @@ class PromoTweetComposerTest extends TestCase
         $tweets = (new PromoTweetComposer())->compose(
             '6/12',
             [$this->item($longName, 100)],
+            [],
+            [],
             [],
             0,
             0,
