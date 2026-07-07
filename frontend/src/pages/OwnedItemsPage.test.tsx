@@ -343,6 +343,49 @@ describe('OwnedItemsPage 種別の変更', () => {
       expect(saved.exclusions.some((e) => e.name === '光の杖')).toBe(false)
     }, { timeout: 2500 })
   })
+
+  // 登録アイテムに紐づく行（取引可能）でも種別バッジをクリックでき、
+  // 種別を割り当てるとその種別が取引可能より優先して表示される。
+  it('取引可能の行にも種別を設定でき、設定した種別が優先される', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [
+          { id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 },
+          { id: 5, name: 'レア', is_default: false, default_enabled: true, sort_order: 1 },
+        ],
+        items: [],
+      },
+    })
+    const item = makeItem({ id: 12, name: '炎の大剣' })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '炎の大剣', itemId: 12, item })]),
+    })
+    // 再照合は一致なし（スナップショット据え置き）。モック実装は clearAllMocks で消えず
+    // 後続テストへ漏れるため、行内容を書き換えない値にしておく。
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // 取引可能バッジがクリック可能（ボタン）で、押すと種別選択ダイアログが開く
+    const tradeableBtn = await screen.findByTitle('登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます')
+    expect(tradeableBtn).toHaveTextContent('取引可能')
+    fireEvent.click(tradeableBtn)
+
+    const dialog = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+    fireEvent.click(within(dialog).getByRole('button', { name: 'レア' }))
+
+    // 割り当てた種別（レア）が取引可能より優先して表示される（ユーザー割当バッジへ変わる）
+    const userBtn = await screen.findByTitle('種別を変更・解除')
+    expect(userBtn).toHaveTextContent('レア')
+
+    // ダイアログから解除すると取引可能に戻る
+    fireEvent.click(userBtn)
+    const dialog2 = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+    fireEvent.click(within(dialog2).getByText('種別を解除'))
+    expect(await screen.findByTitle('登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます')).toBeInTheDocument()
+  })
 })
 
 describe('OwnedItemsPage 公式DBリンク', () => {

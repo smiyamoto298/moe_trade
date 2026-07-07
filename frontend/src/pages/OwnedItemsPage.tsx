@@ -1025,12 +1025,22 @@ export default function OwnedItemsPage() {
                       )}
                     </td>
 
-                    {/* 種別（表示ジャンル）。取引可能（登録済み）は固定。それ以外はクリックで変更できる。 */}
+                    {/* 種別（表示ジャンル）。どの行もクリックで種別を変更できる。
+                        取引可能（登録済みの派生種別）も、種別を割り当てればそちらが優先される。 */}
                     <td className="px-3 py-3">
                       {(() => {
                         const et = rowType(row)
                         if (et === 'tradeable') {
-                          return <span className="text-[11px] bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 rounded px-2 py-0.5 whitespace-nowrap">取引可能</span>
+                          return (
+                            <button
+                              onClick={() => setTypeDialogRowId(row.id)}
+                              className="inline-flex items-center gap-1 text-[11px] bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-300 rounded px-2 py-0.5 whitespace-nowrap transition-colors"
+                              title="登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます"
+                            >
+                              取引可能
+                              <span aria-hidden>✎</span>
+                            </button>
+                          )
                         }
                         // 未設定 / 共通（管理者）/ ユーザー割当 のいずれもクリックで種別を変更できる。
                         // 共通割当はユーザーが自分用に上書きできる（実効種別はユーザー割当が優先）。

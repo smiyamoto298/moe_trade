@@ -19,10 +19,17 @@ const row = (over: Partial<{ itemId: number | null; name: string }>) => ({
 })
 
 describe('effectiveTypeId', () => {
-  it('登録アイテムに紐づく行は取引可能になる', () => {
+  it('登録アイテムに紐づく行（種別割当なし）は取引可能になる', () => {
     expect(effectiveTypeId(row({ itemId: 10, name: '炎の剣' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe('tradeable')
-    // 名前が割当にあっても itemId があれば取引可能が優先
-    expect(effectiveTypeId(row({ itemId: 10, name: 'ゴミ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe('tradeable')
+  })
+
+  it('登録アイテムに紐づく行でも種別割当があれば種別を優先する', () => {
+    // 共通割当あり → 共通の種別
+    expect(effectiveTypeId(row({ itemId: 10, name: 'ゴミ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(1)
+    // ユーザー割当あり → ユーザーの種別
+    expect(effectiveTypeId(row({ itemId: 10, name: 'お宝' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(3)
+    // ユーザー割当が null（既定種別）でも取引可能より優先
+    expect(effectiveTypeId(row({ itemId: 10, name: 'なぞ' }), commonMap, userMap, DEFAULT_TYPE_ID)).toBe(1)
   })
 
   it('ユーザー割当は共通割当より優先される（ユーザーが上書きできる）', () => {

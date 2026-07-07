@@ -22,11 +22,14 @@ export function normalizeName(name: string): string {
  * 行の実効表示種別（ジャンル）を求める。
  *
  * 優先順位:
- *  1. 登録アイテムに紐づく（itemId!=null）→ 'tradeable'（取引可能・派生種別。ユーザーは変更不可）
- *  2. ユーザーの種別割当に名前がある → その type_id（null は既定種別「その他」= defaultTypeId）。
+ *  1. ユーザーの種別割当に名前がある → その type_id（null は既定種別「その他」= defaultTypeId）。
  *     ユーザーが自分のアイテムボックス上で付けた分類は、管理者の共通割当より優先する（上書きできる）。
- *  3. 共通の種別割当（管理者）に名前がある → その type_id
+ *  2. 共通の種別割当（管理者）に名前がある → その type_id
+ *  3. 登録アイテムに紐づく（itemId!=null）→ 'tradeable'（取引可能・派生種別）
  *  4. どれも無し → 'unset'（未設定）
+ *
+ * 登録アイテムに紐づく行でも、種別の割当（ユーザー／共通）があればそちらを優先する。
+ * 割当を解除すると取引可能に戻る。
  *
  * commonMap / userMap のキーは正規化済みのアイテム名を想定する。
  */
@@ -38,12 +41,12 @@ export function effectiveTypeId(
   userMap: Map<string, number | null>,
   defaultTypeId: number | null,
 ): EffectiveType {
-  if (row.itemId != null) return 'tradeable'
   const name = normalizeName(row.name)
   if (userMap.has(name)) {
     const t = userMap.get(name)
     return t ?? (defaultTypeId ?? 'unset')
   }
   if (commonMap.has(name)) return commonMap.get(name)!
+  if (row.itemId != null) return 'tradeable'
   return 'unset'
 }
