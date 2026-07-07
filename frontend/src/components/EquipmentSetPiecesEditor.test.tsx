@@ -15,6 +15,13 @@ const categories: ItemCategory[] = [
       { id: 13, parent_id: 1, name: '脚(防)', sort_order: 3 },
     ],
   },
+  {
+    id: 2, parent_id: null, name: 'その他', sort_order: 2,
+    children: [
+      { id: 21, parent_id: 2, name: '未開封ペット', sort_order: 1 },
+      { id: 22, parent_id: 2, name: 'レシピ', sort_order: 2 },
+    ],
+  },
 ]
 
 const makeForm = (parts: EquipmentSetForm['parts']): EquipmentSetForm => ({
@@ -64,5 +71,27 @@ describe('EquipmentSetPiecesEditor 構成部位の名前入力欄の並び順', 
       .map((el) => (el as HTMLInputElement).value)
     // カテゴリ順（頭→脚）で並ぶ
     expect(urls).toEqual(['http://moepic.com/head', 'http://moepic.com/leg'])
+  })
+})
+
+describe('EquipmentSetPiecesEditor 構成部位カテゴリの候補', () => {
+  it('最上位カテゴリ「その他」（未開封ペット・レシピ）は部位候補に表示しない', () => {
+    render(
+      <EquipmentSetPiecesEditor
+        categories={categories}
+        value={makeForm([])}
+        onChange={() => {}}
+        bonusValueLabelOptions={[]}
+        statLabelOptions={[]}
+      />
+    )
+
+    // 装備部位カテゴリは表示される
+    expect(screen.getByText('防具')).toBeInTheDocument()
+    expect(screen.getByText('頭(防)')).toBeInTheDocument()
+    // 「その他」グループの子カテゴリは部位候補に表示されない
+    // （「その他」の文字列自体は追加効果の自由入力セクション見出しにも使われるため、子カテゴリで判定する）
+    expect(screen.queryByText('未開封ペット')).not.toBeInTheDocument()
+    expect(screen.queryByText('レシピ')).not.toBeInTheDocument()
   })
 })
