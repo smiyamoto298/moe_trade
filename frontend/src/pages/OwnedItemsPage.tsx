@@ -1269,6 +1269,31 @@ export default function OwnedItemsPage() {
               )}
             </div>
 
+            {/* アイテム情報が未登録の行は、ここからアイテム登録もできる（登録すると取引可能になる）。
+                行内の登録ボタンと同様、「...」省略名は候補ダイアログ、完全名は新規登録フォームへ。 */}
+            {!typeDialogRow.item && (
+              <div className="border-t border-surface-border pt-3">
+                <p className="text-xs text-gray-400 mb-2">
+                  このアイテムのアイテム情報は未登録です。登録すると種別は「取引可能」になり、出品・買取に使えます。
+                </p>
+                {isTruncatedName(typeDialogRow.name) ? (
+                  <button
+                    onClick={() => { const id = typeDialogRow.id; setTypeDialogRowId(null); setCandidateRowId(id) }}
+                    className="text-xs bg-sky-600/80 hover:bg-sky-600 text-white px-3 py-1.5 rounded transition-colors"
+                  >
+                    候補から登録
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { const id = typeDialogRow.id; const name = typeDialogRow.name; setTypeDialogRowId(null); openNewItemForm(id, name) }}
+                    className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-3 py-1.5 rounded transition-colors"
+                  >
+                    + アイテム情報を新規登録
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* 管理者のみ: 新規種別を登録して割り当て */}
             {isAdmin && (
               <div className="flex items-center gap-2 border-t border-surface-border pt-3">

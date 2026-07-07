@@ -38,8 +38,8 @@ vi.mock('../contexts/DialogContext', () => ({
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { role: 'user' } }),
 }))
-vi.mock('../components/NewItemForm', () => ({ default: () => <div /> }))
-vi.mock('../components/CandidateSelectModal', () => ({ default: () => <div /> }))
+vi.mock('../components/NewItemForm', () => ({ default: () => <div data-testid="new-item-form" /> }))
+vi.mock('../components/CandidateSelectModal', () => ({ default: () => <div data-testid="candidate-select-modal" /> }))
 vi.mock('../components/PriceAnalyticsModal', () => ({ default: () => <div /> }))
 vi.mock('../components/equipmentCells', () => ({ BaseStatBadges: () => <div /> }))
 
@@ -385,6 +385,88 @@ describe('OwnedItemsPage 種別の変更', () => {
     const dialog2 = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
     fireEvent.click(within(dialog2).getByText('種別を解除'))
     expect(await screen.findByTitle('登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます')).toBeInTheDocument()
+  })
+
+  // design.md「種別選択ダイアログ」: アイテム情報が未登録（item=null）の行のダイアログには
+  // 登録ボタンを表示する。完全名は「新規登録」、末尾「...」の省略名は「候補から登録」。
+  // 登録済み（item あり）の行には表示しない。
+  it('未登録行のダイアログに新規登録ボタンを表示し、クリックで登録フォームが開く', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [{ id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 }],
+        items: [],
+      },
+    })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '謎の薬', itemId: null, item: null })]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // 種別バッジをクリックしてダイアログを開く
+    fireEvent.click(await screen.findByTitle('このアイテムの種別を設定'))
+    const dialog = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+
+    // 未登録の案内と新規登録ボタンが表示される
+    expect(within(dialog).getByText(/アイテム情報は未登録です/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: '+ アイテム情報を新規登録' }))
+
+    // ダイアログが閉じ、新規登録フォームが開く
+    expect(screen.queryByText('種別を選択')).not.toBeInTheDocument()
+    expect(await screen.findByTestId('new-item-form')).toBeInTheDocument()
+  })
+
+  it('省略名（...）の未登録行のダイアログでは「候補から登録」を表示し、候補ダイアログが開く', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [{ id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 }],
+        items: [],
+      },
+    })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '炎の大...', itemId: null, item: null })]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByTitle('このアイテムの種別を設定'))
+    const dialog = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '候補から登録' }))
+
+    expect(screen.queryByText('種別を選択')).not.toBeInTheDocument()
+    expect(await screen.findByTestId('candidate-select-modal')).toBeInTheDocument()
+  })
+
+  it('登録済み（取引可能）の行のダイアログには登録ボタンを表示しない', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [{ id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 }],
+        items: [],
+      },
+    })
+    const item = makeItem({ id: 12, name: '炎の大剣' })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '炎の大剣', itemId: 12, item })]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByTitle('登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます'))
+    const dialog = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+
+    expect(within(dialog).queryByText(/アイテム情報は未登録です/)).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: '+ アイテム情報を新規登録' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: '候補から登録' })).not.toBeInTheDocument()
   })
 })
 
