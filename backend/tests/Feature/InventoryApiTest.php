@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\MoeAccount;
 use App\Models\OwnedItem;
 use App\Models\UserExcludedItem;
+use App\Models\UserExclusionType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -326,5 +327,149 @@ class InventoryApiTest extends TestCase
             'items'      => [['count' => 1]], // name 必須
             'exclusions' => [],
         ])->assertStatus(422)->assertJsonValidationErrors('items.0.name');
+    }
+
+    // ---- ユーザーごとのカスタム種別 ----
+
+    public function test_カスタム種別を保存でき割当と一緒にスナップショットへ含まれる(): void
+    {
+        $user = $this->makeUser();
+
+        $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'     => [],
+            'items'        => [],
+            'custom_types' => [
+                ['key' => 'ct_a', 'name' => 'コレクション', 'sort_order' => 0],
+                ['key' => 'ct_b', 'name' => '倉庫整理', 'sort_order' => 1],
+            ],
+            'exclusions'   => [['name' => 'ぬいぐるみ', 'custom_type_key' => 'ct_a']],
+        ])->assertOk();
+
+        // カスタム種別がスナップショットに含まれる（sort_order 順）
+        $types = collect($res->json('custom_types'));
+        $this->assertSame(['コレクション', '倉庫整理'], $types->pluck('name')->all());
+
+        // 割当はカスタム種別のサーバー id（custom_type_id）で返る
+        $collectionId = $types->firstWhere('name', 'コレクション')['id'];
+        $exclusion = collect($res->json('exclusions'))->firstWhere('name', 'ぬいぐるみ');
+        $this->assertSame($collectionId, $exclusion['custom_type_id']);
+        $this->assertNull($exclusion['exclusion_type_id']);
+
+        $this->assertDatabaseHas('user_exclusion_types', ['user_id' => $user->id, 'name' => 'コレクション']);
+        $this->assertDatabaseHas('user_excluded_items', [
+            'user_id' => $user->id, 'name' => 'ぬいぐるみ', 'user_exclusion_type_id' => $collectionId,
+        ]);
+    }
+
+    public function test_カスタム種別は同名ならidを保ってupsertされpayloadに無いものは削除される(): void
+    {
+        $user = $this->makeUser();
+        $base = ['accounts' => [], 'items' => [], 'exclusions' => []];
+
+        $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', $base + [
+            'custom_types' => [
+                ['key' => 'ct_a', 'name' => 'コレクション'],
+                ['key' => 'ct_b', 'name' => '倉庫整理'],
+            ],
+        ])->assertOk();
+        $keepId = UserExclusionType::where('user_id', $user->id)->where('name', 'コレクション')->value('id');
+
+        // 「コレクション」を残し「倉庫整理」を消して再保存（クライアントキーは毎回変わってもよい）
+        $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', $base + [
+            'custom_types' => [['key' => 'ct_x', 'name' => 'コレクション']],
+        ])->assertOk();
+
+        // 同名は id が保たれる（端末に保存した種別タブ選択などの参照が壊れない）
+        $this->assertSame($keepId, $res->json('custom_types.0.id'));
+        // payload に無いものは削除される（全置換）
+        $this->assertDatabaseMissing('user_exclusion_types', ['user_id' => $user->id, 'name' => '倉庫整理']);
+        $this->assertSame(1, UserExclusionType::where('user_id', $user->id)->count());
+    }
+
+    public function test_不正なcustom_type_keyの割当は共通種別の割当として扱われる(): void
+    {
+        $user = $this->makeUser();
+
+        $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'     => [],
+            'items'        => [],
+            'custom_types' => [],
+            'exclusions'   => [['name' => 'なぞ', 'custom_type_key' => 'ct_missing']],
+        ])->assertOk();
+
+        // 存在しないキー → カスタム無し（exclusion_type_id も無いので既定種別=null）
+        $this->assertDatabaseHas('user_excluded_items', [
+            'user_id' => $user->id, 'name' => 'なぞ',
+            'user_exclusion_type_id' => null, 'exclusion_type_id' => null,
+        ]);
+    }
+
+    public function test_custom_typesを省略した保存では既存カスタム種別も全置換で消える(): void
+    {
+        // 旧クライアント互換: custom_types を送らない PUT も受け付ける（台帳は全置換方式のため
+        // カスタム種別も消える）。
+        $user = $this->makeUser();
+        UserExclusionType::create(['user_id' => $user->id, 'name' => 'コレクション']);
+
+        $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts' => [], 'items' => [], 'exclusions' => [],
+        ])->assertOk();
+
+        $this->assertSame(0, UserExclusionType::where('user_id', $user->id)->count());
+    }
+
+    public function test_カスタム種別の名前が長すぎるとバリデーションエラーになる(): void
+    {
+        $user = $this->makeUser();
+        $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'     => [],
+            'items'        => [],
+            'custom_types' => [['key' => 'ct_a', 'name' => str_repeat('あ', 101)]],
+            'exclusions'   => [],
+        ])->assertStatus(422)->assertJsonValidationErrors('custom_types.0.name');
+    }
+
+    public function test_カスタム種別は他ユーザーのデータに影響しない(): void
+    {
+        $me    = $this->makeUser();
+        $other = $this->makeUser();
+        $otherType = UserExclusionType::create(['user_id' => $other->id, 'name' => 'コレクション']);
+        UserExcludedItem::create(['user_id' => $other->id, 'name' => 'ぬいぐるみ', 'user_exclusion_type_id' => $otherType->id]);
+
+        // 自分が同名のカスタム種別を保存しても他ユーザーの行はそのまま
+        $res = $this->actingAs($me, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'     => [],
+            'items'        => [],
+            'custom_types' => [['key' => 'ct_a', 'name' => 'コレクション']],
+            'exclusions'   => [],
+        ])->assertOk();
+
+        $myId = $res->json('custom_types.0.id');
+        $this->assertNotSame($otherType->id, $myId);
+        $this->assertDatabaseHas('user_exclusion_types', ['id' => $otherType->id, 'user_id' => $other->id]);
+
+        // 他ユーザーのスナップショットには他ユーザーのカスタム種別だけが返る
+        $otherRes = $this->actingAs($other, 'sanctum')->getJson('/api/mypage/inventory')->assertOk();
+        $this->assertSame([$otherType->id], collect($otherRes->json('custom_types'))->pluck('id')->all());
+    }
+
+    public function test_共通登録済みの名前へのカスタム割当は冗長削除されず保存される(): void
+    {
+        $user = $this->makeUser();
+        $rare = \App\Models\ExclusionType::create(['name' => 'レア']);
+        // 共通: 「ゴミ」=レア
+        \App\Models\ExcludedItem::create(['name' => 'ゴミ', 'exclusion_type_id' => $rare->id]);
+
+        $res = $this->actingAs($user, 'sanctum')->putJson('/api/mypage/inventory', [
+            'accounts'     => [],
+            'items'        => [],
+            'custom_types' => [['key' => 'ct_a', 'name' => 'マイ分類']],
+            // カスタム割当は共通種別との冗長比較の対象外（常にユーザー固有の上書き）
+            'exclusions'   => [['name' => 'ゴミ', 'custom_type_key' => 'ct_a']],
+        ])->assertOk();
+
+        $exclusion = collect($res->json('exclusions'))->firstWhere('name', 'ゴミ');
+        $this->assertNotNull($exclusion);
+        $this->assertSame($res->json('custom_types.0.id'), $exclusion['custom_type_id']);
     }
 }

@@ -13,9 +13,9 @@ import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import Spinner from '../components/Spinner'
 import OfficialDbLink from '../components/OfficialDbLink'
 import { BaseStatBadges } from '../components/equipmentCells'
-import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts, ExclusionType } from '../types'
+import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo, MyItemCounts, ExclusionType, CustomTypeId } from '../types'
 import { parseItemBox, isTransferNg, isTruncatedName, truncatedBase } from '../utils/itemBoxPaste'
-import { newLocalId, emptyInventory, effectiveTypeId, normalizeName, type EffectiveType } from '../utils/inventory'
+import { newLocalId, emptyInventory, effectiveTypeId, isCustomTypeId, normalizeName, type EffectiveType } from '../utils/inventory'
 import { compareJa } from '../utils/collator'
 import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getDisplayType, setDisplayType, getServerExcludedNames, setServerExcludedNames, type DisplayType } from '../utils/inventoryStore'
 
@@ -79,6 +79,10 @@ export default function OwnedItemsPage() {
   // 管理者が種別ダイアログから新規種別を登録するための入力
   const [newTypeName, setNewTypeName] = useState('')
   const [addingType, setAddingType] = useState(false)
+  // 種別ダイアログからカスタム種別（自分専用）を追加するための入力
+  const [newCustomTypeName, setNewCustomTypeName] = useState('')
+  // カスタム種別の管理モーダル
+  const [customTypeModalOpen, setCustomTypeModalOpen] = useState(false)
   // サーバ登録対象外の設定モーダル
   const [serverExcludedModalOpen, setServerExcludedModalOpen] = useState(false)
   const [serverExcludedInput, setServerExcludedInput] = useState('')
@@ -142,6 +146,8 @@ export default function OwnedItemsPage() {
       const defId = common.types.find((t) => t.is_default)?.id ?? null
       const commonTypeByName = new Map(common.items.map((i) => [normalizeName(i.name), i.type_id]))
       const prunedExclusions = inv.exclusions.filter((e) => {
+        // カスタム種別への割当は常にユーザー固有なので冗長判定の対象外
+        if (e.custom_type_id != null) return true
         const ct = commonTypeByName.get(normalizeName(e.name))
         return ct == null || (e.exclusion_type_id ?? defId) !== ct
       })
@@ -151,6 +157,11 @@ export default function OwnedItemsPage() {
       setCommonItems(common.items)
       setExclusionTypes(common.types)
       setServerCommonNames(serverCommon)
+      // 端末に保存された種別タブが既に存在しないカスタム種別を指していたら既定へ戻す
+      // （DB保存モードでは保存のたびにサーバー id が変わり得るため）
+      if (isCustomTypeId(displayType) && !cleanedInv.customTypes.some((t) => t.id === displayType)) {
+        selectDisplayType('tradeable')
+      }
       // 既定の貼り付け先は先頭アカウント
       setPasteAccountId(cleanedInv.accounts[0]?.id ?? null)
       setLoading(false)
@@ -375,13 +386,22 @@ export default function OwnedItemsPage() {
     () => new Map(commonItems.map((i) => [normalizeName(i.name), i.type_id])),
     [commonItems]
   )
-  // ユーザーの種別割当: name → type_id|null
-  const userMap = useMemo(
-    () => new Map(inventory.exclusions.map((e) => [normalizeName(e.name), e.exclusion_type_id])),
-    [inventory.exclusions]
-  )
-  // 種別名の解決（表示用）
-  const typeName = (id: number) => exclusionTypes.find((t) => t.id === id)?.name ?? '種別'
+  // ユーザーの種別割当: name → カスタム種別id | type_id | null（カスタムが共通種別より優先）
+  const userMap = useMemo(() => {
+    const customIds = new Set(inventory.customTypes.map((t) => t.id))
+    return new Map<string, number | CustomTypeId | null>(
+      inventory.exclusions.map((e) => [
+        normalizeName(e.name),
+        // 削除済みカスタム種別への参照は無視して共通種別（無ければ既定種別）へ落とす
+        e.custom_type_id != null && customIds.has(e.custom_type_id) ? e.custom_type_id : e.exclusion_type_id,
+      ])
+    )
+  }, [inventory.exclusions, inventory.customTypes])
+  // 種別名の解決（表示用）。カスタム種別（ct_ 付き id）も共通種別も引ける
+  const typeName = (id: number | CustomTypeId) =>
+    (isCustomTypeId(id)
+      ? inventory.customTypes.find((t) => t.id === id)?.name
+      : exclusionTypes.find((t) => t.id === id)?.name) ?? '種別'
   // 行の実効種別
   const rowType = (row: OwnedItem): EffectiveType => effectiveTypeId(row, commonMap, userMap, defaultTypeId)
 
@@ -583,7 +603,19 @@ export default function OwnedItemsPage() {
 
   // ユーザーの種別割当を付与/更新する（アイテム名単位。同名の全行に効く）。
   // 取り込み済みの行は削除しない（表示種別で切り替える方式）。
-  const assignUserType = (name: string, typeId: number | null) => {
+  // カスタム種別（ct_ 付き id）も共通種別（number）も同じ入口で割り当てる。
+  const assignUserType = (name: string, typeId: number | CustomTypeId | null) => {
+    if (isCustomTypeId(typeId)) {
+      commit((p) => ({
+        ...p,
+        exclusions: [
+          ...p.exclusions.filter((e) => e.name !== name),
+          { name, exclusion_type_id: null, custom_type_id: typeId },
+        ],
+      }))
+      // カスタム種別への割当は本人専用の分類なので、共通種別化の検討用報告はしない
+      return
+    }
     // 選んだ種別が共通登録済みの種別と同じなら、個別設定は冗長なので持たない
     // （共通に従う＝該当設定は削除。実効種別は共通から同じ種別になる）。
     const commonType = commonMap.get(normalizeName(name))
@@ -608,6 +640,66 @@ export default function OwnedItemsPage() {
   // ユーザーの種別割当を解除する（未設定に戻す）
   const clearUserType = (name: string) =>
     commit((p) => ({ ...p, exclusions: p.exclusions.filter((e) => e.name !== name) }))
+
+  // ---- カスタム種別（自分専用）の操作 ----
+  // カスタム種別を追加する（重複名は共通種別・カスタム種別の両方と照合して拒否）。
+  const createCustomType = async (rawName: string): Promise<CustomTypeId | null> => {
+    const name = rawName.trim()
+    if (!name) return null
+    if (name.length > 100) {
+      await alert('種別名は100文字以内で入力してください。', { title: 'エラー' })
+      return null
+    }
+    if (inventory.customTypes.some((t) => t.name === name) || exclusionTypes.some((t) => t.name === name)) {
+      await alert('同じ名前の種別が既にあります。', { title: 'エラー' })
+      return null
+    }
+    const id = newLocalId('ct') as CustomTypeId
+    commit((p) => ({ ...p, customTypes: [...p.customTypes, { id, name }] }))
+    return id
+  }
+
+  // 種別ダイアログからカスタム種別を追加し、そのまま当該アイテムへ割り当てる。
+  const createCustomTypeAndAssign = async (rowName: string) => {
+    const id = await createCustomType(newCustomTypeName)
+    if (!id) return
+    assignUserType(rowName, id)
+    setNewCustomTypeName('')
+    setTypeDialogRowId(null)
+  }
+
+  // 管理モーダルからの追加（名前はダイアログ内のテキストボックスで受け取る）
+  const addCustomTypeViaPrompt = async () => {
+    const name = (await prompt('追加するカスタム種別名', { title: 'カスタム種別', confirmLabel: '決定' }))?.trim()
+    if (!name) return
+    await createCustomType(name)
+  }
+
+  const renameCustomType = async (id: CustomTypeId, current: string) => {
+    const name = (await prompt('カスタム種別名', { title: 'カスタム種別', defaultValue: current, confirmLabel: '決定' }))?.trim()
+    if (!name || name === current) return
+    if (inventory.customTypes.some((t) => t.id !== id && t.name === name) || exclusionTypes.some((t) => t.name === name)) {
+      await alert('同じ名前の種別が既にあります。', { title: 'エラー' })
+      return
+    }
+    commit((p) => ({ ...p, customTypes: p.customTypes.map((t) => (t.id === id ? { ...t, name } : t)) }))
+  }
+
+  // カスタム種別を削除する。割当も一緒に解除する（実効種別は共通割当／取引可能／未登録へ戻る）。
+  const removeCustomType = async (id: CustomTypeId, name: string) => {
+    const count = inventory.exclusions.filter((e) => e.custom_type_id === id).length
+    const ok = await confirm(
+      `カスタム種別「${name}」を削除します。${count > 0 ? `この種別を割り当てた${count}件のアイテム名は割当が解除されます。` : ''}よろしいですか？`,
+      { title: 'カスタム種別の削除', confirmLabel: '削除', cancelLabel: 'キャンセル', danger: true }
+    )
+    if (!ok) return
+    commit((p) => ({
+      ...p,
+      customTypes: p.customTypes.filter((t) => t.id !== id),
+      exclusions: p.exclusions.filter((e) => e.custom_type_id !== id),
+    }))
+    if (displayType === id) selectDisplayType('all')
+  }
 
   // 管理者が種別ダイアログから新しい種別を登録し、その種別を当該アイテムへ割り当てる。
   const createTypeAndAssign = async (name: string) => {
@@ -902,6 +994,8 @@ export default function OwnedItemsPage() {
             { id: 'all' as DisplayType, label: 'すべて' },
             { id: 'tradeable' as DisplayType, label: '取引可能' },
             ...exclusionTypes.map((t) => ({ id: t.id as DisplayType, label: t.name })),
+            // ユーザーごとのカスタム種別（自分専用）
+            ...inventory.customTypes.map((t) => ({ id: t.id as DisplayType, label: t.name })),
             { id: 'unset' as DisplayType, label: '未登録' },
           ]).map((tab) => {
             const active = displayType === tab.id
@@ -922,6 +1016,14 @@ export default function OwnedItemsPage() {
               </button>
             )
           })}
+          <button
+            type="button"
+            onClick={() => setCustomTypeModalOpen(true)}
+            className="text-xs px-3 py-1 rounded-full border border-dashed border-surface-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+            title="自分専用のカスタム種別を追加・改名・削除する"
+          >
+            ⚙ カスタム種別
+          </button>
           </div>
         </div>
       </div>
@@ -1250,7 +1352,7 @@ export default function OwnedItemsPage() {
               <h3 className="text-base font-bold text-white">種別を選択</h3>
               <p className="text-xs text-gray-400 mt-1">
                 「{typeDialogRow.name}」の表示種別（ジャンル）を選びます。同じ名前のアイテムすべてに適用されます。
-                {isAdmin ? '管理者は新しい種別を追加できます。' : '既存の種別から選んでください。'}
+                自分専用のカスタム種別も追加できます。
               </p>
             </div>
 
@@ -1264,9 +1366,48 @@ export default function OwnedItemsPage() {
                   {t.name}
                 </button>
               ))}
-              {exclusionTypes.length === 0 && (
-                <p className="text-sm text-gray-500">選択できる種別がありません。{isAdmin ? '下から追加してください。' : '管理者の登録をお待ちください。'}</p>
+              {exclusionTypes.length === 0 && inventory.customTypes.length === 0 && (
+                <p className="text-sm text-gray-500">選択できる種別がありません。下からカスタム種別を追加してください。</p>
               )}
+            </div>
+
+            {/* カスタム種別（自分専用）。誰でも追加でき、自分のアイテムボックスにだけ表示される。
+                保存先がサーバー（DB）のときはカスタム種別もサーバーに保存される。 */}
+            <div className="border-t border-surface-border pt-3 space-y-2">
+              <p className="text-xs text-gray-400">
+                カスタム種別（自分専用）。保存先が「サーバー」の場合はカスタム種別もサーバーに保存されます。
+              </p>
+              {inventory.customTypes.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {inventory.customTypes.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => { assignUserType(typeDialogRow.name, t.id); setTypeDialogRowId(null) }}
+                      className="text-xs px-3 py-1.5 rounded-full border border-primary-500/40 text-primary-300 hover:border-primary-500 hover:text-white transition-colors"
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newCustomTypeName}
+                  onChange={(e) => setNewCustomTypeName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') createCustomTypeAndAssign(typeDialogRow.name) }}
+                  placeholder="新しいカスタム種別名"
+                  maxLength={100}
+                  className="flex-1 bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
+                />
+                <button
+                  onClick={() => createCustomTypeAndAssign(typeDialogRow.name)}
+                  disabled={!newCustomTypeName.trim()}
+                  className="text-sm bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-4 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                >
+                  + 追加して割当
+                </button>
+              </div>
             </div>
 
             {/* アイテム情報が未登録の行は、ここからアイテム登録もできる（登録すると取引可能になる）。
@@ -1294,7 +1435,7 @@ export default function OwnedItemsPage() {
               </div>
             )}
 
-            {/* 管理者のみ: 新規種別を登録して割り当て */}
+            {/* 管理者のみ: 全ユーザー共通の新規種別を登録して割り当て */}
             {isAdmin && (
               <div className="flex items-center gap-2 border-t border-surface-border pt-3">
                 <input
@@ -1302,7 +1443,7 @@ export default function OwnedItemsPage() {
                   value={newTypeName}
                   onChange={(e) => setNewTypeName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') createTypeAndAssign(typeDialogRow.name) }}
-                  placeholder="新しい種別名"
+                  placeholder="新しい共通種別名（管理者）"
                   className="flex-1 bg-surface border border-surface-border rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
                 />
                 <button
@@ -1321,6 +1462,40 @@ export default function OwnedItemsPage() {
                 <button onClick={() => { clearUserType(typeDialogRow.name); setTypeDialogRowId(null) }} className="text-sm text-red-400 hover:text-red-300 px-2 py-2">種別を解除</button>
               ) : <span />}
               <button onClick={() => setTypeDialogRowId(null)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* カスタム種別の管理モーダル（自分専用の表示種別を追加・改名・削除する） */}
+      {customTypeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto !mt-0" onClick={() => setCustomTypeModalOpen(false)}>
+          <div className="bg-surface-card border border-surface-border rounded-lg p-5 max-w-md w-full my-8 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">カスタム種別の管理</h3>
+              <button onClick={addCustomTypeViaPrompt} className="text-xs bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded transition-colors">+ 追加</button>
+            </div>
+            <p className="text-xs text-gray-400">
+              自分専用の表示種別です。種別タブと種別選択ダイアログに追加され、他のユーザーには表示されません。
+              保存先が「サーバー」の場合はカスタム種別もサーバーに保存されます。
+              削除すると、その種別を割り当てたアイテム名の割当も解除されます。
+            </p>
+            {inventory.customTypes.length === 0 ? (
+              <p className="text-sm text-gray-500 py-4 text-center">カスタム種別はありません。「追加」から登録できます。</p>
+            ) : (
+              <div className="space-y-1.5">
+                {inventory.customTypes.map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 bg-surface border border-surface-border rounded px-3 py-2">
+                    <span className="flex-1 text-sm text-white truncate">{t.name}</span>
+                    <span className="text-xs text-gray-500">{inventory.exclusions.filter((e) => e.custom_type_id === t.id).length}件</span>
+                    <button onClick={() => renameCustomType(t.id, t.name)} className="text-xs text-gray-300 hover:text-white px-2">改名</button>
+                    <button onClick={() => removeCustomType(t.id, t.name)} className="text-xs text-red-400 hover:text-red-300 px-2">削除</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button onClick={() => setCustomTypeModalOpen(false)} className="text-sm text-gray-300 hover:text-white px-4 py-2 rounded border border-surface-border transition-colors">閉じる</button>
             </div>
           </div>
         </div>

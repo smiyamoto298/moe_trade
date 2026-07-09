@@ -1,6 +1,6 @@
-import type { InventoryData, InventoryStorageMode, OwnedItem, UserTypeAssignment } from '../types'
+import type { CustomType, CustomTypeId, InventoryData, InventoryStorageMode, OwnedItem, UserTypeAssignment } from '../types'
 import { inventoryApi, type InventorySnapshot, type InventoryPutPayload } from '../api/inventory'
-import { emptyInventory, normalizeName } from './inventory'
+import { emptyInventory, isCustomTypeId, normalizeName } from './inventory'
 
 // 所有アイテム台帳のストレージアダプタ。
 // 保存先（ローカルストレージ / DB）を差し替えても UI 側は同じ InventoryData を扱う。
@@ -16,7 +16,7 @@ export const SERVER_EXCLUDED_KEY = 'moe_inventory_server_excluded'
 // DBモード時に、サーバ登録対象外のためサーバーへ送らずローカルにだけ保持するアイテム（分割保存）。
 export const LOCAL_DB_SPLIT_KEY = 'moe_inventory:db-local:v1'
 
-export type DisplayType = 'all' | 'tradeable' | 'unset' | number
+export type DisplayType = 'all' | 'tradeable' | 'unset' | number | CustomTypeId
 
 export function getSkipExcludeConfirm(): boolean {
   try {
@@ -41,6 +41,7 @@ export function getDisplayType(): DisplayType {
     const raw = localStorage.getItem(DISPLAY_TYPE_KEY)
     if (raw == null) return 'tradeable'
     if (raw === 'all' || raw === 'tradeable' || raw === 'unset') return raw
+    if (isCustomTypeId(raw)) return raw
     const n = Number(raw)
     return Number.isFinite(n) ? n : 'tradeable'
   } catch {
@@ -96,7 +97,7 @@ export function setStorageMode(mode: InventoryStorageMode): void {
 
 // ---- 後方互換: exclusions（種別割当）の正規化 -------------------------------
 
-/** 旧形式（文字列配列）／新形式（{name,exclusion_type_id}）どちらも UserTypeAssignment[] に正規化する。 */
+/** 旧形式（文字列配列）／新形式（{name,exclusion_type_id,custom_type_id}）どちらも UserTypeAssignment[] に正規化する。 */
 function normalizeExclusions(raw: unknown): UserTypeAssignment[] {
   if (!Array.isArray(raw)) return []
   return raw
@@ -104,11 +105,31 @@ function normalizeExclusions(raw: unknown): UserTypeAssignment[] {
       if (typeof e === 'string') return { name: e, exclusion_type_id: null }
       if (e && typeof e === 'object' && typeof (e as { name?: unknown }).name === 'string') {
         const t = (e as { exclusion_type_id?: unknown }).exclusion_type_id
-        return { name: (e as { name: string }).name, exclusion_type_id: typeof t === 'number' ? t : null }
+        const c = (e as { custom_type_id?: unknown }).custom_type_id
+        return {
+          name: (e as { name: string }).name,
+          exclusion_type_id: typeof t === 'number' ? t : null,
+          custom_type_id: isCustomTypeId(c) ? c : null,
+        }
       }
       return null
     })
     .filter((v): v is UserTypeAssignment => v !== null)
+}
+
+/** ローカル保存のカスタム種別を正規化する（id は `ct_` プレフィックス付き文字列のみ有効）。 */
+function normalizeCustomTypes(raw: unknown): CustomType[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((e): CustomType | null => {
+      if (e && typeof e === 'object'
+        && isCustomTypeId((e as { id?: unknown }).id)
+        && typeof (e as { name?: unknown }).name === 'string') {
+        return { id: (e as { id: CustomTypeId }).id, name: (e as { name: string }).name }
+      }
+      return null
+    })
+    .filter((v): v is CustomType => v !== null)
 }
 
 // ---- ローカルストレージ実装 -------------------------------------------------
@@ -123,6 +144,7 @@ function loadLocal(): InventoryData {
       // 旧データには note が無いため空文字で補う
       items: (parsed.items ?? []).map((it) => ({ ...it, note: it.note ?? '' })),
       exclusions: normalizeExclusions(parsed.exclusions),
+      customTypes: normalizeCustomTypes(parsed.customTypes),
     }
   } catch {
     return emptyInventory()
@@ -174,6 +196,9 @@ function clearLocalSplit(): void {
 // ---- DB スナップショット ⇔ クライアント表現の変換 --------------------------
 
 export function snapshotToInventory(s: InventorySnapshot): InventoryData {
+  // カスタム種別はサーバー id を `ct_${id}` にしてクライアント表現へ（保存時は key として送り返す）
+  const customTypes: CustomType[] = (s.custom_types ?? []).map((t) => ({ id: `ct_${t.id}` as CustomTypeId, name: t.name }))
+  const customIds = new Set(customTypes.map((t) => t.id))
   return {
     accounts: s.accounts.map((a) => ({ id: String(a.id), name: a.name })),
     items: s.items.map((it) => ({
@@ -190,14 +215,25 @@ export function snapshotToInventory(s: InventorySnapshot): InventoryData {
       marked: it.is_marked,
       note: it.note ?? '',
     })),
-    exclusions: normalizeExclusions(s.exclusions),
+    // サーバーの custom_type_id（number）は `ct_${id}` に変換してから正規化する
+    // （存在しないカスタム種別への参照は null に落とす）
+    exclusions: normalizeExclusions(
+      (Array.isArray(s.exclusions) ? (s.exclusions as unknown[]) : []).map((e) => {
+        const c = e && typeof e === 'object' ? (e as { custom_type_id?: unknown }).custom_type_id : null
+        if (typeof c !== 'number') return e
+        const cid = `ct_${c}` as CustomTypeId
+        return { ...(e as object), custom_type_id: customIds.has(cid) ? cid : null }
+      })
+    ),
+    customTypes,
   }
 }
 
 export function inventoryToPayload(d: InventoryData): InventoryPutPayload {
   return {
-    // アカウントはクライアントの id を key として送る（サーバーが新IDへ対応づける）
+    // アカウント・カスタム種別はクライアントの id を key として送る（サーバーがIDへ対応づける）
     accounts: d.accounts.map((a, i) => ({ key: a.id, name: a.name, sort_order: i })),
+    custom_types: d.customTypes.map((t, i) => ({ key: t.id, name: t.name, sort_order: i })),
     items: d.items.map((it, i) => ({
       account_key: it.accountId,
       item_id: it.itemId,
@@ -211,7 +247,11 @@ export function inventoryToPayload(d: InventoryData): InventoryPutPayload {
       note: it.note ?? '',
       sort_order: i,
     })),
-    exclusions: d.exclusions.map((e) => ({ name: e.name, exclusion_type_id: e.exclusion_type_id })),
+    exclusions: d.exclusions.map((e) => ({
+      name: e.name,
+      exclusion_type_id: e.exclusion_type_id,
+      custom_type_key: e.custom_type_id ?? null,
+    })),
   }
 }
 

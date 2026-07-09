@@ -435,12 +435,26 @@ export interface OwnedItem {
   note: string
 }
 
+// ユーザーごとのカスタム表示種別の id（クライアント表現）。
+// 共通種別の number 型 id と区別するため常に `ct_` プレフィックス付きの文字列
+// （ローカル生成キー、または DB保存時のサーバー id を `ct_${id}` にしたもの）。
+export type CustomTypeId = `ct_${string}`
+
+// ユーザーごとのカスタム表示種別。共通種別（ExclusionType・admin管理）とは別に、
+// 各ユーザーが自分専用の種別を追加できる。保存先が db のときはサーバーにも保存される。
+export interface CustomType {
+  id: CustomTypeId
+  name: string
+}
+
 // ユーザーが分類したアイテム名→表示種別（ジャンル）の割当。
-// exclusion_type_id が null の行は既定種別「その他」とみなす。
+// custom_type_id があればカスタム種別への割当（exclusion_type_id より優先）。
+// exclusion_type_id が null（かつカスタム無し）の行は既定種別「その他」とみなす。
 // 旧「個別除外」を表示種別へ概念転換したもの（フィールド名は後方互換のため exclusions のまま）。
 export interface UserTypeAssignment {
   name: string
   exclusion_type_id: number | null
+  custom_type_id?: CustomTypeId | null
 }
 
 export interface InventoryData {
@@ -448,6 +462,8 @@ export interface InventoryData {
   items: OwnedItem[]
   // ユーザーの種別割当（name→種別）
   exclusions: UserTypeAssignment[]
+  // ユーザーごとのカスタム種別
+  customTypes: CustomType[]
 }
 
 // 保存先（デフォルトはローカルストレージ）

@@ -71,10 +71,12 @@ const makeItem = (over: Partial<Item> = {}): Item => ({
   ...over,
 })
 
-const makeInventory = (items: InventoryData['items']): InventoryData => ({
+const makeInventory = (items: InventoryData['items'], over: Partial<InventoryData> = {}): InventoryData => ({
   accounts: [{ id: 'acc1', name: 'メイン' }],
   items,
   exclusions: [],
+  customTypes: [],
+  ...over,
 })
 
 const unlinkedRow = (over: Partial<InventoryData['items'][number]> = {}): InventoryData['items'][number] => ({
@@ -154,6 +156,7 @@ describe('OwnedItemsPage 表示切替タブ', () => {
         unlinkedRow({ id: 'r2', accountId: 'acc2', name: 'アイテムB' }),
       ],
       exclusions: [],
+      customTypes: [],
     }
     mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
     mockedMatch.mockResolvedValue({ data: {} })
@@ -221,6 +224,7 @@ describe('OwnedItemsPage 重複を確認', () => {
       ],
       // '光の杖' にユーザー種別を割り当て（unset ではなくなる）
       exclusions: [{ name: '光の杖', exclusion_type_id: 5 }],
+      customTypes: [],
     }
     mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
     mockedMatch.mockResolvedValue({ data: {} })
@@ -252,6 +256,7 @@ describe('OwnedItemsPage 重複を確認', () => {
         unlinkedRow({ id: 'r2', accountId: 'acc1', name: '炎の大剣', itemId: 12, item, worn: true }),
       ],
       exclusions: [],
+      customTypes: [],
     }
     mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
     mockedMatch.mockResolvedValue({ data: {} })
@@ -320,6 +325,7 @@ describe('OwnedItemsPage 種別の変更', () => {
       accounts: [{ id: 'acc1', name: 'メイン' }],
       items: [unlinkedRow({ id: 'r1', name: '光の杖', itemId: null, item: null })],
       exclusions: [{ name: '光の杖', exclusion_type_id: 1 }],
+      customTypes: [],
     }
     mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
     mockedMatch.mockResolvedValue({ data: {} })
@@ -467,6 +473,117 @@ describe('OwnedItemsPage 種別の変更', () => {
     expect(within(dialog).queryByText(/アイテム情報は未登録です/)).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: '+ アイテム情報を新規登録' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: '候補から登録' })).not.toBeInTheDocument()
+  })
+})
+
+describe('OwnedItemsPage カスタム種別', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  // design.md「カスタム種別」: 全ユーザーが種別選択ダイアログから自分専用のカスタム種別を
+  // 追加でき、追加した種別はそのまま当該アイテムへ割り当てられる。タブにも表示される。
+  it('ダイアログからカスタム種別を追加して割り当てられ、種別タブにも表示される', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [{ id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 }],
+        items: [],
+      },
+    })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '謎の薬', itemId: null, item: null })]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    const { container } = renderPage()
+
+    // 種別バッジ → ダイアログを開き、カスタム種別名を入力して「+ 追加して割当」
+    fireEvent.click(await screen.findByTitle('このアイテムの種別を設定'))
+    const dialog = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+    fireEvent.change(within(dialog).getByPlaceholderText('新しいカスタム種別名'), { target: { value: 'マイ分類' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '+ 追加して割当' }))
+
+    // 行の種別バッジがカスタム種別（ユーザー割当）になる
+    const userBtn = await screen.findByTitle('種別を変更・解除')
+    expect(userBtn).toHaveTextContent('マイ分類')
+
+    // 種別タブ行にもカスタム種別タブが現れる
+    const filterBar = container.querySelector('[data-tour="owned-filter"]') as HTMLElement
+    expect(within(filterBar).getByRole('button', { name: /マイ分類/ })).toBeInTheDocument()
+
+    // 保存データにカスタム種別と割当（custom_type_id）が含まれる
+    await waitFor(() => {
+      const saved = mockedSave.mock.calls.at(-1)?.[1] as InventoryData
+      expect(saved.customTypes).toHaveLength(1)
+      expect(saved.customTypes[0].name).toBe('マイ分類')
+      const assign = saved.exclusions.find((e) => e.name === '謎の薬')
+      expect(assign?.custom_type_id).toBe(saved.customTypes[0].id)
+    }, { timeout: 2500 })
+  })
+
+  it('カスタム種別のタブで表示を絞り込める', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [{ id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 }],
+        items: [],
+      },
+    })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory(
+        [
+          unlinkedRow({ id: 'r1', name: 'ぬいぐるみ', itemId: null, item: null }), // カスタム割当
+          unlinkedRow({ id: 'r2', name: '謎の薬', itemId: null, item: null }),     // 未設定
+        ],
+        {
+          customTypes: [{ id: 'ct_1', name: 'コレクション' }],
+          exclusions: [{ name: 'ぬいぐるみ', exclusion_type_id: null, custom_type_id: 'ct_1' }],
+        }
+      ),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    const { container } = renderPage()
+    await waitFor(() => expect(container.querySelector('[data-tour="owned-filter"]')).toBeTruthy())
+    const filterBar = container.querySelector('[data-tour="owned-filter"]') as HTMLElement
+
+    // カスタム割当の行はカスタム種別名のバッジで表示される
+    expect((await screen.findByTitle('種別を変更・解除'))).toHaveTextContent('コレクション')
+
+    // カスタム種別タブ（件数1）で絞り込むと、割り当てた行だけが見える
+    const tab = within(filterBar).getByRole('button', { name: /コレクション/ })
+    expect(tab).toHaveTextContent('(1)')
+    fireEvent.click(tab)
+    expect(screen.getByText('ぬいぐるみ')).toBeInTheDocument()
+    expect(screen.queryByText('謎の薬')).not.toBeInTheDocument()
+  })
+
+  it('ダイアログの既存カスタム種別チップからも割り当てられる', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedExcludedList.mockResolvedValue({
+      data: {
+        types: [{ id: 1, name: 'その他', is_default: true, default_enabled: true, sort_order: 0 }],
+        items: [],
+      },
+    })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory(
+        [unlinkedRow({ id: 'r1', name: '謎の薬', itemId: null, item: null })],
+        { customTypes: [{ id: 'ct_1', name: 'コレクション' }] }
+      ),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByTitle('このアイテムの種別を設定'))
+    const dialog = (await screen.findByText('種別を選択')).closest('div')!.parentElement as HTMLElement
+    fireEvent.click(within(dialog).getByRole('button', { name: 'コレクション' }))
+
+    const userBtn = await screen.findByTitle('種別を変更・解除')
+    expect(userBtn).toHaveTextContent('コレクション')
   })
 })
 

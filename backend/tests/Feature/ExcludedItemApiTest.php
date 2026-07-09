@@ -102,6 +102,50 @@ class ExcludedItemApiTest extends TestCase
         $this->assertSame(0, UserExcludedItem::where('name', 'ゴミ')->count());
     }
 
+    public function test_共通種別へ昇格してもカスタム種別への割当は削除されない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+
+        // u1 は自分のカスタム種別で「ゴミ」を分類、u2 は通常の個別割当
+        $custom = \App\Models\UserExclusionType::create(['user_id' => $u1->id, 'name' => 'マイ分類']);
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ', 'user_exclusion_type_id' => $custom->id]);
+        UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ']);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/excluded-items', [
+            'names' => ['ゴミ'],
+        ])->assertCreated();
+
+        // 通常の割当は共通へ集約されて消えるが、カスタム割当は本人の明示的な分類なので残る
+        $this->assertDatabaseHas('user_excluded_items', [
+            'user_id' => $u1->id, 'name' => 'ゴミ', 'user_exclusion_type_id' => $custom->id,
+        ]);
+        $this->assertSame(0, UserExcludedItem::where('user_id', $u2->id)->where('name', 'ゴミ')->count());
+    }
+
+    public function test_カスタム種別への割当は共通化候補の集計に含めない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+
+        // u1 はカスタム種別で分類（集計対象外）、u2 は通常割当（集計対象）
+        $custom = \App\Models\UserExclusionType::create(['user_id' => $u1->id, 'name' => 'マイ分類']);
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => 'ゴミ', 'user_exclusion_type_id' => $custom->id]);
+        UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ']);
+        // カスタム割当しか無い名前は候補自体に出ない
+        UserExcludedItem::create(['user_id' => $u1->id, 'name' => '秘蔵の品', 'user_exclusion_type_id' => $custom->id]);
+
+        $res = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')->assertOk();
+
+        $byName = collect($res->json())->keyBy('name');
+        // 「ゴミ」は u2 の1人分だけ（カスタム割当を「その他」に誤計上しない）
+        $this->assertSame(1, $byName['ゴミ']['user_count']);
+        $this->assertFalse($byName->has('秘蔵の品'));
+    }
+
     public function test_候補にはユーザーが最も多く割り当てた種別がsuggested_type_idとして付く(): void
     {
         $admin = $this->makeUserWithRole('admin');

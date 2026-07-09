@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class UserExcludedItem extends Model
 {
-    protected $fillable = ['user_id', 'name', 'exclusion_type_id'];
+    protected $fillable = ['user_id', 'name', 'exclusion_type_id', 'user_exclusion_type_id'];
 
     public function user()
     {
@@ -21,5 +21,11 @@ class UserExcludedItem extends Model
     public function type()
     {
         return $this->belongsTo(ExclusionType::class, 'exclusion_type_id');
+    }
+
+    /** ユーザーのカスタム種別への割当（設定時は共通種別 exclusion_type_id より優先）。 */
+    public function customType()
+    {
+        return $this->belongsTo(UserExclusionType::class, 'user_exclusion_type_id');
     }
 }

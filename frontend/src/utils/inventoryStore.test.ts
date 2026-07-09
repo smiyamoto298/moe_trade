@@ -29,6 +29,7 @@ const baseData = (): InventoryData => ({
     { id: 'i2', accountId: 'a1', no: '2', name: '日記', category: '', count: 1, itemId: null, item: null, worn: false, dyed: false, marked: false, note: '' },
   ],
   exclusions: [],
+  customTypes: [],
 })
 
 describe('inventoryStore - 表示種別タブの永続化', () => {
@@ -42,6 +43,11 @@ describe('inventoryStore - 表示種別タブの永続化', () => {
     expect(getDisplayType()).toBe(5)
     setDisplayType('unset')
     expect(getDisplayType()).toBe('unset')
+  })
+
+  it('カスタム種別（ct_ 付き id）のタブ選択も往復できる', () => {
+    setDisplayType('ct_abc123')
+    expect(getDisplayType()).toBe('ct_abc123')
   })
 })
 
@@ -105,5 +111,58 @@ describe('inventoryStore - DBモードの分割保存', () => {
     expect(localStorage.getItem(LOCAL_DB_SPLIT_KEY)).not.toBeNull()
     await saveInventory('local', baseData())
     expect(localStorage.getItem(LOCAL_DB_SPLIT_KEY)).toBeNull()
+  })
+})
+
+describe('inventoryStore - カスタム種別のサーバー往復', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    replace.mockReset()
+    get.mockReset()
+    replace.mockResolvedValue({ data: { storage_mode: 'db', accounts: [], items: [], exclusions: [], custom_types: [] } })
+  })
+
+  it('DB保存時はカスタム種別と割当（custom_type_key）をペイロードに含める', async () => {
+    const data: InventoryData = {
+      ...baseData(),
+      customTypes: [{ id: 'ct_1', name: 'コレクション' }],
+      exclusions: [{ name: '日記', exclusion_type_id: null, custom_type_id: 'ct_1' }],
+    }
+    await saveInventory('db', data)
+
+    const payload = replace.mock.calls[0][0]
+    expect(payload.custom_types).toEqual([{ key: 'ct_1', name: 'コレクション', sort_order: 0 }])
+    expect(payload.exclusions).toEqual([{ name: '日記', exclusion_type_id: null, custom_type_key: 'ct_1' }])
+  })
+
+  it('読込時はサーバーのカスタム種別 id を ct_ 付きに変換して割当と対応づける', async () => {
+    get.mockResolvedValue({
+      data: {
+        storage_mode: 'db',
+        accounts: [],
+        items: [],
+        exclusions: [{ name: 'ぬいぐるみ', exclusion_type_id: null, custom_type_id: 7 }],
+        custom_types: [{ id: 7, name: 'コレクション', sort_order: 0 }],
+      },
+    })
+
+    const inv = await loadInventory('db')
+    expect(inv.customTypes).toEqual([{ id: 'ct_7', name: 'コレクション' }])
+    expect(inv.exclusions).toEqual([{ name: 'ぬいぐるみ', exclusion_type_id: null, custom_type_id: 'ct_7' }])
+  })
+
+  it('存在しないカスタム種別を指す割当は custom_type_id を null に落とす', async () => {
+    get.mockResolvedValue({
+      data: {
+        storage_mode: 'db',
+        accounts: [],
+        items: [],
+        exclusions: [{ name: 'ぬいぐるみ', exclusion_type_id: null, custom_type_id: 999 }],
+        custom_types: [],
+      },
+    })
+
+    const inv = await loadInventory('db')
+    expect(inv.exclusions).toEqual([{ name: 'ぬいぐるみ', exclusion_type_id: null, custom_type_id: null }])
   })
 })

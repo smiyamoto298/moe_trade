@@ -72,8 +72,11 @@ class ExcludedItemController extends Controller
         $common = ExcludedItem::get(['name', 'exclusion_type_id'])
             ->mapWithKeys(fn ($i) => [$i->name => $i->exclusion_type_id ?? $defaultId]);
 
-        // DB保存ユーザーの個別割当を name×種別 で人数集計（unique(user_id,name) のため 1ユーザー1名1種別）
+        // DB保存ユーザーの個別割当を name×種別 で人数集計（unique(user_id,name) のため 1ユーザー1名1種別）。
+        // ユーザー独自のカスタム種別への割当は共通種別の内訳として意味を持たないため除外する
+        // （exclusion_type_id=null のカスタム割当を「その他」に誤計上しない）。
         $dbAgg = UserExcludedItem::query()
+            ->whereNull('user_exclusion_type_id')
             ->selectRaw('name, exclusion_type_id, COUNT(DISTINCT user_id) as cnt')
             ->groupBy('name', 'exclusion_type_id')
             ->get()
@@ -235,7 +238,8 @@ class ExcludedItemController extends Controller
         }
 
         // 共通種別へ反映した名前は、ユーザー個別の種別割当から削除する（共通へ集約・重複排除）。
-        UserExcludedItem::whereIn('name', $names)->delete();
+        // ユーザーのカスタム種別への割当は本人の明示的な分類なので残す（共通より優先のまま）。
+        UserExcludedItem::whereIn('name', $names)->whereNull('user_exclusion_type_id')->delete();
 
         return response()->json([
             'created'       => $created,
