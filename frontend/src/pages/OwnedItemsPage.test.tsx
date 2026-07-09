@@ -3,8 +3,9 @@ import { render, waitFor, screen, fireEvent, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import OwnedItemsPage from './OwnedItemsPage'
 import { itemsApi } from '../api/items'
+import { buyRequestsApi } from '../api/buyRequests'
 import { excludedItemsApi } from '../api/excludedItems'
-import { saveInventory, loadInitialInventory, getDisplayType } from '../utils/inventoryStore'
+import { saveInventory, loadInitialInventory, getDisplayType, getPasteOpen, setPasteOpen } from '../utils/inventoryStore'
 import type { Item, InventoryData } from '../types'
 
 // design.md「アイテムボックス > 貼り付け取り込み」:
@@ -30,6 +31,9 @@ vi.mock('../utils/inventoryStore', () => ({
   setDisplayType: vi.fn(),
   getServerExcludedNames: vi.fn(() => []),
   setServerExcludedNames: vi.fn(),
+  // 貼り付け領域（アコーディオン）の開閉状態。既定は開く
+  getPasteOpen: vi.fn(() => true),
+  setPasteOpen: vi.fn(),
 }))
 vi.mock('../hooks/usePageMeta', () => ({ usePageMeta: vi.fn() }))
 vi.mock('../contexts/DialogContext', () => ({
@@ -48,6 +52,9 @@ const mockedLoad = vi.mocked(loadInitialInventory)
 const mockedSave = vi.mocked(saveInventory)
 const mockedDisplayType = vi.mocked(getDisplayType)
 const mockedExcludedList = vi.mocked(excludedItemsApi.list)
+const mockedPasteOpen = vi.mocked(getPasteOpen)
+const mockedSetPasteOpen = vi.mocked(setPasteOpen)
+const mockedPrices = vi.mocked(buyRequestsApi.prices)
 
 const makeItem = (over: Partial<Item> = {}): Item => ({
   id: 12,
@@ -663,5 +670,121 @@ describe('OwnedItemsPage 未紐づけ行のボタン表示', () => {
 
     await waitFor(() => expect(screen.getByText('+ 新規登録')).toBeInTheDocument())
     expect(screen.queryByText('候補')).not.toBeInTheDocument()
+  })
+})
+
+// design.md「MoE アカウント」: 専用カードは廃止し、保存先トグルと同じ行の
+// 「アカウント管理」ボタンからモーダルで追加・改名・削除する。
+describe('OwnedItemsPage アカウント管理ボタン', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('専用カードは表示せず、ヘッダーの「アカウント管理」ボタンでモーダルを開く', async () => {
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow()]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // 旧カードの見出し「MoE アカウント」は表示されない
+    const btn = await screen.findByRole('button', { name: 'アカウント管理' })
+    expect(screen.queryByText('MoE アカウント')).not.toBeInTheDocument()
+    expect(screen.queryByText('MoE アカウントの管理')).not.toBeInTheDocument()
+
+    // ボタンからアカウント管理モーダルが開き、既存アカウントの改名・削除ができる
+    fireEvent.click(btn)
+    const modal = (await screen.findByText('MoE アカウントの管理')).closest('div')!.parentElement as HTMLElement
+    expect(within(modal).getByText('メイン')).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: '改名' })).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: '削除' })).toBeInTheDocument()
+  })
+})
+
+// design.md「貼り付け取り込み」: 貼り付け領域はアコーディオンで折りたためる。
+// 開閉状態は端末ローカル（moe_inventory_paste_open）に保存する。
+describe('OwnedItemsPage 貼り付け領域のアコーディオン', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('見出しクリックで貼り付け領域を折りたたみ・展開でき、状態を保存する', async () => {
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow()]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // 既定は展開されていて「読込」ボタンが見える
+    const header = await screen.findByRole('button', { name: /アイテムボックスを貼り付け/ })
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: '読込' })).toBeInTheDocument()
+
+    // 折りたたむと貼り付けフォームが隠れ、状態が保存される
+    fireEvent.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: '読込' })).not.toBeInTheDocument()
+    expect(mockedSetPasteOpen).toHaveBeenLastCalledWith(false)
+
+    // もう一度クリックで再展開
+    fireEvent.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: '読込' })).toBeInTheDocument()
+    expect(mockedSetPasteOpen).toHaveBeenLastCalledWith(true)
+  })
+
+  it('保存された状態が「閉じる」なら初期表示から折りたたむ', async () => {
+    mockedPasteOpen.mockReturnValueOnce(false)
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow()]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    const header = await screen.findByRole('button', { name: /アイテムボックスを貼り付け/ })
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: '読込' })).not.toBeInTheDocument()
+  })
+})
+
+// design.md「行ごとの情報・操作」: フィルタ行に「💰 買取あり」トグルを置き、
+// 他ユーザーが買取募集中のアイテムだけに絞り込める。件数はバッジ表示する。
+describe('OwnedItemsPage 買取ありフィルタ', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('買取募集があるアイテムの件数を表示し、チェックで絞り込める', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    const item = makeItem({ id: 12, name: '炎の大剣' })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([
+        unlinkedRow({ id: 'r1', name: '炎の大剣', itemId: 12, item }), // 買取あり
+        unlinkedRow({ id: 'r2', name: '謎の薬', itemId: null, item: null }), // 買取なし
+      ]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+    // item_id=12 に active な買取が1件ある
+    mockedPrices.mockResolvedValue({ data: { 12: { buy_request_id: 5, price: 1000, currency: 'Gold', count: 1 } } })
+
+    renderPage()
+
+    // 件数バッジ付きのトグルが表示される（買取価格の取得後に 1 件）
+    await waitFor(() => expect(screen.getByText('💰 買取あり (1)')).toBeInTheDocument())
+    expect(screen.getByText('謎の薬')).toBeInTheDocument()
+
+    // チェックすると買取募集があるアイテムだけに絞り込まれる
+    fireEvent.click(screen.getByLabelText(/買取あり/))
+    expect(screen.getByText('炎の大剣')).toBeInTheDocument()
+    expect(screen.queryByText('謎の薬')).not.toBeInTheDocument()
+
+    // 解除で全件に戻る
+    fireEvent.click(screen.getByLabelText(/買取あり/))
+    expect(screen.getByText('謎の薬')).toBeInTheDocument()
+  })
+
+  it('買取募集が無ければ件数は 0 で、絞り込むと空表示になる', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow({ name: '謎の薬' })]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('💰 買取あり (0)')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText(/買取あり/))
+    expect(screen.queryByText('謎の薬')).not.toBeInTheDocument()
+    expect(screen.getByText('表示できるアイテムがありません。')).toBeInTheDocument()
   })
 })

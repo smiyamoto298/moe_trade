@@ -13,6 +13,8 @@ export const SKIP_EXCLUDE_CONFIRM_KEY = 'moe_inventory_skip_exclude_confirm'
 export const DISPLAY_TYPE_KEY = 'moe_inventory_display_type'
 // ユーザー指定の「サーバ登録対象外」アイテム名（端末ごと・サーバーには送らない）。
 export const SERVER_EXCLUDED_KEY = 'moe_inventory_server_excluded'
+// 「アイテムボックスを貼り付け」領域の開閉状態（端末ごと。既定は開く）。
+export const PASTE_OPEN_KEY = 'moe_inventory_paste_open'
 // DBモード時に、サーバ登録対象外のためサーバーへ送らずローカルにだけ保持するアイテム（分割保存）。
 export const LOCAL_DB_SPLIT_KEY = 'moe_inventory:db-local:v1'
 
@@ -73,6 +75,24 @@ export function setServerExcludedNames(names: string[]): void {
   try {
     if (names.length === 0) localStorage.removeItem(SERVER_EXCLUDED_KEY)
     else localStorage.setItem(SERVER_EXCLUDED_KEY, JSON.stringify(names))
+  } catch {
+    /* noop */
+  }
+}
+
+/** 「アイテムボックスを貼り付け」領域の開閉状態（既定は開く）。 */
+export function getPasteOpen(): boolean {
+  try {
+    return localStorage.getItem(PASTE_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+export function setPasteOpen(open: boolean): void {
+  try {
+    if (open) localStorage.removeItem(PASTE_OPEN_KEY)
+    else localStorage.setItem(PASTE_OPEN_KEY, '0')
   } catch {
     /* noop */
   }

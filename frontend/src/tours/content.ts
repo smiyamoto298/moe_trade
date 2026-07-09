@@ -156,7 +156,7 @@ export const TOURS: Record<string, PageTour> = {
       {
         target: '[data-tour="owned-accounts"]',
         title: 'MoE アカウントごとに管理',
-        body: 'アイテムボックスはアカウント単位のため、アカウント名を複数登録して整理できます（取引用のキャラクターとは別です）。',
+        body: 'アイテムボックスはアカウント単位のため、アカウント名を複数登録して整理できます（取引用のキャラクターとは別です）。「アカウント管理」ボタンから追加・改名・削除できます。',
         placement: 'bottom',
       },
       {
@@ -169,7 +169,7 @@ export const TOURS: Record<string, PageTour> = {
       {
         target: '[data-tour="owned-filter"]',
         title: '表示の絞り込み・除外',
-        body: 'アカウント別の表示や「★マークのみ」表示ができます。各行の★でマーク、削れ・染色のチェック、出品・相場・買取中価格（クリックで売却ページへ）も使えます。',
+        body: 'アカウント別の表示や「★マークのみ」「💰 買取あり」の絞り込みができます。各行の★でマーク、削れ・染色のチェック、出品・相場・買取中価格（クリックで売却ページへ）も使えます。',
         placement: 'bottom',
         width: 400,
       },

@@ -17,7 +17,7 @@ import type { Item, InventoryData, InventoryStorageMode, OwnedItem, BuyPriceInfo
 import { parseItemBox, isTransferNg, isTruncatedName, truncatedBase } from '../utils/itemBoxPaste'
 import { newLocalId, emptyInventory, effectiveTypeId, isCustomTypeId, normalizeName, type EffectiveType } from '../utils/inventory'
 import { compareJa } from '../utils/collator'
-import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getDisplayType, setDisplayType, getServerExcludedNames, setServerExcludedNames, type DisplayType } from '../utils/inventoryStore'
+import { getStorageMode, loadInitialInventory, saveInventory, persistStorageMode, getDisplayType, setDisplayType, getServerExcludedNames, setServerExcludedNames, getPasteOpen, setPasteOpen, type DisplayType } from '../utils/inventoryStore'
 
 const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 1\tアイネの抱っこぬいぐるみ\t中級者レア\t○\t1
@@ -53,10 +53,19 @@ export default function OwnedItemsPage() {
   const [pasteResult, setPasteResult] = useState<string | null>(null)
   // 貼り付け先アカウント（null = 未割り当て）
   const [pasteAccountId, setPasteAccountId] = useState<string | null>(null)
+  // 貼り付け領域の開閉（アコーディオン。端末ローカルに保存）
+  const [pasteOpen, setPasteOpenState] = useState<boolean>(() => getPasteOpen())
+  const togglePasteOpen = () => {
+    const next = !pasteOpen
+    setPasteOpenState(next)
+    setPasteOpen(next)
+  }
 
   // ---- 表示フィルタ ----
   const [filterAccountId, setFilterAccountId] = useState<string>('all') // 'all' | accountId | 'unassigned'
   const [markedOnly, setMarkedOnly] = useState(false)
+  // 「買取があるアイテム」のみ表示（他ユーザーが買取募集中のアイテム）
+  const [buyOnly, setBuyOnly] = useState(false)
 
   // ---- 買取中価格 ----
   const [buyPrices, setBuyPrices] = useState<Record<number, BuyPriceInfo>>({})
@@ -732,6 +741,9 @@ export default function OwnedItemsPage() {
     return rowType(i) === displayType
   }
 
+  // 買取募集があるか（他ユーザーの active 買取が1件以上ある紐づけ済み行）
+  const hasBuyRequest = (i: OwnedItem) => i.itemId != null && buyPrices[i.itemId] != null
+
   const visibleItems = useMemo(() => {
     return inventory.items
       .filter((i) => {
@@ -739,6 +751,7 @@ export default function OwnedItemsPage() {
         else if (filterAccountId === 'unassigned') { if (i.accountId != null) return false }
         else if (i.accountId !== filterAccountId) return false
         if (markedOnly && !i.marked) return false
+        if (buyOnly && !hasBuyRequest(i)) return false
         if (!matchesDisplayType(i)) return false
         return true
       })
@@ -747,7 +760,7 @@ export default function OwnedItemsPage() {
       .sort((a, b) => compareJa(displayName(a), displayName(b)))
     // matchesDisplayType は commonMap/userMap/displayType に依存（下記の依存で網羅）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inventory.items, filterAccountId, markedOnly, displayType, commonMap, userMap, defaultTypeId])
+  }, [inventory.items, filterAccountId, markedOnly, buyOnly, buyPrices, displayType, commonMap, userMap, defaultTypeId])
 
   // 表示種別タブごとの件数（アカウント・マーク絞り込みは反映、種別だけを変えた件数）
   const typeCounts = useMemo(() => {
@@ -756,6 +769,7 @@ export default function OwnedItemsPage() {
       else if (filterAccountId === 'unassigned') { if (i.accountId != null) return false }
       else if (i.accountId !== filterAccountId) return false
       if (markedOnly && !i.marked) return false
+      if (buyOnly && !hasBuyRequest(i)) return false
       return true
     })
     const counts = new Map<DisplayType, number>()
@@ -766,7 +780,7 @@ export default function OwnedItemsPage() {
     }
     return counts
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inventory.items, filterAccountId, markedOnly, commonMap, userMap, defaultTypeId])
+  }, [inventory.items, filterAccountId, markedOnly, buyOnly, buyPrices, commonMap, userMap, defaultTypeId])
 
   // 重複（異なる取り込み先で同名のアイテムを所持）。取引可能（登録アイテム）に限らず、
   // 種別が割り当てられた行も対象とし、名称（表示名）でまとめる。実効種別が「未登録」（unset）の
@@ -789,6 +803,8 @@ export default function OwnedItemsPage() {
   }, [inventory.items, commonMap, userMap, defaultTypeId])
 
   const markedCount = inventory.items.filter((i) => i.marked).length
+  // 買取募集があるアイテムの件数（フィルタのバッジ表示に使う）
+  const buyCount = inventory.items.filter(hasBuyRequest).length
   const newItemRow = inventory.items.find((i) => i.id === newItemRowId) ?? null
   const candidateRow = inventory.items.find((i) => i.id === candidateRowId) ?? null
   const typeDialogRow = inventory.items.find((i) => i.id === typeDialogRowId) ?? null
@@ -834,34 +850,31 @@ export default function OwnedItemsPage() {
               </button>
             ))}
           </div>
+          {/* アカウント管理（専用カードは廃止し、保存先と同じ行のボタンからモーダルを開く） */}
+          <button
+            data-tour="owned-accounts"
+            onClick={() => setAccountModalOpen(true)}
+            className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors"
+            title="MoE アカウントの追加・改名・削除"
+          >
+            アカウント管理
+          </button>
         </div>
       </div>
 
-      {/* アカウント管理 */}
-      <div data-tour="owned-accounts" className="bg-surface-card border border-surface-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-300">MoE アカウント</h2>
-          <button onClick={() => setAccountModalOpen(true)} className="text-xs text-primary-500 hover:underline">管理</button>
-        </div>
-        {inventory.accounts.length === 0 ? (
-          <p className="text-xs text-gray-500">所持アイテムはアカウントごとに管理します。「管理」からアカウントを追加してください（貼り付け時に未選択の場合もその場で追加できます）。</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {inventory.accounts.map((a) => {
-              const cnt = inventory.items.filter((i) => i.accountId === a.id).length
-              return (
-                <span key={a.id} className="text-xs bg-surface border border-surface-border rounded px-2 py-1 text-gray-200">
-                  {a.name} <span className="text-gray-500">({cnt})</span>
-                </span>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 貼り付け */}
+      {/* 貼り付け（アコーディオンで縮小可能。開閉状態は端末ローカルに保存） */}
       <div data-tour="owned-paste" className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300">アイテムボックスを貼り付け</h2>
+        <button
+          type="button"
+          onClick={togglePasteOpen}
+          aria-expanded={pasteOpen}
+          className="w-full flex items-center justify-between text-left"
+          title={pasteOpen ? '貼り付け領域を折りたたむ' : '貼り付け領域を開く'}
+        >
+          <h2 className="text-sm font-semibold text-gray-300">アイテムボックスを貼り付け</h2>
+          <span className="text-xs text-gray-400" aria-hidden>{pasteOpen ? '▲' : '▼'}</span>
+        </button>
+        {pasteOpen && (<>
         <textarea
           rows={5}
           value={raw}
@@ -917,6 +930,7 @@ export default function OwnedItemsPage() {
           </span>
           {pasteResult && <span className="text-xs text-emerald-400">{pasteResult}</span>}
         </div>
+        </>)}
       </div>
 
       {/* フィルタ（スクロール時は画面上部に固定） */}
@@ -968,6 +982,13 @@ export default function OwnedItemsPage() {
             <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 hover:border-amber-500/70 cursor-pointer text-xs text-amber-200 transition-colors">
               <input type="checkbox" checked={markedOnly} onChange={(e) => setMarkedOnly(e.target.checked)} className="accent-amber-500 w-4 h-4" />
               <span>★ マークのみ ({markedCount})</span>
+            </label>
+            <label
+              className="flex items-center gap-2 px-2 py-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 hover:border-emerald-500/70 cursor-pointer text-xs text-emerald-200 transition-colors"
+              title="他ユーザーが買取募集中のアイテムだけを表示する"
+            >
+              <input type="checkbox" checked={buyOnly} onChange={(e) => setBuyOnly(e.target.checked)} className="accent-emerald-500 w-4 h-4" />
+              <span>💰 買取あり ({buyCount})</span>
             </label>
             <button
               onClick={() => setServerExcludedModalOpen(true)}
