@@ -34,7 +34,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!agreed) {
-      setError('利用規約に同意してください')
+      setError('利用規約およびプライバシーポリシーに同意してください')
       return
     }
     if (!showPassword && form.password !== form.password_confirmation) {

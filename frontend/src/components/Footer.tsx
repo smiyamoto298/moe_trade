@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 const FOOTER_BANNERS = [
   '/img/banner/moe_s_01.gif',
@@ -22,7 +23,7 @@ export default function Footer() {
           <p className="text-xs text-gray-400">
             (C)MOE K.K. (C)Konami Digital Entertainment 株式会社MOE及び株式会社コナミデジタルエンタテインメントの著作権を侵害する行為は禁止されています。
           </p>
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-gray-600 space-x-3">
             <a
               href="http://moepic.com/"
               target="_blank"
@@ -31,6 +32,12 @@ export default function Footer() {
             >
               Master of Epic 公式サイト
             </a>
+            <Link to="/terms" className="hover:text-gray-400 underline">
+              利用規約
+            </Link>
+            <Link to="/privacy" className="hover:text-gray-400 underline">
+              プライバシーポリシー
+            </Link>
           </p>
         </div>
         <a

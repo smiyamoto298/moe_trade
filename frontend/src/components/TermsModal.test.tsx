@@ -3,11 +3,11 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import TermsModal from './TermsModal'
 
-// design.md「利用規約同意フロー」: 規約全文（第1〜6条）をモーダルで表示し、
-// 「同意する」「同意しない」のコールバックを呼び分ける。
+// design.md「利用規約・プライバシーポリシー同意フロー」: 規約全文（第1〜7条）をモーダルで表示し、
+// プライバシーポリシーへのリンクを示したうえで「同意する」「同意しない」のコールバックを呼び分ける。
 
 describe('TermsModal', () => {
-  it('利用規約の全条文（第1〜6条）をダイアログとして表示する', () => {
+  it('利用規約の全条文（第1〜7条）をダイアログとして表示する', () => {
     render(<TermsModal onAgree={() => {}} onDecline={() => {}} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText('利用規約')).toBeInTheDocument()
@@ -18,8 +18,18 @@ describe('TermsModal', () => {
       '第4条（禁止事項）',
       '第5条（免責事項）',
       '第6条（規約の変更）',
+      '第7条（個人情報の取扱い）',
     ]) {
       expect(screen.getByText(heading)).toBeInTheDocument()
+    }
+  })
+
+  it('プライバシーポリシー（/privacy）へのリンクを表示する', () => {
+    render(<TermsModal onAgree={() => {}} onDecline={() => {}} />)
+    const links = screen.getAllByRole('link', { name: 'プライバシーポリシー' })
+    expect(links.length).toBeGreaterThanOrEqual(1)
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', '/privacy')
     }
   })
 

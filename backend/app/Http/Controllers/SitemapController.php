@@ -31,6 +31,8 @@ class SitemapController extends Controller
             ['loc' => $base . '/assets'],
             ['loc' => $base . '/items'],
             ['loc' => $base . '/buy-requests'],
+            ['loc' => $base . '/terms'],
+            ['loc' => $base . '/privacy'],
         ];
 
         // 確認済みアイテムの恒久ページ。未確認（unverified）はユーザー投稿の精査前のため含めない

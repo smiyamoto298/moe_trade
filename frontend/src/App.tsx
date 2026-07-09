@@ -21,6 +21,8 @@ import MyPage from './pages/MyPage'
 import OwnedItemsPage from './pages/OwnedItemsPage'
 import BoardPage from './pages/BoardPage'
 import BoardThreadPage from './pages/BoardThreadPage'
+import TermsPage from './pages/TermsPage'
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
 import { useAuth } from './contexts/AuthContext'
 import type { UserRole } from './types'
 
@@ -79,6 +81,8 @@ export default function App() {
             path="/buy-requests/new"
             element={<PrivateRoute><NewBuyRequestPage /></PrivateRoute>}
           />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/auth/login" element={<LoginPage />} />
           <Route path="/auth/register" element={<RegisterPage />} />
           <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
