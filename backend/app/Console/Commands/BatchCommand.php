@@ -11,7 +11,7 @@ use Illuminate\Support\Carbon;
  *
  * 継承先は handle() ではなく runBatch() を実装し、実行結果の要約文字列を返す。
  * 開始時に running の行を作り、正常終了で success・例外で failed に更新する。
- * cron 直叩き（deploy/cron-*.sh）でも schedule:run 経由でも同じように記録される。
+ * cron 直叩き（cron 用ラッパースクリプト）でも schedule:run 経由でも同じように記録される。
  */
 abstract class BatchCommand extends Command
 {

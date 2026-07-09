@@ -26,3 +26,6 @@ Thumbs.db
 
 # fansite
 fansitekit/
+
+# デプロイ・運用ファイル（本番サーバーの実情報を含むため非公開管理。正本は C:\Dev\moe_trade_private）
+deploy/

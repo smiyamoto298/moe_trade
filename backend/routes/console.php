@@ -10,7 +10,7 @@ Artisan::command('inspire', function () {
 
 // 期限切れお知らせの削除（毎日 6:00 JST）。
 // ※ schedule:run を cron 登録している環境で有効。
-//    コマンドを直接 cron 実行する環境では deploy/cron-purge-announcements.sh を使用。
+//    コマンドを直接 cron 実行する環境では cron 用ラッパー（非公開の運用スクリプト）を使用。
 Schedule::command('announcements:purge-expired')
     ->dailyAt('06:00')
     ->timezone('Asia/Tokyo');
@@ -20,7 +20,7 @@ Schedule::command('announcements:purge-expired')
 // 一覧・詳細に期限切れは出ないが、本バッチで status を expired に揃えることで
 // マイページの管理表示・再出品（renew）導線を正しくする。
 // ※ schedule:run を cron 登録している環境で有効。
-//    コマンドを直接 cron 実行する環境では deploy/cron-expire-listings.sh を使用。
+//    コマンドを直接 cron 実行する環境では cron 用ラッパー（非公開の運用スクリプト）を使用。
 Schedule::command('listings:expire')
     ->hourly()
     ->timezone('Asia/Tokyo');
@@ -29,7 +29,7 @@ Schedule::command('listings:expire')
 // 期限日は 15 分単位に丸めて登録されるため（App\Support\Auction::roundDeadline）、
 // 締切到来後ほぼ遅延なく最良入札で取引成立／入札なしで取り下げになる。
 // ※ schedule:run を cron 登録している環境で有効。
-//    コマンドを直接 cron 実行する環境では deploy/cron-resolve-auctions.sh を使用。
+//    コマンドを直接 cron 実行する環境では cron 用ラッパー（非公開の運用スクリプト）を使用。
 Schedule::command('auctions:resolve')
     ->everyFifteenMinutes()
     ->timezone('Asia/Tokyo');
