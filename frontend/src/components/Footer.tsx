@@ -25,7 +25,7 @@ export default function Footer() {
           </p>
           <p className="text-xs text-gray-600 space-x-3">
             <a
-              href="http://moepic.com/"
+              href="https://moepic.com/"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-400 underline"
@@ -41,7 +41,7 @@ export default function Footer() {
           </p>
         </div>
         <a
-          href="http://moepic.com/"
+          href="https://moepic.com/"
           target="_blank"
           rel="noopener noreferrer"
           className="hidden md:block shrink-0"

@@ -43,7 +43,7 @@ export default function SideBanners() {
     <>
       {show.left && (
         <a
-          href="http://moepic.com/"
+          href="https://moepic.com/"
           target="_blank"
           rel="noopener noreferrer"
           className="fixed left-4 top-1/2 -translate-y-1/2 z-30"
@@ -53,7 +53,7 @@ export default function SideBanners() {
       )}
       {show.right && (
         <a
-          href="http://moepic.com/"
+          href="https://moepic.com/"
           target="_blank"
           rel="noopener noreferrer"
           className="fixed right-4 top-1/2 -translate-y-1/2 z-30"

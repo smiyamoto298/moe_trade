@@ -29,3 +29,10 @@ fansitekit/
 
 # デプロイ・運用ファイル（本番サーバーの実情報を含むため非公開管理。正本は C:\Dev\moe_trade_private）
 deploy/
+
+# MoE公式素材（公式配布バナー・ファンサイトキット由来）。ガイドライン上サイト掲載のみ可のため
+# 公開リポジトリでの再配布を避ける（正本は C:\Dev\moe_trade_private\assets。ローカル・本番には実ファイルを配置）
+frontend/public/img/banner/
+frontend/public/img/side_banner/
+frontend/public/img/castle.jpg
+frontend/public/img/favicon.jpg
