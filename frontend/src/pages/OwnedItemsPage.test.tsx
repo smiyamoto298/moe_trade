@@ -45,6 +45,9 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../components/NewItemForm', () => ({ default: () => <div data-testid="new-item-form" /> }))
 vi.mock('../components/CandidateSelectModal', () => ({ default: () => <div data-testid="candidate-select-modal" /> }))
 vi.mock('../components/PriceAnalyticsModal', () => ({ default: () => <div /> }))
+vi.mock('../components/ItemDetailModal', () => ({
+  default: ({ itemId }: { itemId: number }) => <div data-testid="item-detail-modal">item:{itemId}</div>,
+}))
 vi.mock('../components/equipmentCells', () => ({ BaseStatBadges: () => <div /> }))
 
 const mockedMatch = vi.mocked(itemsApi.matchNames)
@@ -670,6 +673,50 @@ describe('OwnedItemsPage 未紐づけ行のボタン表示', () => {
 
     await waitFor(() => expect(screen.getByText('+ 新規登録')).toBeInTheDocument())
     expect(screen.queryByText('候補')).not.toBeInTheDocument()
+  })
+})
+
+// design.md「行ごとの情報・操作」: アイテム情報登録済み（紐づけ済み）の行は、
+// アイテム名をクリックするとアイテム詳細モーダル（ItemDetailModal）をポップアップ表示する。
+// 未紐づけの行の名前はクリックできない（テキスト表示のまま）。
+describe('OwnedItemsPage アイテム名クリックで詳細表示', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('紐づけ済み行のアイテム名クリックでアイテム詳細モーダルが開く', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    const item = makeItem({ id: 12, name: '炎の大剣' })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '炎の大剣', itemId: 12, item })]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // アイテム名はクリック可能なボタンで表示される
+    const nameBtn = await screen.findByRole('button', { name: '炎の大剣' })
+    expect(nameBtn).toHaveAttribute('title', 'アイテム詳細を表示')
+    expect(screen.queryByTestId('item-detail-modal')).not.toBeInTheDocument()
+
+    // クリックで該当アイテムの詳細モーダルが開く
+    fireEvent.click(nameBtn)
+    expect(await screen.findByTestId('item-detail-modal')).toHaveTextContent('item:12')
+  })
+
+  it('未紐づけ行のアイテム名はクリックできない（詳細モーダルは開かない）', async () => {
+    mockedDisplayType.mockReturnValue('all')
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '謎の薬', itemId: null, item: null })]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // 名前はテキスト表示のままでボタンではない
+    await waitFor(() => expect(screen.getByText('謎の薬')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '謎の薬' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('item-detail-modal')).not.toBeInTheDocument()
   })
 })
 

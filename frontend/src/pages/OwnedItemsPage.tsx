@@ -10,6 +10,7 @@ import client from '../api/client'
 import NewItemForm from '../components/NewItemForm'
 import CandidateSelectModal from '../components/CandidateSelectModal'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
+import ItemDetailModal from '../components/ItemDetailModal'
 import Spinner from '../components/Spinner'
 import OfficialDbLink from '../components/OfficialDbLink'
 import { BaseStatBadges } from '../components/equipmentCells'
@@ -82,6 +83,8 @@ export default function OwnedItemsPage() {
   const [newItemInitialName, setNewItemInitialName] = useState('')
   const [candidateRowId, setCandidateRowId] = useState<string | null>(null)
   const [analyticsItem, setAnalyticsItem] = useState<{ id: number; name: string } | null>(null)
+  // アイテム詳細モーダル（紐づけ済み行のアイテム名クリックで開く）
+  const [detailItemId, setDetailItemId] = useState<number | null>(null)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
   // 種別選択ダイアログ（取引可能以外の行に種別を割り当て・変更する。共通割当も上書き可）。対象の行IDを保持。
   const [typeDialogRowId, setTypeDialogRowId] = useState<string | null>(null)
@@ -1102,7 +1105,15 @@ export default function OwnedItemsPage() {
                       {linked ? (
                         <>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-white font-medium">{row.item!.name}</p>
+                            {/* アイテム情報登録済みの行は、名前クリックで詳細をポップアップ表示する */}
+                            <button
+                              type="button"
+                              onClick={() => setDetailItemId(row.itemId!)}
+                              title="アイテム詳細を表示"
+                              className="text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors"
+                            >
+                              {row.item!.name}
+                            </button>
                             {row.item!.verified_status === 'unverified' && (
                               <span title="確認中アイテム" className="text-[10px] text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1 py-0.5">⚠ 確認中</span>
                             )}
@@ -1334,6 +1345,11 @@ export default function OwnedItemsPage() {
       {/* 相場情報モーダル */}
       {analyticsItem && (
         <PriceAnalyticsModal itemId={analyticsItem.id} itemName={analyticsItem.name} onClose={() => setAnalyticsItem(null)} />
+      )}
+
+      {/* アイテム詳細モーダル（紐づけ済み行のアイテム名クリック） */}
+      {detailItemId != null && (
+        <ItemDetailModal itemId={detailItemId} onClose={() => setDetailItemId(null)} />
       )}
 
       {/* アカウント管理モーダル */}
