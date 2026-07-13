@@ -145,6 +145,31 @@ export default function AdminItemsPage() {
   const assetCategoryIds = idsForTop('アセット')
   const otherCategoryIds = idsForTop('その他')
 
+  // 装備セットの構成部位（piece）として登録されているアイテムのID集合
+  const setMemberIds = new Set<number>()
+  for (const it of items) {
+    if (it.is_equipment_set) (it.set_members ?? []).forEach((m) => setMemberIds.add(m.id))
+  }
+
+  // アイテムが種別タブ m に属するか（装備品は既定表示＝セット本体のみに合わせ、構成部位を除く）
+  const inMode = (i: Item, m: Mode) =>
+    m === 'skill' ? skillCategoryIds.has(i.category.id)
+      : m === 'asset' ? assetCategoryIds.has(i.category.id)
+      : m === 'other' ? otherCategoryIds.has(i.category.id)
+      : !skillCategoryIds.has(i.category.id) && !assetCategoryIds.has(i.category.id)
+        && !otherCategoryIds.has(i.category.id) && !setMemberIds.has(i.id)
+
+  // 種別タブ m に確認中アイテムがあるか
+  const hasUnverifiedIn = (m: Mode) =>
+    items.some((i) => i.verified_status === 'unverified' && inMode(i, m))
+
+  // 種別タブの切替。フィルタは「すべて」へ戻すが、管理者は切替先タブに確認中が
+  // あれば「確認中」を既定にする（確認待ちをタブ横断で処理しやすくする）
+  const selectMode = (m: Mode) => {
+    setMode(m)
+    setFilter(isAdmin && hasUnverifiedIn(m) ? 'unverified' : 'all')
+  }
+
   const fetchItems = () => {
     setLoading(true)
     itemsApi.list({ name: search || undefined })
@@ -175,22 +200,9 @@ export default function AdminItemsPage() {
     if (unverifiedDefaultApplied.current || loading || mastersLoading) return
     unverifiedDefaultApplied.current = true
     if (!isAdmin || navState) return
-    const unverified = items.filter((i) => i.verified_status === 'unverified')
-    if (unverified.length === 0) return
-    // 装備品タブの既定表示（セット本体のみ）に合わせ、構成部位は装備品タブの判定から除外する
-    const memberIds = new Set<number>()
-    for (const it of items) {
-      if (it.is_equipment_set) (it.set_members ?? []).forEach((m) => memberIds.add(m.id))
-    }
-    const inMode = (i: Item, m: Mode) =>
-      m === 'skill' ? skillCategoryIds.has(i.category.id)
-        : m === 'asset' ? assetCategoryIds.has(i.category.id)
-        : m === 'other' ? otherCategoryIds.has(i.category.id)
-        : !skillCategoryIds.has(i.category.id) && !assetCategoryIds.has(i.category.id)
-          && !otherCategoryIds.has(i.category.id) && !memberIds.has(i.id)
-    if (!unverified.some((i) => inMode(i, mode))) {
-      const target = (['equipment', 'skill', 'asset', 'other'] as Mode[])
-        .find((m) => unverified.some((i) => inMode(i, m)))
+    if (!items.some((i) => i.verified_status === 'unverified')) return
+    if (!hasUnverifiedIn(mode)) {
+      const target = (['equipment', 'skill', 'asset', 'other'] as Mode[]).find(hasUnverifiedIn)
       if (target) setMode(target)
     }
     setFilter('unverified')
@@ -359,12 +371,6 @@ export default function AdminItemsPage() {
     }
   }
 
-  // 装備セットの構成部位（piece）として登録されているアイテムのID集合
-  const setMemberIds = new Set<number>()
-  for (const it of items) {
-    if (it.is_equipment_set) (it.set_members ?? []).forEach((m) => setMemberIds.add(m.id))
-  }
-
   // スキル/アセット/装備品モードで絞り込み
   const modeItems = items.filter((i) => {
     if (isSkillMode) return skillCategoryIds.has(i.category.id)
@@ -420,7 +426,7 @@ export default function AdminItemsPage() {
           </div>
           <div className="flex border border-surface-border rounded-lg overflow-hidden text-xs sm:text-sm">
             <button
-              onClick={() => { setMode('equipment'); setFilter('all') }}
+              onClick={() => selectMode('equipment')}
               className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${mode === 'equipment' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               装備品
@@ -434,7 +440,7 @@ export default function AdminItemsPage() {
               )}
             </button>
             <button
-              onClick={() => { setMode('skill'); setFilter('all') }}
+              onClick={() => selectMode('skill')}
               className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${isSkillMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               テクニック
@@ -448,7 +454,7 @@ export default function AdminItemsPage() {
               )}
             </button>
             <button
-              onClick={() => { setMode('asset'); setFilter('all') }}
+              onClick={() => selectMode('asset')}
               className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${isAssetMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               アセット
@@ -462,7 +468,7 @@ export default function AdminItemsPage() {
               )}
             </button>
             <button
-              onClick={() => { setMode('other'); setFilter('all') }}
+              onClick={() => selectMode('other')}
               className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 transition-colors ${isOtherMode ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'}`}
             >
               その他

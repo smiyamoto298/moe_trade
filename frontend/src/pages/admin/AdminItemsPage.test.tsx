@@ -327,6 +327,51 @@ describe('AdminItemsPage 管理者の初期表示（確認中の自動表示）'
     expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('name')
   })
 
+  it('種別タブを切り替えたとき、切替先に確認中があれば「確認中」フィルタを既定にする', async () => {
+    mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedItem, unverifiedSkill] })
+    renderPage()
+    await waitForLoaded()
+
+    // 初期表示: 装備品タブに確認中があるため「確認中」フィルタ
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('updated')
+    )
+    expect(screen.getByText('確認中の盾')).toBeInTheDocument()
+
+    // テクニックタブへ切替 → 確認中があるので「確認中」フィルタのまま表示される
+    await userEvent.click(screen.getByRole('button', { name: 'テクニック' }))
+    expect(await screen.findByText('確認中のテクニック')).toBeInTheDocument()
+    expect(screen.queryByText('確認済みの剣')).not.toBeInTheDocument()
+  })
+
+  it('種別タブの切替先に確認中が無ければ従来どおり「すべて」に戻す', async () => {
+    mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedSkill] })
+    renderPage()
+    await waitForLoaded()
+
+    // 初期表示: 装備品に確認中が無いためテクニックタブ＋確認中フィルタへ切り替わる
+    await waitFor(() => expect(screen.getByText('確認中のテクニック')).toBeInTheDocument())
+
+    // 装備品タブへ切替 → 確認中が無いので「すべて」に戻り、確認済みが表示される
+    await userEvent.click(screen.getByRole('button', { name: '装備品' }))
+    expect(await screen.findByText('確認済みの剣')).toBeInTheDocument()
+  })
+
+  it('管理者以外（editor）の種別タブ切替は従来どおり「すべて」に戻す', async () => {
+    auth.user = makeUser('editor')
+    mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedItem, unverifiedSkill] })
+    renderPage()
+    await waitForLoaded()
+
+    // editor が手動で「確認中」フィルタを選んでからテクニックタブへ切替
+    await userEvent.click(screen.getByRole('button', { name: '確認中 (1)' }))
+    expect(screen.queryByText('確認済みの剣')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'テクニック' }))
+
+    // 切替先に確認中があっても editor はフィルタを「すべて」へ戻す
+    expect(screen.getByRole('button', { name: 'すべて (1)' })).toHaveClass('bg-primary-500')
+  })
+
   it('編集ページから戻ったとき（navState でタブ・フィルタを復元する場合）は適用しない', async () => {
     mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedItem] })
     render(
