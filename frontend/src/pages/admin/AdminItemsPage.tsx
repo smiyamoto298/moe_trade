@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { itemsApi } from '../../api/items'
 import { useAuth } from '../../contexts/AuthContext'
@@ -164,6 +164,40 @@ export default function AdminItemsPage() {
   }, [])
 
   useEffect(() => { fetchItems() }, [search])
+
+  // 管理者の初期表示: 確認中アイテムがあれば、確認待ちをすぐ処理できるよう
+  // 既定でフィルタを「確認中」・並び替えを「更新順」にする。現在の種別タブに
+  // 確認中が無ければ、確認中のある最初のタブへ切り替える。
+  // 初回ロード（アイテム＋カテゴリ）完了時に一度だけ適用し、編集ページから
+  // 戻ったとき（navState でタブ・フィルタを復元する場合）は適用しない。
+  const unverifiedDefaultApplied = useRef(false)
+  useEffect(() => {
+    if (unverifiedDefaultApplied.current || loading || mastersLoading) return
+    unverifiedDefaultApplied.current = true
+    if (!isAdmin || navState) return
+    const unverified = items.filter((i) => i.verified_status === 'unverified')
+    if (unverified.length === 0) return
+    // 装備品タブの既定表示（セット本体のみ）に合わせ、構成部位は装備品タブの判定から除外する
+    const memberIds = new Set<number>()
+    for (const it of items) {
+      if (it.is_equipment_set) (it.set_members ?? []).forEach((m) => memberIds.add(m.id))
+    }
+    const inMode = (i: Item, m: Mode) =>
+      m === 'skill' ? skillCategoryIds.has(i.category.id)
+        : m === 'asset' ? assetCategoryIds.has(i.category.id)
+        : m === 'other' ? otherCategoryIds.has(i.category.id)
+        : !skillCategoryIds.has(i.category.id) && !assetCategoryIds.has(i.category.id)
+          && !otherCategoryIds.has(i.category.id) && !memberIds.has(i.id)
+    if (!unverified.some((i) => inMode(i, mode))) {
+      const target = (['equipment', 'skill', 'asset', 'other'] as Mode[])
+        .find((m) => unverified.some((i) => inMode(i, m)))
+      if (target) setMode(target)
+    }
+    setFilter('unverified')
+    setSort('updated')
+    // 初回ロード完了時に一度だけ適用する（items やカテゴリID集合は閉包から参照する）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, mastersLoading])
 
   const handleVerify = async (id: number) => {
     if (actioningId) return

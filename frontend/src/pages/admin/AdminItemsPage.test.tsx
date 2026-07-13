@@ -272,6 +272,77 @@ describe('AdminItemsPage 並び替え', () => {
   })
 })
 
+describe('AdminItemsPage 管理者の初期表示（確認中の自動表示）', () => {
+  // design.md「管理機能」: admin がアイテム一覧を開いたとき、確認中アイテムが1件でもあれば
+  // 既定でフィルタを「確認中」・並び替えを「更新順」にする。現在の種別タブに確認中が
+  // 無ければ確認中のあるタブへ切り替える。navState 復元時・admin 以外には適用しない。
+  const verifiedItem = makeItem({ id: 1, name: '確認済みの剣' })
+  const unverifiedItem = makeItem({ id: 2, name: '確認中の盾', verified_status: 'unverified' })
+  const unverifiedSkill = makeItem({
+    id: 3,
+    name: '確認中のテクニック',
+    verified_status: 'unverified',
+    category: { id: 2, parent_id: null, name: 'テクニック', sort_order: 2 },
+  })
+
+  it('管理者は確認中アイテムがあると、既定で「確認中」フィルタ＋更新順になる', async () => {
+    mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedItem] })
+    renderPage()
+    await waitForLoaded()
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('updated')
+    )
+    expect(screen.getByText('確認中の盾')).toBeInTheDocument()
+    expect(screen.queryByText('確認済みの剣')).not.toBeInTheDocument()
+  })
+
+  it('現在のタブに確認中が無ければ、確認中のあるタブへ切り替えて表示する', async () => {
+    mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedSkill] })
+    renderPage()
+    await waitForLoaded()
+
+    // 装備品タブには確認中が無いため、テクニックタブへ切り替わって確認中が表示される
+    await waitFor(() => expect(screen.getByText('確認中のテクニック')).toBeInTheDocument())
+    expect(screen.queryByText('確認済みの剣')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('updated')
+  })
+
+  it('確認中アイテムが無ければ既定（すべて・あいうえお順）のまま', async () => {
+    mockedList.mockResolvedValue({ data: [verifiedItem] })
+    renderPage()
+    await waitForLoaded()
+
+    expect(screen.getByText('確認済みの剣')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('name')
+  })
+
+  it('管理者以外（editor）には確認中があっても適用しない', async () => {
+    auth.user = makeUser('editor')
+    mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedItem] })
+    renderPage()
+    await waitForLoaded()
+
+    expect(screen.getByText('確認済みの剣')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('name')
+  })
+
+  it('編集ページから戻ったとき（navState でタブ・フィルタを復元する場合）は適用しない', async () => {
+    mockedList.mockResolvedValue({ data: [verifiedItem, unverifiedItem] })
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/items', state: { mode: 'equipment', filter: 'all' } }]}>
+        <Routes>
+          <Route path="/items" element={<AdminItemsPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await waitForLoaded()
+
+    expect(screen.getByText('確認済みの剣')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '並び替え' })).toHaveValue('name')
+  })
+})
+
 describe('AdminItemsPage 取引情報の表示', () => {
   it('デフォルト（チェックあり）で各行に出品数・買取数を表示し、外すと非表示になる', async () => {
     const tradedItem = makeItem({ id: 1, name: '炎の大剣', active_listing_count: 3, active_buy_request_count: 2 })
