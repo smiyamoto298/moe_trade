@@ -1,10 +1,12 @@
 import ComboInput from './ComboInput'
 import CustomStatsEditor from './CustomStatsEditor'
+import SkillRequirementInputs from './SkillRequirementInputs'
 import type { Item, ItemCategory } from '../types'
 import type { EquipmentSetPieceInput } from '../api/items'
-import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
+import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
 import { mergeBaseStats, splitBaseStats, type CustomStatRow } from '../utils/customStats'
 import { normalizeOfficialUrl } from '../utils/officialUrl'
+import { techniqueCategoryIds } from '../utils/itemType'
 
 // ───────────────────────────────────────────────────────────
 // 装備セットの構成部位エディタ。
@@ -12,6 +14,9 @@ import { normalizeOfficialUrl } from '../utils/officialUrl'
 // ・追加効果・付加効果は「設定グループ」で別々に管理する。
 //   既定はそれぞれ1グループ（全部位共通）。異なる部位がある場合のみグループを追加し、対象部位を割り当てる。
 //   グループ[0] は既定グループ（明示的に割り当てられていない残り全部位に適用）。
+// ・テクニック（ノアピース・秘伝の書）も部位として選択できる。ただし装備品固有の属性は持たないため、
+//   ミスリル・染色可は入力せず、追加効果・付加効果グループの対象外（送信時は常に空）。
+//   代わりに部位ごとの必要スキル値・必要マスタリを入力する（テクニック部位のみ）。
 // ・送信時に formToPieces() で部位単位の pieces[] に展開する。
 // ───────────────────────────────────────────────────────────
 
@@ -22,6 +27,9 @@ export interface EquipmentSetPartForm {
   mithril: boolean     // ミスリル（部位ごと）
   dyeable: boolean     // 染色可（部位ごと。チェック＝染色可）
   official_url: string // 公式DB（部位ごとのアイテムページURL。空＝未設定）
+  // テクニック部位のみ使用（装備部位では常に空のまま）
+  skill_requirements: Record<string, string> // 必要スキル値（送信時に数値化）
+  mastery_requirements: string[]             // 必要マスタリのコード（OR条件）
 }
 interface BonusValueForm {
   value: string
@@ -109,14 +117,21 @@ function buildGroups<T extends { partCategoryIds: number[] }>(
 }
 
 // 既存セットの構成部位（set_members）からフォーム状態を復元する。
-export function membersToForm(members: Item[]): EquipmentSetForm {
+// techniqueCatIds（テクニック配下のカテゴリID）を渡すと、テクニック部位を
+// 追加効果・付加効果グループの構築から除外する（テクニックは効果設定の対象外のため）。
+export function membersToForm(members: Item[], techniqueCatIds: Set<number> = new Set()): EquipmentSetForm {
   if (members.length === 0) return emptyEquipmentSetForm()
   const parts: EquipmentSetPartForm[] = members.map((m) => ({
     id: m.id, category_id: m.category.id, name: m.name,
     mithril: m.mithril, dyeable: m.dyeable ?? false,
     official_url: m.official_url ?? '',
+    skill_requirements: Object.fromEntries(
+      Object.entries(m.skill_requirements ?? {}).map(([k, v]) => [k, String(v)])
+    ),
+    mastery_requirements: [...(m.mastery_requirements ?? [])],
   }))
-  const baseStatsGroups = buildGroups<BaseStatsGroupForm>(members, baseKey, (m) => {
+  const effectMembers = members.filter((m) => !techniqueCatIds.has(m.category.id))
+  const baseStatsGroups = buildGroups<BaseStatsGroupForm>(effectMembers, baseKey, (m) => {
     // 固定パラメータとその他（自由入力キー）を分離して復元する
     const { fixed, custom } = splitBaseStats(m.base_stats)
     return {
@@ -126,7 +141,7 @@ export function membersToForm(members: Item[]): EquipmentSetForm {
       special_conditions: m.special_conditions ?? [],
     }
   }, emptyBaseGroup)
-  const bonusGroups = buildGroups<BonusGroupForm>(members, bonusKey, (m) => ({
+  const bonusGroups = buildGroups<BonusGroupForm>(effectMembers, bonusKey, (m) => ({
     partCategoryIds: [],
     bonus_effects: (m.bonus_effects ?? []).map((e) => ({
       effect_name: e.effect_name,
@@ -140,13 +155,36 @@ export function membersToForm(members: Item[]): EquipmentSetForm {
 }
 
 // フォーム状態を部位単位の pieces[] へ展開する（API送信用）。
-export function formToPieces(form: EquipmentSetForm): EquipmentSetPieceInput[] {
+// テクニック部位（techniqueCatIds に含まれるカテゴリ）は装備品固有の属性を持たないため、
+// 追加効果・付加効果・特殊条件・ミスリル・染色可を常に空/false で送る。
+export function formToPieces(form: EquipmentSetForm, techniqueCatIds: Set<number> = new Set()): EquipmentSetPieceInput[] {
   const baseFor = (catId: number) =>
     form.baseStatsGroups.find((g, i) => i > 0 && g.partCategoryIds.includes(catId)) ?? form.baseStatsGroups[0]
   const bonusFor = (catId: number) =>
     form.bonusGroups.find((g, i) => i > 0 && g.partCategoryIds.includes(catId)) ?? form.bonusGroups[0]
 
   return form.parts.map((p) => {
+    if (techniqueCatIds.has(p.category_id)) {
+      // テクニック部位は装備効果の代わりに必要スキル値・必要マスタリを送る
+      const skills = Object.fromEntries(
+        Object.entries(p.skill_requirements)
+          .filter(([, v]) => v !== '')
+          .map(([k, v]) => [k, Number(v)])
+      )
+      return {
+        ...(p.id ? { id: p.id } : {}),
+        category_id: p.category_id,
+        name: p.name.trim(),
+        official_url: p.official_url.trim() || null,
+        base_stats: {},
+        special_conditions: [],
+        dyeable: false,
+        mithril: false,
+        skill_requirements: Object.keys(skills).length > 0 ? skills : null,
+        mastery_requirements: p.mastery_requirements.length > 0 ? p.mastery_requirements : null,
+        bonus_effects: [],
+      }
+    }
     const bg = baseFor(p.category_id)
     const ng = bonusFor(p.category_id)
     return {
@@ -158,6 +196,9 @@ export function formToPieces(form: EquipmentSetForm): EquipmentSetPieceInput[] {
       special_conditions: bg.special_conditions,
       dyeable: p.dyeable,
       mithril: p.mithril,
+      // 必要スキル・マスタリはテクニック部位のみ（装備部位は null で送って既存値もクリア）
+      skill_requirements: null,
+      mastery_requirements: null,
       // 専用技は付加効果ごとの is_exclusive で保持する（アイテム単位のフラグは廃止）
       bonus_effects: ng.bonus_effects
         .filter((e) => e.effect_name.trim())
@@ -186,15 +227,21 @@ interface Props {
 export default function EquipmentSetPiecesEditor({ categories, value, onChange, bonusValueLabelOptions, statLabelOptions }: Props) {
   const { parts, baseStatsGroups, bonusGroups } = value
 
-  // 選択可能な部位カテゴリ（武器・防具・装飾品などの子カテゴリ）。
-  // 装備部位になり得ない「装備セット」「テクニック」「その他（未開封ペット・レシピ）」は除外する。
+  // 選択可能な部位カテゴリ（武器・防具・装飾品・テクニックなどの子カテゴリ）。
+  // 装備部位になり得ない「装備セット」「その他（未開封ペット・レシピ）」は除外する。
   const partCategoryGroups = categories.filter(
     (cat) => !(cat.parent_id === null && (cat.name === '装備セット' || cat.name === 'その他'))
-      && cat.name !== 'テクニック'
       && (cat.children ?? []).length > 0
   )
   const allChildCats = partCategoryGroups.flatMap((c) => c.children ?? [])
   const partName = (catId: number) => allChildCats.find((c) => c.id === catId)?.name ?? `#${catId}`
+
+  // テクニック部位（ノアピース・秘伝の書）は装備品固有の属性を持たないため、
+  // ミスリル・染色可の入力と追加効果・付加効果グループの対象から外す。
+  const techniqueIds = techniqueCategoryIds(categories)
+  const isTechniquePart = (catId: number) => techniqueIds.has(catId)
+  // 追加効果・付加効果グループの対象になる部位（テクニック以外）
+  const effectParts = parts.filter((p) => !isTechniquePart(p.category_id))
 
   // 名前入力欄は、追加した順ではなく構成部位チェックボックス（カテゴリ）の並び順で表示する
   const partCategoryOrder = (catId: number) => {
@@ -214,11 +261,27 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
         bonusGroups: bonusGroups.map((g) => ({ ...g, partCategoryIds: g.partCategoryIds.filter((id) => id !== categoryId) })),
       })
     } else {
-      onChange({ ...value, parts: [...parts, { category_id: categoryId, name: '', mithril: false, dyeable: false, official_url: '' }] })
+      onChange({ ...value, parts: [...parts, { category_id: categoryId, name: '', mithril: false, dyeable: false, official_url: '', skill_requirements: {}, mastery_requirements: [] }] })
     }
   }
   const updatePart = (categoryId: number, patch: Partial<EquipmentSetPartForm>) =>
     onChange({ ...value, parts: parts.map((p) => (p.category_id === categoryId ? { ...p, ...patch } : p)) })
+
+  // ── テクニック部位の必要スキル値・必要マスタリ ──
+  const setPartSkill = (categoryId: number, skill: string, val: string) => {
+    const p = parts.find((x) => x.category_id === categoryId)
+    if (!p) return
+    updatePart(categoryId, { skill_requirements: { ...p.skill_requirements, [skill]: val } })
+  }
+  const togglePartMastery = (categoryId: number, code: string) => {
+    const p = parts.find((x) => x.category_id === categoryId)
+    if (!p) return
+    updatePart(categoryId, {
+      mastery_requirements: p.mastery_requirements.includes(code)
+        ? p.mastery_requirements.filter((x) => x !== code)
+        : [...p.mastery_requirements, code],
+    })
+  }
 
   // ── 追加効果グループの編集 ──
   const updateBase = (gi: number, patch: Partial<BaseStatsGroupForm>) =>
@@ -263,10 +326,10 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
       }),
     })
 
-  // 既定グループ[0]に属する部位（他グループに割り当てられていない残り）
+  // 既定グループ[0]に属する部位（他グループに割り当てられていない残り。テクニック部位は対象外）
   const defaultParts = (groups: { partCategoryIds: number[] }[]) => {
     const claimed = new Set(groups.slice(1).flatMap((g) => g.partCategoryIds))
-    return parts.filter((p) => !claimed.has(p.category_id))
+    return effectParts.filter((p) => !claimed.has(p.category_id))
   }
 
   // グループ用の部位チェックリスト（他の非既定グループで使用中の部位は無効化）
@@ -274,8 +337,8 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
     const usedElsewhere = new Set(groups.flatMap((g, i) => (i === gi || i === 0 ? [] : g.partCategoryIds)))
     return (
       <div className="flex flex-wrap gap-1.5">
-        {parts.length === 0 && <span className="text-xs text-gray-500">先に構成部位を追加してください</span>}
-        {parts.map((p) => {
+        {effectParts.length === 0 && <span className="text-xs text-gray-500">先に構成部位を追加してください</span>}
+        {effectParts.map((p) => {
           const checked = groups[gi].partCategoryIds.includes(p.category_id)
           const disabled = !checked && usedElsewhere.has(p.category_id)
           return (
@@ -329,14 +392,20 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                     value={p.name}
                     onChange={(e) => updatePart(p.category_id, { name: e.target.value })}
                     className="flex-1 min-w-[8rem] bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
-                  <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
-                    <input type="checkbox" checked={p.mithril} onChange={(e) => updatePart(p.category_id, { mithril: e.target.checked })} className="accent-primary-500" />
-                    ミスリル
-                  </label>
-                  <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
-                    <input type="checkbox" checked={p.dyeable} onChange={(e) => updatePart(p.category_id, { dyeable: e.target.checked })} className="accent-primary-500" />
-                    染色可
-                  </label>
+                  {isTechniquePart(p.category_id) ? (
+                    <span className="text-[10px] text-gray-500 shrink-0" title="テクニックはミスリル・染色可・追加効果・付加効果の設定対象外です">テクニック（効果設定なし）</span>
+                  ) : (
+                    <>
+                      <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
+                        <input type="checkbox" checked={p.mithril} onChange={(e) => updatePart(p.category_id, { mithril: e.target.checked })} className="accent-primary-500" />
+                        ミスリル
+                      </label>
+                      <label className="flex items-center gap-1 text-xs text-gray-300 shrink-0 cursor-pointer select-none">
+                        <input type="checkbox" checked={p.dyeable} onChange={(e) => updatePart(p.category_id, { dyeable: e.target.checked })} className="accent-primary-500" />
+                        染色可
+                      </label>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 pl-[5.5rem]">
                   <span className="text-[10px] text-gray-500 shrink-0">公式DB</span>
@@ -345,6 +414,51 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                     onChange={(e) => updatePart(p.category_id, { official_url: normalizeOfficialUrl(e.target.value) })}
                     className="flex-1 min-w-[8rem] bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-primary-500" />
                 </div>
+                {/* テクニック部位のみ: 必要スキル値・必要マスタリを部位ごとに入力する */}
+                {isTechniquePart(p.category_id) && (
+                  <details className="group ml-[5.5rem] border border-primary-500/30 bg-primary-500/5 rounded p-2">
+                    <summary className="cursor-pointer text-xs font-semibold text-primary-400 py-0.5 flex items-center gap-1.5 select-none">
+                      <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                      必要スキル・マスタリ
+                      {(Object.values(p.skill_requirements).some((v) => v !== '') || p.mastery_requirements.length > 0) && (
+                        <span className="text-[10px] text-primary-300 bg-primary-500/10 border border-primary-500/30 rounded px-1">設定あり</span>
+                      )}
+                    </summary>
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">必要スキル値</p>
+                        <SkillRequirementInputs
+                          idPrefix={`set-part-skill-${p.category_id}`}
+                          values={p.skill_requirements}
+                          onChange={(skill, val) => setPartSkill(p.category_id, skill, val)}
+                          defaultOpenGroups={[]}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">必要マスタリ</p>
+                        <p className="text-[10px] text-gray-500 mb-1">発動に必要なマスタリがあれば選択してください（複数選択は「いずれか」で発動のOR条件）。</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {MASTERIES.map((m) => (
+                            <label key={m.code}
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer text-xs transition-colors ${
+                                p.mastery_requirements.includes(m.code)
+                                  ? 'border-primary-500/60 bg-primary-500/10 text-gray-200'
+                                  : 'border-surface-border text-gray-400 hover:border-gray-500'}`}>
+                              <input
+                                type="checkbox"
+                                checked={p.mastery_requirements.includes(m.code)}
+                                onChange={() => togglePartMastery(p.category_id, m.code)}
+                                className="accent-primary-500"
+                              />
+                              <span className="font-medium">{m.name}</span>
+                              <span className="text-gray-500">【{m.code}】</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                )}
               </div>
             ))}
           </div>
@@ -418,7 +532,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
             </details>
           </div>
         ))}
-        <button type="button" onClick={addBaseGroup} disabled={parts.length < 2}
+        <button type="button" onClick={addBaseGroup} disabled={effectParts.length < 2}
           className="text-xs bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-600/40 text-amber-300 px-3 py-1.5 rounded w-full transition-colors">
           + 設定グループを追加（部位ごとに追加効果を分ける）
         </button>
@@ -524,7 +638,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
             </div>
           </div>
         ))}
-        <button type="button" onClick={addBonusGroup} disabled={parts.length < 2}
+        <button type="button" onClick={addBonusGroup} disabled={effectParts.length < 2}
           className="text-xs bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-600/40 text-amber-300 px-3 py-1.5 rounded w-full transition-colors">
           + 設定グループを追加（部位ごとに付加効果を分ける）
         </button>

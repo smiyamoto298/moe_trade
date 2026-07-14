@@ -28,3 +28,12 @@ export function itemTypeOf(cat: ItemCategory, categories: ItemCategory[]): ItemT
   if (top === OTHER_CATEGORY) return 'other'
   return 'equipment'
 }
+
+/**
+ * テクニック配下（ノアピース・秘伝の書など）のカテゴリID集合を返す（親のテクニック自身を含む）。
+ * 装備セットの構成部位でテクニック部位を判定するために使う。
+ */
+export function techniqueCategoryIds(categories: ItemCategory[]): Set<number> {
+  const top = categories.find((c) => c.parent_id == null && c.name === TECHNIQUE_CATEGORY)
+  return new Set(top ? [top.id, ...(top.children ?? []).map((c) => c.id)] : [])
+}

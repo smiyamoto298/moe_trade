@@ -3,6 +3,7 @@ import type { ItemCategory } from '../types'
 import {
   topCategoryName,
   itemTypeOf,
+  techniqueCategoryIds,
   TECHNIQUE_CATEGORY,
   ASSET_CATEGORY,
 } from './itemType'
@@ -57,5 +58,22 @@ describe('itemTypeOf', () => {
     expect(itemTypeOf(cat(11, '刀剣', 1), tops)).toBe('equipment')
     expect(itemTypeOf(cat(2, '防具'), tops)).toBe('equipment')
     expect(itemTypeOf(cat(5, '装備セット'), tops)).toBe('equipment')
+  })
+})
+
+describe('techniqueCategoryIds', () => {
+  it('テクニック本体と子カテゴリ（ノアピース・秘伝の書）のIDを返す', () => {
+    const withChildren: ItemCategory[] = [
+      cat(1, '武器'),
+      {
+        ...cat(3, TECHNIQUE_CATEGORY),
+        children: [cat(31, 'ノアピース', 3), cat(32, '秘伝の書', 3)],
+      },
+    ]
+    expect([...techniqueCategoryIds(withChildren)].sort()).toEqual([3, 31, 32])
+  })
+
+  it('テクニックカテゴリが無ければ空集合を返す', () => {
+    expect(techniqueCategoryIds([cat(1, '武器')]).size).toBe(0)
   })
 })

@@ -581,6 +581,11 @@ class ItemController extends Controller
             'pieces.*.special_conditions.*'   => 'string',
             'pieces.*.dyeable'                => 'nullable|boolean',
             'pieces.*.mithril'                => 'nullable|boolean',
+            // テクニック部位（ノアピース・秘伝の書）用。装備部位では null を送る
+            'pieces.*.skill_requirements'     => 'nullable|array',
+            'pieces.*.skill_requirements.*'   => 'integer|min:0|max:100',
+            'pieces.*.mastery_requirements'   => 'nullable|array',
+            'pieces.*.mastery_requirements.*' => ['string', \Illuminate\Validation\Rule::in(\App\Support\Mastery::codes())],
             'pieces.*.bonus_effects'          => 'nullable|array',
             'pieces.*.bonus_effects.*.effect_name' => 'required|string|max:200',
             'pieces.*.bonus_effects.*.values'      => 'nullable|array',
@@ -659,6 +664,9 @@ class ItemController extends Controller
                 'special_conditions' => $piece['special_conditions'] ?? [],
                 'dyeable'            => $piece['dyeable'] ?? null,
                 'mithril'            => $piece['mithril'] ?? false,
+                // テクニック部位の必要スキル値・必要マスタリ（装備部位では null）
+                'skill_requirements'   => $piece['skill_requirements'] ?? null,
+                'mastery_requirements' => $piece['mastery_requirements'] ?? null,
                 'is_equipment_set'   => false,
             ];
 

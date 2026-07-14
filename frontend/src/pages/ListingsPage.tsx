@@ -14,7 +14,7 @@ import type { Listing, Item, ItemType, ItemCategory, ItemHashtag, ListingSearchP
 import { SERVERS } from '../types'
 import { itemTypeOf } from '../utils/itemType'
 import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, remainingLabel } from '../utils/constants'
-import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../components/equipmentCells'
+import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell, TechniquePieceNames, techniqueMembersOf } from '../components/equipmentCells'
 import InlineHashtags from '../components/InlineHashtags'
 import OfficialDbLink from '../components/OfficialDbLink'
 
@@ -110,7 +110,8 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 
 // 「全て」タブの情報列。行ごとに種別を判定し、その種別に応じた情報を1セルにまとめて表示する。
 // 各種別タブの効果列と同じ部品（equipmentCells / MasteryBadges）を再利用する。
-function AllInfoCell({ item, type }: { item: Item; type: ItemType }) {
+// categories は装備セットの付加効果表示でテクニック部位を判定するために使う。
+function AllInfoCell({ item, type, categories }: { item: Item; type: ItemType; categories: ItemCategory[] }) {
   const dash = <span className="text-xs text-gray-600">—</span>
 
   if (type === 'technique') {
@@ -195,18 +196,20 @@ function AllInfoCell({ item, type }: { item: Item; type: ItemType }) {
   const hasBase = isSet ? members.length > 0 : (Object.keys(item.base_stats).length > 0 || item.mithril)
   const hasBonus = isSet ? members.length > 0 : item.bonus_effects.length > 0
   const hasSpecial = isSet ? members.length > 0 : item.special_conditions.length > 0
+  // セット内のテクニック部位は付加効果内ではなく、情報列の最後に「テクニック」枠で表示する
+  const techMembers = isSet ? techniqueMembersOf(members, categories) : []
   return (
     <div className="flex flex-col gap-2">
       <Labeled label="追加効果">
-        {isSet ? <SetBaseStatsCell members={members} />
+        {isSet ? <SetBaseStatsCell members={members} categories={categories} />
           : hasBase ? <div className="flex flex-wrap gap-1"><BaseStatBadges item={item} /></div> : dash}
       </Labeled>
       <Labeled label="付加効果">
-        {isSet ? <SetBonusCell members={members} />
+        {isSet ? <SetBonusCell members={members} categories={categories} showTechniqueNames={false} />
           : hasBonus ? <div className="flex flex-col gap-1.5"><BonusEffectList item={item} /></div> : dash}
       </Labeled>
       <Labeled label="特殊条件">
-        {isSet ? <SetSpecialConditionsCell members={members} />
+        {isSet ? <SetSpecialConditionsCell members={members} categories={categories} />
           : hasSpecial ? (
             <div className="flex flex-wrap gap-1">
               {item.special_conditions.map((c) => (
@@ -217,6 +220,11 @@ function AllInfoCell({ item, type }: { item: Item; type: ItemType }) {
             </div>
           ) : dash}
       </Labeled>
+      {techMembers.length > 0 && (
+        <Labeled label="テクニック">
+          <div className="flex flex-col gap-1.5"><TechniquePieceNames members={techMembers} /></div>
+        </Labeled>
+      )}
     </div>
   )
 }
@@ -1033,7 +1041,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         {isAllMode ? (
                           /* 全てタブ: 行ごとに種別を判定し、その種別の情報を1セルにまとめて表示 */
                           <td className="listing-col-wide px-4 py-3 align-top" colSpan={3}>
-                            <AllInfoCell item={l.item} type={itemTypeOf(l.item.category, categories)} />
+                            <AllInfoCell item={l.item} type={itemTypeOf(l.item.category, categories)} categories={categories} />
                           </td>
                         ) : isSkillMode ? (
                           <>
@@ -1116,7 +1124,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           {/* 追加効果 */}
                           <td className="listing-col-wide px-4 py-3">
                             {l.item.is_equipment_set ? (
-                              <SetBaseStatsCell members={l.item.set_members ?? []} />
+                              <SetBaseStatsCell members={l.item.set_members ?? []} categories={categories} />
                             ) : (
                               <div className="flex flex-wrap gap-1">
                                 {Object.keys(l.item.base_stats).length === 0 && !l.item.mithril ? (
@@ -1131,7 +1139,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           {/* 付加効果 */}
                           <td className="listing-col-wide px-4 py-3">
                             {l.item.is_equipment_set ? (
-                              <SetBonusCell members={l.item.set_members ?? []} />
+                              <SetBonusCell members={l.item.set_members ?? []} categories={categories} />
                             ) : (
                               <div className="flex flex-col gap-1.5">
                                 {l.item.bonus_effects.length === 0 ? (
@@ -1146,7 +1154,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           {/* 特殊条件 */}
                           <td className="listing-col-wide px-4 py-3">
                             {l.item.is_equipment_set ? (
-                              <SetSpecialConditionsCell members={l.item.set_members ?? []} />
+                              <SetSpecialConditionsCell members={l.item.set_members ?? []} categories={categories} />
                             ) : (
                               <div className="flex flex-wrap gap-1">
                                 {l.item.special_conditions.length === 0 ? (

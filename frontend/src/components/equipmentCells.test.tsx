@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import type { Item, ItemBonusEffect, RecipeEntry } from '../types'
-import { BonusEffectList, OtherInfoCell } from './equipmentCells'
+import type { Item, ItemBonusEffect, ItemCategory, RecipeEntry } from '../types'
+import { BonusEffectList, OtherInfoCell, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from './equipmentCells'
 
 // 付加効果のテキスト値が長い（5文字以上）場合、一覧では [詳細] にしてホバーで全文を出す。
 // 単位付き数値や4文字以下のテキストはそのまま表示する。
@@ -85,6 +85,127 @@ describe('OtherInfoCell', () => {
 
   it('レシピ情報もペット名も無ければダッシュを表示する', () => {
     render(<OtherInfoCell item={itemWithRecipeEntries(null)} />)
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+})
+
+// design.md「装備セット」: 出品一覧の付加効果列では、テクニック部位（ノアピース・秘伝の書）は
+// 付加効果を持たないため、効果グループに含めず部位カテゴリ名チップ＋アイテム名を表示する。
+
+const setCategories: ItemCategory[] = [
+  {
+    id: 1, parent_id: null, name: '防具', sort_order: 1,
+    children: [{ id: 11, parent_id: 1, name: '頭(防)', sort_order: 1 }],
+  },
+  {
+    id: 3, parent_id: null, name: 'テクニック', sort_order: 2,
+    children: [{ id: 31, parent_id: 3, name: 'ノアピース', sort_order: 1 }],
+  },
+]
+
+function setMember(over: Partial<Item>): Item {
+  return {
+    id: 1, name: '', base_stats: {}, special_conditions: [], mithril: false,
+    bonus_effects: [],
+    category: { id: 11, parent_id: 1, name: '頭(防)', sort_order: 1 },
+    ...over,
+  } as unknown as Item
+}
+
+describe('SetBonusCell テクニック部位の表示', () => {
+  it('テクニック部位は効果グループに含めず、部位カテゴリ名チップとアイテム名を表示する', () => {
+    const members = [
+      setMember({
+        id: 1, name: '頭装備',
+        bonus_effects: [{ id: 1, effect_name: '炎纏い', is_exclusive: false, values: [], description: '' } as unknown as ItemBonusEffect],
+      }),
+      setMember({
+        id: 2, name: 'ノアピース：ヴィガー',
+        category: { id: 31, parent_id: 3, name: 'ノアピース', sort_order: 1 },
+      }),
+    ]
+    render(<SetBonusCell members={members} categories={setCategories} />)
+
+    // 装備部位の付加効果は従来どおり表示される
+    expect(screen.getByText('炎纏い')).toBeInTheDocument()
+    // テクニック部位は部位カテゴリ名チップ＋アイテム名で表示される
+    expect(screen.getByText('ノアピース')).toBeInTheDocument()
+    expect(screen.getByText('ノアピース：ヴィガー')).toBeInTheDocument()
+    // 効果なしのダッシュ（テクニック部位を効果グループとして表示しない）
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('showTechniqueNames=false ならテクニック部位の名前を表示しない（「すべて」タブで別枠表示する用）', () => {
+    const members = [
+      setMember({
+        id: 1, name: '頭装備',
+        bonus_effects: [{ id: 1, effect_name: '炎纏い', is_exclusive: false, values: [], description: '' } as unknown as ItemBonusEffect],
+      }),
+      setMember({
+        id: 2, name: 'ノアピース：ヴィガー',
+        category: { id: 31, parent_id: 3, name: 'ノアピース', sort_order: 1 },
+      }),
+    ]
+    render(<SetBonusCell members={members} categories={setCategories} showTechniqueNames={false} />)
+
+    // 装備部位の付加効果のみ表示し、テクニック部位の名前は出さない
+    expect(screen.getByText('炎纏い')).toBeInTheDocument()
+    expect(screen.queryByText('ノアピース：ヴィガー')).not.toBeInTheDocument()
+    expect(screen.queryByText('ノアピース')).not.toBeInTheDocument()
+  })
+
+  it('categories 未指定なら従来どおり全部位を効果でグループ化する（アイテム名は表示しない）', () => {
+    const members = [
+      setMember({ id: 1, name: '頭装備' }),
+      setMember({
+        id: 2, name: 'ノアピース：ヴィガー',
+        category: { id: 31, parent_id: 3, name: 'ノアピース', sort_order: 1 },
+      }),
+    ]
+    render(<SetBonusCell members={members} />)
+
+    // 全部位が効果なしの1グループ → ダッシュのみ
+    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.queryByText('ノアピース：ヴィガー')).not.toBeInTheDocument()
+  })
+})
+
+// design.md「装備セット」: テクニックは追加効果・特殊条件も持たないため、
+// 追加効果列・特殊条件列のグループ化対象から外す（「ノアピース: —」のような空グループを出さない）。
+
+describe('SetBaseStatsCell / SetSpecialConditionsCell テクニック部位の除外', () => {
+  const members = [
+    setMember({ id: 1, name: '頭装備', base_stats: { atk: 10 }, special_conditions: ['NT'] }),
+    setMember({
+      id: 2, name: 'ノアピース：ヴィガー',
+      category: { id: 31, parent_id: 3, name: 'ノアピース', sort_order: 1 },
+    }),
+  ]
+
+  it('追加効果列はテクニック部位をグループ化対象から外す（空グループの部位チップを出さない）', () => {
+    render(<SetBaseStatsCell members={members} categories={setCategories} />)
+
+    // 装備部位の追加効果は表示される（1グループなので部位チップなしのフラット表示）
+    expect(screen.getByText(/攻撃力/)).toBeInTheDocument()
+    // テクニック部位の空グループ（ノアピースチップ＋ダッシュ）を出さない
+    expect(screen.queryByText('ノアピース')).not.toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('特殊条件列はテクニック部位をグループ化対象から外す', () => {
+    render(<SetSpecialConditionsCell members={members} categories={setCategories} />)
+
+    expect(screen.getByText('NT')).toBeInTheDocument()
+    expect(screen.queryByText('ノアピース')).not.toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('テクニック部位しか無いセットの追加効果・特殊条件列はダッシュを表示する', () => {
+    const onlyTech = [members[1]]
+    const { unmount } = render(<SetBaseStatsCell members={onlyTech} categories={setCategories} />)
+    expect(screen.getByText('—')).toBeInTheDocument()
+    unmount()
+    render(<SetSpecialConditionsCell members={onlyTech} categories={setCategories} />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

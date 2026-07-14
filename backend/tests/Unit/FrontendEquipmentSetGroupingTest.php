@@ -72,9 +72,34 @@ class FrontendEquipmentSetGroupingTest extends TestCase
 
     public function test_一覧の効果列は効果内容ごとのグルーピングを使う(): void
     {
-        $src = $this->frontendFile('src/pages/ListingsPage.tsx');
+        // 一覧の効果セルは equipmentCells.tsx に共通化されている（出品一覧・アイテム管理で共用）
+        $src = $this->frontendFile('src/components/equipmentCells.tsx');
 
         $this->assertStringContainsString('groupPiecesByBaseStats', $src);
         $this->assertStringContainsString('groupPiecesByBonusEffects', $src);
+    }
+
+    public function test_一覧の付加効果列はテクニック部位をアイテム名で表示する(): void
+    {
+        // design.md「装備セット」: テクニック部位（ノアピース・秘伝の書）は付加効果を持たないため、
+        // 効果グループに含めず部位カテゴリ名チップ＋部位アイテム名（TechniquePieceNames）で表示する
+        $src = $this->frontendFile('src/components/equipmentCells.tsx');
+
+        $this->assertStringContainsString("itemTypeOf(m.category, categories) === 'technique'", $src);
+        $this->assertStringContainsString('TechniquePieceNames', $src);
+        // 「すべて」タブの情報列では、テクニックを付加効果内に混ぜず最後の「テクニック」枠で表示する
+        $listings = $this->frontendFile('src/pages/ListingsPage.tsx');
+        $this->assertStringContainsString('showTechniqueNames={false}', $listings);
+        $this->assertStringContainsString('label="テクニック"', $listings);
+    }
+
+    public function test_性能グルーピングキーはテクニックの必要スキルマスタリも区別する(): void
+    {
+        // 必要スキル・マスタリが異なるテクニック部位同士を誤って1カードに統合しない
+        $src = $this->frontendFile('src/utils/equipmentSet.ts');
+
+        $this->assertStringContainsString('requirementsKey(it)', $src);
+        $this->assertStringContainsString('skill_requirements', $src);
+        $this->assertStringContainsString('mastery_requirements', $src);
     }
 }

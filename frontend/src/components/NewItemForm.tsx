@@ -12,7 +12,7 @@ import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
 import { mergeBaseStats, type CustomStatRow } from '../utils/customStats'
-import { OTHER_PET, OTHER_RECIPE } from '../utils/itemType'
+import { OTHER_PET, OTHER_RECIPE, techniqueCategoryIds } from '../utils/itemType'
 import { normalizeOfficialUrl } from '../utils/officialUrl'
 
 interface BonusValueForm {
@@ -172,7 +172,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const handleSubmit = async (verified?: boolean) => {
     let pieces: ReturnType<typeof formToPieces> = []
     if (isEquipSet) {
-      pieces = formToPieces(equipSetForm)
+      pieces = formToPieces(equipSetForm, techniqueCategoryIds(categories))
       // editor/admin は構成部位を必須に。一般ユーザーは未入力でも登録可（運営が後から設定）。
       if (pieces.length === 0 && isStaff) {
         await alert('装備セットは構成部位を1つ以上登録してください。', { title: '入力エラー' })

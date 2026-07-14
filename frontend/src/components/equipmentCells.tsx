@@ -1,6 +1,7 @@
-import type { Item } from '../types'
+import type { Item, ItemCategory } from '../types'
 import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
 import { groupPiecesByBaseStats, groupPiecesByBonusEffects, groupPiecesBySpecialConditions, hasBaseStats, hasBonusEffects, hasSpecialConditions } from '../utils/equipmentSet'
+import { itemTypeOf } from '../utils/itemType'
 
 // 出品一覧・アイテム管理一覧で共通利用する、装備品/装備セットの効果表示セル群。
 // 装備セットは「部位（部位カテゴリ名チップ）」「追加効果」「付加効果」を構成部位から組み立てて表示する。
@@ -91,10 +92,39 @@ export function PartNamesLabel({ names }: { names: string[] }) {
   )
 }
 
+// テクニック部位（ノアピース・秘伝の書）かどうか。テクニックは追加効果・付加効果・特殊条件を
+// 持たないため、装備セットの効果列ではグループ化の対象から外す。
+// categories 未指定時は判定できないため false（従来どおり全部位をグループ化）。
+function isTechniqueMember(m: Item, categories?: ItemCategory[]): boolean {
+  return !!categories && categories.length > 0 && itemTypeOf(m.category, categories) === 'technique'
+}
+
+// 構成部位のうちテクニック部位だけを返す（「すべて」タブの情報列などでテクニックを別枠表示するために使う）
+export function techniqueMembersOf(members: Item[], categories?: ItemCategory[]): Item[] {
+  return members.filter((m) => isTechniqueMember(m, categories))
+}
+
+// テクニック部位の部位カテゴリ名チップ＋部位アイテム名リスト。
+// 付加効果列（SetBonusCell）と「すべて」タブの情報列（テクニック枠）で共用する。
+export function TechniquePieceNames({ members }: { members: Item[] }) {
+  return (
+    <>
+      {members.map((m) => (
+        <div key={`tech-${m.id}`}>
+          <PartNamesLabel names={[m.category?.name ?? '']} />
+          <p className="text-xs text-gray-200 mt-0.5">{m.name}</p>
+        </div>
+      ))}
+    </>
+  )
+}
+
 // 装備セットの追加効果セル。設定グループが1つ（全部位共通）なら効果のみ、複数なら部位名つきで分けて表示。
-export function SetBaseStatsCell({ members }: { members: Item[] }) {
-  if (members.length === 0) return <span className="text-xs text-gray-600">—</span>
-  const groups = groupPiecesByBaseStats(members)
+// テクニック部位は追加効果を持たないため対象外（部位アイテム名は付加効果列で表示する）。
+export function SetBaseStatsCell({ members, categories }: { members: Item[]; categories?: ItemCategory[] }) {
+  const effectMembers = members.filter((m) => !isTechniqueMember(m, categories))
+  if (effectMembers.length === 0) return <span className="text-xs text-gray-600">—</span>
+  const groups = groupPiecesByBaseStats(effectMembers)
   const renderEffects = (m: Item) =>
     hasBaseStats(m) ? <BaseStatBadges item={m} /> : <span className="text-xs text-gray-600">—</span>
   if (groups.length === 1) {
@@ -114,9 +144,11 @@ export function SetBaseStatsCell({ members }: { members: Item[] }) {
 
 // 装備セットの特殊条件セル。部位ごとの特殊条件を集約し、設定グループが1つなら条件のみ、
 // 複数なら部位名つきで分けて表示する（追加効果/付加効果セルと同じ表示ロジック）。
-export function SetSpecialConditionsCell({ members }: { members: Item[] }) {
-  if (members.length === 0) return <span className="text-xs text-gray-600">—</span>
-  const groups = groupPiecesBySpecialConditions(members)
+// テクニック部位は特殊条件を持たないため対象外。
+export function SetSpecialConditionsCell({ members, categories }: { members: Item[]; categories?: ItemCategory[] }) {
+  const effectMembers = members.filter((m) => !isTechniqueMember(m, categories))
+  if (effectMembers.length === 0) return <span className="text-xs text-gray-600">—</span>
+  const groups = groupPiecesBySpecialConditions(effectMembers)
   const renderConds = (m: Item) =>
     hasSpecialConditions(m) ? <SpecialConditionBadges item={m} /> : <span className="text-xs text-gray-600">—</span>
   if (groups.length === 1) {
@@ -183,22 +215,40 @@ export function OtherInfoCell({ item }: { item: Item }) {
 }
 
 // 装備セットの付加効果セル。設定グループが1つなら効果のみ、複数なら部位名つきで分けて表示。
-export function SetBonusCell({ members }: { members: Item[] }) {
+// テクニック部位（ノアピース・秘伝の書）は付加効果を持たないため、効果グループには含めず
+// 部位カテゴリ名チップ＋部位アイテム名で表示する（categories 未指定時は従来どおり全部位を効果でグループ化）。
+// showTechniqueNames=false でテクニック部位の名前表示を抑止できる
+// （「すべて」タブの情報列のように、テクニックを呼び出し側で最後に別枠表示する場合に使う）。
+export function SetBonusCell({ members, categories, showTechniqueNames = true }: {
+  members: Item[]
+  categories?: ItemCategory[]
+  showTechniqueNames?: boolean
+}) {
   if (members.length === 0) return <span className="text-xs text-gray-600">—</span>
-  const groups = groupPiecesByBonusEffects(members)
+  const techniqueMembers = showTechniqueNames ? techniqueMembersOf(members, categories) : []
+  const effectMembers = members.filter((m) => !isTechniqueMember(m, categories))
+  const groups = effectMembers.length > 0 ? groupPiecesByBonusEffects(effectMembers) : []
   const renderEffects = (m: Item) =>
     hasBonusEffects(m) ? <BonusEffectList item={m} /> : <span className="text-xs text-gray-600">—</span>
-  if (groups.length === 1) {
+  if (effectMembers.length === 0 && techniqueMembers.length === 0) {
+    return <span className="text-xs text-gray-600">—</span>
+  }
+  if (techniqueMembers.length === 0 && groups.length === 1) {
     return <div className="flex flex-col gap-1.5">{renderEffects(groups[0].member)}</div>
   }
   return (
     <div className="flex flex-col gap-1.5">
-      {groups.map((g, gi) => (
-        <div key={gi}>
-          <PartNamesLabel names={g.partNames} />
-          <div className="flex flex-col gap-1 mt-0.5">{renderEffects(g.member)}</div>
-        </div>
-      ))}
+      {groups.length === 1 ? (
+        renderEffects(groups[0].member)
+      ) : (
+        groups.map((g, gi) => (
+          <div key={gi}>
+            <PartNamesLabel names={g.partNames} />
+            <div className="flex flex-col gap-1 mt-0.5">{renderEffects(g.member)}</div>
+          </div>
+        ))
+      )}
+      <TechniquePieceNames members={techniqueMembers} />
     </div>
   )
 }

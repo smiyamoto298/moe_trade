@@ -779,6 +779,83 @@ class ItemApiTest extends TestCase
         $this->assertEqualsCanonicalizing([$cats['sword']->id], Item::find($setId)->set_piece_category_ids);
     }
 
+    public function test_装備セットの構成部位にテクニック（ノアピース等）を含められる(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        // design.md「装備セット」: テクニック（ノアピース・秘伝の書）も構成部位に選択できる。
+        // テクニック部位は装備品固有の属性を持たないため、効果・ミスリルは空/false で登録される。
+        $res = $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => 'ヴィガーセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id' => $cats['sword']->id,
+                    'name'        => 'ヴィガーの剣',
+                    'base_stats'  => ['atk' => 10],
+                ],
+                [
+                    'category_id'          => $cats['noah']->id,
+                    'name'                 => 'ノアピース：ヴィガー',
+                    'base_stats'           => [],
+                    'special_conditions'   => [],
+                    'mithril'              => false,
+                    'bonus_effects'        => [],
+                    // テクニック部位は必要スキル値・必要マスタリを登録できる
+                    'skill_requirements'   => ['刀剣' => 80, '戦闘技術' => 60],
+                    'mastery_requirements' => ['WAR'],
+                ],
+            ],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('is_equipment_set', true)
+            ->assertJsonCount(2, 'set_members');
+
+        $setId = $res->json('id');
+        // テクニック部位も通常アイテムとしてテクニックカテゴリで作成される
+        $piece = Item::where('name', 'ノアピース：ヴィガー')->firstOrFail();
+        $this->assertSame($cats['noah']->id, $piece->category_id);
+        $this->assertFalse($piece->is_equipment_set);
+        $this->assertSame([], $piece->base_stats);
+        $this->assertFalse((bool) $piece->mithril);
+        // 必要スキル値・必要マスタリが部位アイテムに保存される
+        $this->assertSame(['刀剣' => 80, '戦闘技術' => 60], $piece->skill_requirements);
+        $this->assertSame(['WAR'], $piece->mastery_requirements);
+        // 装備部位側には必要スキル・マスタリは付かない
+        $sword = Item::where('name', 'ヴィガーの剣')->firstOrFail();
+        $this->assertNull($sword->skill_requirements);
+        $this->assertNull($sword->mastery_requirements);
+        // 派生キャッシュ（部位カテゴリ）にテクニックカテゴリも含まれる
+        $this->assertEqualsCanonicalizing(
+            [$cats['sword']->id, $cats['noah']->id],
+            Item::find($setId)->set_piece_category_ids
+        );
+    }
+
+    public function test_装備セットの部位の必要マスタリは不正なコードを拒否する(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '不正マスタリのセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id'          => $cats['noah']->id,
+                    'name'                 => 'ノアピース：謎',
+                    'mastery_requirements' => ['INVALID'],
+                ],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('pieces.0.mastery_requirements.0');
+    }
+
     public function test_装備セットの部位のその他項目名もstat候補へ自動追加される(): void
     {
         $admin    = $this->makeUserWithRole('admin');

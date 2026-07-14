@@ -15,7 +15,7 @@ import { parseHashtags, formatHashtags } from '../../utils/hashtags'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 import { mergeBaseStats, splitBaseStats, type CustomStatRow } from '../../utils/customStats'
-import { OTHER_PET, OTHER_RECIPE } from '../../utils/itemType'
+import { OTHER_PET, OTHER_RECIPE, techniqueCategoryIds } from '../../utils/itemType'
 import { normalizeOfficialUrl } from '../../utils/officialUrl'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
@@ -110,7 +110,8 @@ export default function AdminItemEditPage() {
   useEffect(() => {
     // アイテム情報をフォーム状態へ展開する。asCopy のときは新規作成として複製するため、
     // 既存レコードに紐づくID（装備セット部位・付加効果）と確認状態を引き継がない。
-    const fillFormFromItem = (item: Item, asCopy: boolean) => {
+    // cats はテクニック部位の判定（装備セットの効果グループ復元）に使う。
+    const fillFormFromItem = (item: Item, asCopy: boolean, cats: ItemCategory[]) => {
       // base_stats を固定パラメータとその他（自由入力キー）に分離して復元する
       const { fixed: fixedStats, custom: customStatRows } = splitBaseStats(item.base_stats)
       setCustomStats(customStatRows)
@@ -145,7 +146,7 @@ export default function AdminItemEditPage() {
       setUserTagsText(formatHashtags(tags.filter((h) => !h.is_fixed)))
       // 装備セットの構成部位をフォーム状態へ復元（部位リスト＋追加効果/付加効果グループ）
       if (item.is_equipment_set) {
-        const equipForm = membersToForm(item.set_members ?? [])
+        const equipForm = membersToForm(item.set_members ?? [], techniqueCategoryIds(cats))
         // コピー時は各部位アイテム名にも名前変更を適用する
         setEquipSetForm(asCopy
           ? { ...equipForm, parts: equipForm.parts.map((p) => ({ ...p, id: undefined, name: applyCopyRename(p.name, copyRename) })) }
@@ -164,9 +165,12 @@ export default function AdminItemEditPage() {
     }
 
     setMastersLoading(true)
-    const tasks: Promise<unknown>[] = [
-      itemsApi.categories().then((r) => setCategories(r.data)),
-    ]
+    // カテゴリはフォーム復元（テクニック部位の判定）でも使うため、Promise を共有して待てるようにする
+    const categoriesPromise = itemsApi.categories().then((r) => {
+      setCategories(r.data)
+      return r.data
+    })
+    const tasks: Promise<unknown>[] = [categoriesPromise]
     if (!isNew && id) {
       tasks.push(itemsApi.get(Number(id)).then(async (r) => {
         const item = r.data
@@ -183,7 +187,7 @@ export default function AdminItemEditPage() {
           navigate('/items')
           return
         }
-        fillFormFromItem(item, false)
+        fillFormFromItem(item, false, await categoriesPromise)
       }))
     } else if (copyFromId) {
       // コピーして編集（editor 以上）：コピー元を取得し、新規作成フォームへ複製する
@@ -194,7 +198,7 @@ export default function AdminItemEditPage() {
           return
         }
         const r = await itemsApi.get(copyFromId)
-        fillFormFromItem(r.data, true)
+        fillFormFromItem(r.data, true, await categoriesPromise)
       })())
     }
     Promise.all(tasks).finally(() => setMastersLoading(false))
@@ -296,6 +300,7 @@ export default function AdminItemEditPage() {
             ...(!isNew && id ? { id: Number(id) } : {}),
             category_id: partCatId, name: form.name.trim(), mithril: form.mithril, dyeable: form.dyeable ?? false,
             official_url: form.official_url,
+            skill_requirements: {}, mastery_requirements: [],
           }]
         }
       }
@@ -409,7 +414,7 @@ export default function AdminItemEditPage() {
     verifyAfterSaveRef.current = false
     let pieces: ReturnType<typeof formToPieces> = []
     if (isEquipSet) {
-      pieces = formToPieces(equipSetForm)
+      pieces = formToPieces(equipSetForm, techniqueCategoryIds(categories))
       // editor/admin は構成部位を必須に。一般ユーザーは未入力でも登録可（運営が後から設定）。
       if (pieces.length === 0 && isEditor) {
         await alert('装備セットは構成部位を1つ以上登録してください。', { title: '入力エラー' })

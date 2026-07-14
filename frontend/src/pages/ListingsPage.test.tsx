@@ -238,6 +238,44 @@ describe('ListingsPage タブ', () => {
     expect(within(table).getByText('ウォーリアー【WAR】')).toBeInTheDocument()
   })
 
+  it('全てタブの情報列は装備セットのテクニック部位を最後の「テクニック」枠でアイテム名表示する', async () => {
+    // design.md「装備セット」: すべてタブの情報列では、テクニック部位は付加効果内ではなく
+    // 最後の「テクニック」枠に部位カテゴリ名チップ＋アイテム名で表示する
+    mockedList.mockResolvedValue(
+      page([
+        makeListing({
+          id: 3,
+          item: makeItem({
+            id: 3, name: 'ヴィガーセット',
+            category: { id: 4, parent_id: null, name: '装備セット', sort_order: 4 },
+            is_equipment_set: true,
+            base_stats: {}, special_conditions: [],
+            set_members: [
+              makeItem({ id: 31, name: '刀剣部位', base_stats: { atk: 10 }, special_conditions: ['NT'] }),
+              makeItem({
+                id: 32, name: 'ノアピース：ヴィガー',
+                category: { id: 21, parent_id: 2, name: 'ノアピース', sort_order: 1 },
+                base_stats: {}, special_conditions: [],
+              }),
+            ],
+          }),
+        }),
+      ])
+    )
+    renderAt('/all')
+    await waitForLoaded()
+
+    expect(await screen.findByText('ヴィガーセット')).toBeInTheDocument()
+    const table = screen.getByRole('table')
+    // 情報列のラベル順: 追加効果 → 付加効果 → 特殊条件 → テクニック（最後）
+    const labels = within(table)
+      .getAllByText(/^(追加効果|付加効果|特殊条件|テクニック)$/)
+      .map((el) => el.textContent)
+    expect(labels).toEqual(['追加効果', '付加効果', '特殊条件', 'テクニック'])
+    // テクニック枠に部位アイテム名が表示される
+    expect(within(table).getByText('ノアピース：ヴィガー')).toBeInTheDocument()
+  })
+
   it('各種別タブに件数バッジを表示する（counts API の結果）', async () => {
     renderAt('/listings')
     await waitForLoaded()

@@ -46,9 +46,17 @@ function specialConditionsKey(it: Item): string {
   return JSON.stringify([...(it.special_conditions ?? [])].sort())
 }
 
-// 性能全体（追加効果・付加効果・特殊条件）が同一かを表すキー
+// 必要スキル値・必要マスタリ（テクニック部位）が同一かを表すキー（順序非依存）
+function requirementsKey(it: Item): string {
+  return JSON.stringify({
+    skill_requirements: sortedStats(it.skill_requirements),
+    mastery_requirements: [...(it.mastery_requirements ?? [])].sort(),
+  })
+}
+
+// 性能全体（追加効果・付加効果・特殊条件・必要スキル/マスタリ）が同一かを表すキー
 function performanceKey(it: Item): string {
-  return JSON.stringify([baseStatsKey(it), bonusEffectsKey(it), specialConditionsKey(it)])
+  return JSON.stringify([baseStatsKey(it), bonusEffectsKey(it), specialConditionsKey(it), requirementsKey(it)])
 }
 
 // 出現順を保ったままキーでグルーピングする

@@ -1,5 +1,5 @@
 import type { Item } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, formatBonusEffectDescription } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, MASTERIES, formatSignedValue, formatBonusValueDisplay, formatBonusEffectDescription } from '../utils/constants'
 import { groupPiecesByPerformance } from '../utils/equipmentSet'
 
 // 装備セットの構成部位（set_members）を、部位ごとの名前・追加効果・付加効果・特殊条件つきで表示する。
@@ -76,6 +76,34 @@ export default function EquipmentSetBreakdown({ members }: { members?: Item[] })
                       {c}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {/* 必要スキル値（テクニック部位） */}
+              {Object.keys(m.skill_requirements ?? {}).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 mb-1">
+                  <span className="text-[10px] text-gray-500">必要スキル</span>
+                  {Object.entries(m.skill_requirements ?? {}).map(([skill, val]) => (
+                    <span key={skill} className="text-xs bg-primary-500/10 border border-primary-500/30 rounded px-1.5 py-0.5 text-primary-300">
+                      {skill}: <span className="text-white font-medium">{val}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* 必要マスタリ（テクニック部位。複数は「いずれか」のOR条件） */}
+              {(m.mastery_requirements?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] text-gray-500">必要マスタリ</span>
+                  {(m.mastery_requirements ?? []).map((code) => {
+                    const mastery = MASTERIES.find((x) => x.code === code)
+                    return (
+                      <span key={code} title={mastery?.skills.join('・')}
+                        className="text-xs bg-primary-500/10 border border-primary-500/30 rounded px-1.5 py-0.5 text-primary-300">
+                        {mastery?.name ?? code}【{code}】
+                      </span>
+                    )
+                  })}
                 </div>
               )}
             </div>

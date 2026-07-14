@@ -12,6 +12,9 @@ export interface EquipmentSetPieceInput {
   special_conditions: string[]
   dyeable?: boolean | null
   mithril?: boolean
+  // テクニック部位（ノアピース・秘伝の書）用。装備部位では null
+  skill_requirements?: Record<string, number> | null
+  mastery_requirements?: string[] | null
   bonus_effects: {
     effect_name: string
     values: { value: number | string; value_unit: string; label?: string }[]

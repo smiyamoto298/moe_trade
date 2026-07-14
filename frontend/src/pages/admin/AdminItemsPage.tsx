@@ -722,7 +722,7 @@ export default function AdminItemsPage() {
                   {/* 追加効果（出品一覧に合わせ、装備セットは構成部位を効果内容でまとめて表示） */}
                   <td className="resp-col-wide px-4 py-3">
                     {item.is_equipment_set ? (
-                      <SetBaseStatsCell members={item.set_members ?? []} />
+                      <SetBaseStatsCell members={item.set_members ?? []} categories={categories} />
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {Object.keys(item.base_stats ?? {}).length === 0 && !item.mithril ? (
@@ -736,7 +736,7 @@ export default function AdminItemsPage() {
                   {/* 付加効果（装備セットは構成部位の付加効果をまとめて表示） */}
                   <td className="resp-col-wide px-4 py-3">
                     {item.is_equipment_set ? (
-                      <SetBonusCell members={item.set_members ?? []} />
+                      <SetBonusCell members={item.set_members ?? []} categories={categories} />
                     ) : (
                       <div className="flex flex-col gap-1.5">
                         {(item.bonus_effects ?? []).length === 0 ? (
@@ -749,7 +749,7 @@ export default function AdminItemsPage() {
                   </td>
                   <td className="resp-col-wide px-4 py-3">
                     {item.is_equipment_set ? (
-                      <SetSpecialConditionsCell members={item.set_members ?? []} />
+                      <SetSpecialConditionsCell members={item.set_members ?? []} categories={categories} />
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {(item.special_conditions ?? []).length === 0 ? (
