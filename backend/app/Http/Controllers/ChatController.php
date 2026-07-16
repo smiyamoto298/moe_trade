@@ -63,19 +63,32 @@ class ChatController extends Controller
         return response()->json($chat);
     }
 
+    /**
+     * メッセージの送信・編集・削除ができない状態ならエラーレスポンスを返す（可能なら null）。
+     * クローズ済みチャット・他ユーザーの取引成立後は書き込み系の操作を一律不可にする。
+     */
+    private function messageLockedResponse(TradeChat $chat)
+    {
+        // open または deal のチャットのみ操作可能
+        if (!in_array($chat->status, ['open', 'deal'])) {
+            return response()->json(['message' => 'このチャットはクローズされています。'], 400);
+        }
+
+        // 取引対象が completed で、このチャットが open の場合は操作不可（他取引が成立）
+        if ($chat->source()?->status === 'completed' && $chat->status === 'open') {
+            return response()->json(['message' => '他のユーザーの取引が成立しています。'], 400);
+        }
+
+        return null;
+    }
+
     public function sendMessage(Request $request, int $id)
     {
         $chat = $this->loadSource(TradeChat::findOrFail($id));
         $this->assertParticipant($request, $chat);
 
-        // open または deal のチャットのみ送信可能
-        if (!in_array($chat->status, ['open', 'deal'])) {
-            return response()->json(['message' => 'このチャットはクローズされています。'], 400);
-        }
-
-        // 取引対象が completed で、このチャットが open の場合は送信不可（他取引が成立）
-        if ($chat->source()?->status === 'completed' && $chat->status === 'open') {
-            return response()->json(['message' => '他のユーザーの取引が成立しています。'], 400);
+        if ($locked = $this->messageLockedResponse($chat)) {
+            return $locked;
         }
 
         // owner は順番待ち（2番目以降）のチャットには送信できない。先頭に対応してから。
@@ -91,6 +104,70 @@ class ChatController extends Controller
         ]);
 
         return response()->json($msg->load('user:id,email'), 201);
+    }
+
+    /**
+     * 編集・削除対象の自分のメッセージを解決する。
+     * チャット外のメッセージIDは404、他人のメッセージは403。
+     */
+    private function resolveOwnMessage(Request $request, TradeChat $chat, int $messageId): \App\Models\TradeMessage
+    {
+        /** @var \App\Models\TradeMessage $message */
+        $message = $chat->messages()->findOrFail($messageId);
+        if ($message->user_id !== $request->user()->id) {
+            abort(403);
+        }
+        return $message;
+    }
+
+    /**
+     * メッセージ編集。自分のメッセージのうち、チャット内で最新の1件のみ編集できる
+     * （相手が返信した後に文脈を書き換えられないようにするため）。
+     */
+    public function updateMessage(Request $request, int $id, int $messageId)
+    {
+        $chat = $this->loadSource(TradeChat::findOrFail($id));
+        $this->assertParticipant($request, $chat);
+        $message = $this->resolveOwnMessage($request, $chat, $messageId);
+
+        if ($locked = $this->messageLockedResponse($chat)) {
+            return $locked;
+        }
+
+        // messages リレーションは created_at 昇順が既定のため、reorder で最新を取得する
+        $latestId = $chat->messages()->reorder('created_at', 'desc')->orderByDesc('id')->value('id');
+        if ($message->id !== $latestId) {
+            return response()->json(['message' => '最新のメッセージのみ編集できます。'], 400);
+        }
+
+        $data = $request->validate(['message' => 'required|string|max:2000']);
+        $message->update(['message' => $data['message']]);
+
+        return response()->json($message->load('user:id,email'));
+    }
+
+    /**
+     * メッセージ削除。自分のメッセージのみ。ただしチャット先頭の1件
+     * （取引希望時に送られた最初のメッセージ）は取引の起点となる記録のため削除できない。
+     */
+    public function deleteMessage(Request $request, int $id, int $messageId)
+    {
+        $chat = $this->loadSource(TradeChat::findOrFail($id));
+        $this->assertParticipant($request, $chat);
+        $message = $this->resolveOwnMessage($request, $chat, $messageId);
+
+        if ($locked = $this->messageLockedResponse($chat)) {
+            return $locked;
+        }
+
+        $firstId = $chat->messages()->orderBy('id')->value('id');
+        if ($message->id === $firstId) {
+            return response()->json(['message' => '最初の取引希望のメッセージは削除できません。'], 400);
+        }
+
+        $message->delete();
+
+        return response()->json(['deleted' => true]);
     }
 
     public function deal(Request $request, int $id)

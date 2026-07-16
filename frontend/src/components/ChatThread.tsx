@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { chatApi } from '../api/chat'
 import { useDialog } from '../contexts/DialogContext'
-import type { TradeChat } from '../types'
+import type { TradeChat, TradeMessage } from '../types'
 import { SERVER_COLORS } from '../utils/constants'
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -31,7 +31,7 @@ interface Props {
 }
 
 export default function ChatThread({ chat: initialChat, currentUserId, isOwner, kind = 'listing', source, currentPrice, onDeal, onStatusChange, onListingsChanged, hasWaitingNext = false }: Props) {
-  const { confirm } = useDialog()
+  const { confirm, alert } = useDialog()
   const [chat, setChat] = useState(initialChat)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -50,9 +50,14 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
         const res = await chatApi.get(chat.id)
         setChat((prev) => {
           const next = res.data
-          // 変化がなければ前のオブジェクトを返して不要な再描画を避ける
+          // 変化がなければ前のオブジェクトを返して不要な再描画を避ける。
+          // 編集は最新メッセージのみ可能なため、末尾メッセージの本文比較で相手側の編集を検知できる
+          const prevLast = prev.messages?.[prev.messages.length - 1]
+          const nextLast = next.messages?.[next.messages.length - 1]
           if (
             next.messages?.length === prev.messages?.length &&
+            nextLast?.id === prevLast?.id &&
+            nextLast?.message === prevLast?.message &&
             next.status === prev.status &&
             next.seller_completed === prev.seller_completed &&
             next.buyer_completed === prev.buyer_completed
@@ -91,6 +96,52 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
       setInput('')
     } finally {
       setSending(false)
+    }
+  }
+
+  // ---- メッセージの編集・削除 ----
+  // 編集は自分のメッセージのうちチャット内で最新の1件のみ。
+  // 削除は自分のメッセージのみ（最初の取引希望メッセージを除く）。
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editInput, setEditInput] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const startEdit = (msg: TradeMessage) => {
+    setEditingId(msg.id)
+    setEditInput(msg.message)
+  }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditInput('')
+  }
+  const saveEdit = async () => {
+    if (editingId === null || !editInput.trim() || savingEdit) return
+    setSavingEdit(true)
+    try {
+      const res = await chatApi.updateMessage(chat.id, editingId, editInput.trim())
+      setChat((prev) => ({
+        ...prev,
+        messages: prev.messages.map((m) => (m.id === editingId ? { ...m, ...res.data } : m)),
+      }))
+      cancelEdit()
+    } catch (err: unknown) {
+      const r = (err as { response?: { data?: { message?: string } } })?.response
+      await alert(r?.data?.message ?? 'メッセージの編集に失敗しました。')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+  const removeMessage = async (msg: TradeMessage) => {
+    if (!(await confirm('このメッセージを削除しますか？', { title: 'メッセージ削除の確認', confirmLabel: '削除する', danger: true }))) return
+    try {
+      await chatApi.deleteMessage(chat.id, msg.id)
+      setChat((prev) => ({
+        ...prev,
+        messages: prev.messages.filter((m) => m.id !== msg.id),
+      }))
+    } catch (err: unknown) {
+      const r = (err as { response?: { data?: { message?: string } } })?.response
+      await alert(r?.data?.message ?? 'メッセージの削除に失敗しました。')
     }
   }
 
@@ -395,21 +446,65 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
               まだメッセージはありません。取引希望のメッセージを送ってください。
             </p>
           )}
-          {(chat.messages ?? []).map((msg) => {
+          {(chat.messages ?? []).map((msg, i, arr) => {
             const mine = isMine(msg.user_id)
+            // 編集は自分の最新メッセージのみ。削除は最初の取引希望メッセージ（先頭）以外の自分のメッセージ
+            const canEdit = mine && canSend && i === arr.length - 1
+            const canDelete = mine && canSend && i > 0
+            const isEditing = editingId === msg.id
             return (
               <div key={msg.id} className={`flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
                 <p className="text-xs text-gray-500">{msg.character_name}</p>
-                <div className={`max-w-[75%] break-words rounded-2xl px-4 py-2 text-sm ${
-                  mine
-                    ? 'bg-primary-500 text-white rounded-tr-sm'
-                    : 'bg-surface-border text-gray-100 rounded-tl-sm'
-                }`}>
-                  {msg.message}
+                {isEditing ? (
+                  <div className="w-full max-w-[75%] space-y-1">
+                    <input
+                      type="text"
+                      value={editInput}
+                      onChange={(e) => setEditInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) saveEdit()
+                        if (e.key === 'Escape') cancelEdit()
+                      }}
+                      autoFocus
+                      className="w-full bg-surface border border-primary-500 rounded-2xl px-4 py-2 text-sm text-white focus:outline-none"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={saveEdit}
+                        disabled={!editInput.trim() || savingEdit}
+                        className="text-xs bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-2.5 py-1 rounded transition-colors"
+                      >
+                        保存
+                      </button>
+                      <button onClick={cancelEdit} className="text-xs text-gray-500 hover:text-white px-2 py-1 transition-colors">
+                        キャンセル
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`max-w-[75%] break-words rounded-2xl px-4 py-2 text-sm ${
+                    mine
+                      ? 'bg-primary-500 text-white rounded-tr-sm'
+                      : 'bg-surface-border text-gray-100 rounded-tl-sm'
+                  }`}>
+                    {msg.message}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-gray-600">
+                    {new Date(msg.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  {!isEditing && canEdit && (
+                    <button onClick={() => startEdit(msg)} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                      編集
+                    </button>
+                  )}
+                  {!isEditing && canDelete && (
+                    <button onClick={() => removeMessage(msg)} className="text-xs text-gray-500 hover:text-red-400 transition-colors">
+                      削除
+                    </button>
+                  )}
                 </div>
-                <p className="text-xs text-gray-600">
-                  {new Date(msg.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                </p>
               </div>
             )
           })}

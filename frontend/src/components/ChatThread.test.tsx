@@ -15,6 +15,8 @@ vi.mock('../api/chat', () => ({
   chatApi: {
     get: vi.fn().mockResolvedValue({ data: {} }),
     sendMessage: vi.fn(),
+    updateMessage: vi.fn(),
+    deleteMessage: vi.fn(),
     deal: vi.fn(),
     decline: vi.fn(),
     dealFailed: vi.fn(),
@@ -126,6 +128,81 @@ describe('ChatThread TELLコマンドコピー', () => {
   it('交渉中（open）のチャットにはTELLコマンドアイコンを表示しない', () => {
     renderThread()
     expect(screen.queryByRole('button', { name: 'TELLコマンドをコピー' })).toBeNull()
+  })
+})
+
+// design.md「取引チャット」: メッセージの編集は自分の最新メッセージのみ、
+// 削除は最初の取引希望メッセージ以外の自分のメッセージのみ可能。
+describe('ChatThread メッセージ編集・削除', () => {
+  // user_id=2（買い手・currentUserId）の取引希望 → 出品者の返信 → 買い手の最新メッセージ
+  const multiChat: TradeChat = {
+    ...chat,
+    messages: [
+      { id: 1, chat_id: 1, user_id: 2, character_name: 'テスト買い手', message: '【希望時間帯】21時以降', created_at: '2026-06-12T10:00:00Z' },
+      { id: 2, chat_id: 1, user_id: 1, character_name: '出品者', message: 'よろしくお願いします', created_at: '2026-06-12T10:01:00Z' },
+      { id: 3, chat_id: 1, user_id: 2, character_name: 'テスト買い手', message: '了解です', created_at: '2026-06-12T10:02:00Z' },
+    ],
+  }
+
+  beforeEach(() => {
+    ;(chatApi.updateMessage as ReturnType<typeof vi.fn>).mockClear()
+    ;(chatApi.deleteMessage as ReturnType<typeof vi.fn>).mockClear()
+  })
+
+  it('自分の最新メッセージにのみ「編集」を表示し、保存でAPIが呼ばれ本文が更新される', async () => {
+    ;(chatApi.updateMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { id: 3, chat_id: 1, user_id: 2, message: '了解です。20時に伺います' },
+    })
+    renderThread({ chat: multiChat })
+
+    // 編集ボタンは1つだけ（最新の自分のメッセージのみ）
+    const editButtons = screen.getAllByRole('button', { name: '編集' })
+    expect(editButtons.length).toBe(1)
+
+    fireEvent.click(editButtons[0])
+    const input = screen.getByDisplayValue('了解です') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '了解です。20時に伺います' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(chatApi.updateMessage).toHaveBeenCalledWith(1, 3, '了解です。20時に伺います')
+    })
+    expect(await screen.findByText('了解です。20時に伺います')).toBeTruthy()
+  })
+
+  it('最初の取引希望メッセージには「削除」を表示せず、それ以外の自分のメッセージは削除できる', async () => {
+    ;(chatApi.deleteMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { deleted: true } })
+    renderThread({ chat: multiChat })
+
+    // 削除ボタンは1つだけ（自分のメッセージ id=1 は先頭のため対象外、id=3 のみ）
+    const deleteButtons = screen.getAllByRole('button', { name: '削除' })
+    expect(deleteButtons.length).toBe(1)
+
+    fireEvent.click(deleteButtons[0])
+    // 確認ダイアログで「削除する」
+    fireEvent.click(await screen.findByRole('button', { name: '削除する' }))
+
+    await waitFor(() => {
+      expect(chatApi.deleteMessage).toHaveBeenCalledWith(1, 3)
+    })
+    // 一覧から消える
+    await waitFor(() => {
+      expect(screen.queryByText('了解です')).toBeNull()
+    })
+  })
+
+  it('相手のメッセージには編集・削除ボタンを表示しない', () => {
+    // 出品者視点（currentUserId=1）。最新メッセージ(id=3)は相手のもの → 編集不可
+    renderThread({ chat: multiChat, currentUserId: 1, isOwner: true })
+    expect(screen.queryByRole('button', { name: '編集' })).toBeNull()
+    // 自分（出品者）の id=2 は先頭以外なので削除は可能
+    expect(screen.getAllByRole('button', { name: '削除' }).length).toBe(1)
+  })
+
+  it('クローズ済み（見送り）チャットでは編集・削除ボタンを表示しない', () => {
+    renderThread({ chat: { ...multiChat, status: 'declined' as TradeChat['status'] } })
+    expect(screen.queryByRole('button', { name: '編集' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '削除' })).toBeNull()
   })
 })
 

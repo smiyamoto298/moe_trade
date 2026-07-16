@@ -48,6 +48,14 @@ export const chatApi = {
     return client.post<TradeChat>(`/chats/${chatId}/messages`, { message })
   },
 
+  // メッセージ編集（自分のメッセージのうちチャット内で最新の1件のみ）
+  updateMessage: (chatId: number, messageId: number, message: string): Promise<{ data: any }> =>
+    client.patch(`/chats/${chatId}/messages/${messageId}`, { message }),
+
+  // メッセージ削除（自分のメッセージのみ。最初の取引希望メッセージは削除不可）
+  deleteMessage: (chatId: number, messageId: number): Promise<{ data: { deleted: boolean } }> =>
+    client.delete(`/chats/${chatId}/messages/${messageId}`),
+
   // 取引成立：このチャットをdealにする。交渉可のときは成立価格(finalPrice)を渡せる。
   deal: (chatId: number, finalPrice?: number): Promise<{ data: TradeChat[] }> => {
     if (USE_MOCK) {

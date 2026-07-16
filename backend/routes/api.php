@@ -284,6 +284,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('chats/unread-count',   [ChatController::class, 'unreadCount']);
     Route::get('chats/{id}',           [ChatController::class, 'show']);
     Route::post('chats/{id}/messages', [ChatController::class, 'sendMessage']);
+    Route::patch('chats/{id}/messages/{messageId}',  [ChatController::class, 'updateMessage']);
+    Route::delete('chats/{id}/messages/{messageId}', [ChatController::class, 'deleteMessage']);
     Route::post('chats/{id}/deal',        [ChatController::class, 'deal']);
     Route::post('chats/{id}/bid',         [ChatController::class, 'bid']);
     Route::post('chats/{id}/complete',    [ChatController::class, 'markComplete']);

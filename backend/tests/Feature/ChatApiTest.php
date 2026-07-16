@@ -240,6 +240,147 @@ class ChatApiTest extends TestCase
         $this->assertSame('open', $chat->fresh()->status);
     }
 
+    // ─── メッセージの編集・削除 ───────────────────────────────
+    // 編集: 自分のメッセージのうちチャット内で最新の1件のみ。
+    // 削除: 自分のメッセージのみ。ただし最初の取引希望メッセージは削除不可。
+
+    /** buyer の取引希望メッセージ＋往復メッセージを持つチャットを作る。 */
+    private function makeChatWithMessages(User $seller, User $buyer): TradeChat
+    {
+        $chat = $this->makeChat($seller, $buyer);
+        $chat->messages()->create(['user_id' => $buyer->id,  'message' => '【希望時間帯】21時以降']);
+        $chat->messages()->create(['user_id' => $seller->id, 'message' => 'よろしくお願いします']);
+        $chat->messages()->create(['user_id' => $buyer->id,  'message' => '了解です']);
+        return $chat;
+    }
+
+    public function test_自分の最新メッセージを編集できる(): void
+    {
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChatWithMessages($seller, $buyer);
+        $latest = $chat->messages()->reorder('id', 'desc')->first(); // buyer の「了解です」
+
+        $this->actingAs($buyer, 'sanctum')
+            ->patchJson("/api/chats/{$chat->id}/messages/{$latest->id}", ['message' => '了解です。20時に伺います'])
+            ->assertOk()
+            ->assertJsonPath('message', '了解です。20時に伺います');
+
+        $this->assertSame('了解です。20時に伺います', $latest->fresh()->message);
+    }
+
+    public function test_最新でないメッセージは編集できない(): void
+    {
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChatWithMessages($seller, $buyer);
+        $first  = $chat->messages()->orderBy('id')->first(); // buyer の取引希望（最新ではない）
+
+        $this->actingAs($buyer, 'sanctum')
+            ->patchJson("/api/chats/{$chat->id}/messages/{$first->id}", ['message' => '書き換え'])
+            ->assertStatus(400);
+
+        $this->assertSame('【希望時間帯】21時以降', $first->fresh()->message);
+    }
+
+    public function test_他人のメッセージは編集できない(): void
+    {
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChatWithMessages($seller, $buyer);
+        $latest = $chat->messages()->reorder('id', 'desc')->first(); // buyer のメッセージ
+
+        $this->actingAs($seller, 'sanctum')
+            ->patchJson("/api/chats/{$chat->id}/messages/{$latest->id}", ['message' => '改ざん'])
+            ->assertStatus(403);
+    }
+
+    public function test_最初の取引希望メッセージ以外は削除できる(): void
+    {
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChatWithMessages($seller, $buyer);
+        $latest = $chat->messages()->reorder('id', 'desc')->first();
+
+        $this->actingAs($buyer, 'sanctum')
+            ->deleteJson("/api/chats/{$chat->id}/messages/{$latest->id}")
+            ->assertOk();
+
+        $this->assertDatabaseMissing('trade_messages', ['id' => $latest->id]);
+        $this->assertSame(2, $chat->messages()->count());
+    }
+
+    public function test_最初の取引希望メッセージは削除できない(): void
+    {
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChatWithMessages($seller, $buyer);
+        $first  = $chat->messages()->orderBy('id')->first();
+
+        $this->actingAs($buyer, 'sanctum')
+            ->deleteJson("/api/chats/{$chat->id}/messages/{$first->id}")
+            ->assertStatus(400);
+
+        $this->assertDatabaseHas('trade_messages', ['id' => $first->id]);
+    }
+
+    public function test_他人のメッセージは削除できない(): void
+    {
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChatWithMessages($seller, $buyer);
+        $latest = $chat->messages()->reorder('id', 'desc')->first(); // buyer のメッセージ
+
+        $this->actingAs($seller, 'sanctum')
+            ->deleteJson("/api/chats/{$chat->id}/messages/{$latest->id}")
+            ->assertStatus(403);
+    }
+
+    public function test_当事者以外はメッセージを編集_削除できない(): void
+    {
+        $chat     = $this->makeChatWithMessages($this->makeUser(), $this->makeUser());
+        $latest   = $chat->messages()->reorder('id', 'desc')->first();
+        $stranger = $this->makeUser();
+
+        $this->actingAs($stranger, 'sanctum')
+            ->patchJson("/api/chats/{$chat->id}/messages/{$latest->id}", ['message' => 'x'])
+            ->assertStatus(403);
+        $this->actingAs($stranger, 'sanctum')
+            ->deleteJson("/api/chats/{$chat->id}/messages/{$latest->id}")
+            ->assertStatus(403);
+    }
+
+    public function test_クローズ済みチャットではメッセージを編集_削除できない(): void
+    {
+        $seller = $this->makeUser();
+        $buyer  = $this->makeUser();
+        $chat   = $this->makeChatWithMessages($seller, $buyer);
+        $latest = $chat->messages()->reorder('id', 'desc')->first();
+        $chat->update(['status' => 'declined']);
+
+        $this->actingAs($buyer, 'sanctum')
+            ->patchJson("/api/chats/{$chat->id}/messages/{$latest->id}", ['message' => 'x'])
+            ->assertStatus(400);
+        $this->actingAs($buyer, 'sanctum')
+            ->deleteJson("/api/chats/{$chat->id}/messages/{$latest->id}")
+            ->assertStatus(400);
+    }
+
+    public function test_別チャットのメッセージIDを指定すると404(): void
+    {
+        $buyer = $this->makeUser();
+        $chatA = $this->makeChatWithMessages($this->makeUser(), $buyer);
+        $chatB = $this->makeChat(null, $buyer);
+        $msgA  = $chatA->messages()->reorder('id', 'desc')->first();
+
+        $this->actingAs($buyer, 'sanctum')
+            ->patchJson("/api/chats/{$chatB->id}/messages/{$msgA->id}", ['message' => 'x'])
+            ->assertStatus(404);
+        $this->actingAs($buyer, 'sanctum')
+            ->deleteJson("/api/chats/{$chatB->id}/messages/{$msgA->id}")
+            ->assertStatus(404);
+    }
+
     public function test_未読チャット数を取得できる(): void
     {
         $seller = $this->makeUser();
