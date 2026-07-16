@@ -96,7 +96,7 @@ export default function App() {
             path="/mypage/items"
             element={<PrivateRoute><OwnedItemsPage /></PrivateRoute>}
           />
-          {/* 運営掲示板（ログイン必須） */}
+          {/* お問い合わせ掲示板（ログイン必須） */}
           <Route
             path="/board"
             element={<PrivateRoute><BoardPage /></PrivateRoute>}

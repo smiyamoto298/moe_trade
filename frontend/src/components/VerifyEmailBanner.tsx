@@ -56,7 +56,7 @@ export default function VerifyEmailBanner() {
               <span>
                 認証メールが届かない場合は
                 <Link to="/board" className="underline text-orange-100 hover:text-white transition-colors">
-                  運営掲示板
+                  お問い合わせ
                 </Link>
                 でご連絡ください！
               </span>

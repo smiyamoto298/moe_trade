@@ -67,7 +67,7 @@ interface NotificationContextValue {
   markOutbidSeen: (chatId: number) => void
   // チャットを既読にする
   markAsRead: (chatId: number) => void
-  // 運営掲示板に新着があるか
+  // お問い合わせ（掲示板）に新着があるか
   hasNewBoard: boolean
   // 掲示板を既読にする
   markBoardSeen: () => void
@@ -208,7 +208,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             b && b.latest_post_at > boardSeen &&
             prevBoardAtRef.current !== null && b.latest_post_at > prevBoardAtRef.current
           ) {
-            new Notification('MoE Trade — 運営掲示板に新着', {
+            new Notification('MoE Trade — お問い合わせに新着', {
               body: b.thread_title,
               icon: '/favicon.svg',
             })

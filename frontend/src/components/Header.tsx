@@ -186,7 +186,7 @@ export default function Header() {
                 to="/board"
                 className="relative text-gray-300 hover:text-white transition-colors"
               >
-                運営掲示板
+                お問い合わせ
                 {hasNewBoard && (
                   <span className="absolute -top-1 -right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
                 )}
@@ -385,7 +385,7 @@ export default function Header() {
                   アイテムボックス
                 </Link>
                 <Link to="/board" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-                  <span>運営掲示板</span>
+                  <span>お問い合わせ</span>
                   {hasNewBoard && <span className="w-2 h-2 rounded-full bg-red-500" />}
                 </Link>
               </>

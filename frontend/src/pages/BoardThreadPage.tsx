@@ -186,7 +186,7 @@ export default function BoardThreadPage() {
     return (
       <div className="max-w-3xl mx-auto px-4 py-12 text-center">
         <p className="text-sm text-gray-500">スレッドが見つかりませんでした。</p>
-        <Link to="/board" className="text-sm text-primary-400 hover:underline mt-2 inline-block">掲示板へ戻る</Link>
+        <Link to="/board" className="text-sm text-primary-400 hover:underline mt-2 inline-block">お問い合わせへ戻る</Link>
       </div>
     )
   }
@@ -197,7 +197,7 @@ export default function BoardThreadPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      <Link to="/board" className="text-xs text-gray-400 hover:text-white transition-colors">‹ 運営掲示板へ戻る</Link>
+      <Link to="/board" className="text-xs text-gray-400 hover:text-white transition-colors">‹ お問い合わせへ戻る</Link>
 
       {/* スレッドヘッダー */}
       <div className="mt-2 mb-4 flex items-start justify-between gap-3">

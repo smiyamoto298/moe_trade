@@ -360,7 +360,7 @@ export interface TradeChat {
   is_locked?: boolean
 }
 
-// ---- 運営掲示板 ----
+// ---- お問い合わせ掲示板 ----
 export type BoardThreadStatus = 'open' | 'resolved'
 
 export type BoardThreadCategory = 'item_correction' | 'request' | 'bug' | 'other'

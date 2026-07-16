@@ -587,7 +587,7 @@ export default function AdminItemEditPage() {
         {/* 「その他」種別：適切な種別がない場合の案内 */}
         {isOther && (
           <div className="bg-amber-900/20 border border-amber-700/40 rounded px-4 py-3 text-sm text-amber-200 leading-relaxed">
-            適切な種別がない場合、運営掲示板でご連絡おねがいします！
+            適切な種別がない場合、お問い合わせでご連絡おねがいします！
             <br />
             時の石など、Ancient Age で取引可能な種別は対象外とさせていただいています！
           </div>

@@ -132,7 +132,7 @@ export default function BoardPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-white">運営掲示板</h1>
+        <h1 className="text-xl font-bold text-white">お問い合わせ</h1>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="text-sm bg-primary-500 hover:bg-primary-600 text-white px-4 py-1.5 rounded-md transition-colors"
@@ -143,7 +143,7 @@ export default function BoardPage() {
 
       {/* 全員に見える旨の注意 */}
       <div className="mb-4 bg-yellow-900/30 border border-yellow-700/40 rounded-md px-4 py-3 text-sm text-yellow-200 leading-relaxed">
-        ⚠ この掲示板の投稿内容は、ログイン中のすべてのユーザーが閲覧できます。
+        ⚠ お問い合わせの投稿内容は、ログイン中のすべてのユーザーが閲覧できます。
         メールアドレスやパスワードなどの個人情報は書き込まないようご注意ください。
       </div>
 

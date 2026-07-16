@@ -293,14 +293,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('chats/{id}/decline',     [ChatController::class, 'decline']);
     Route::post('chats/{id}/reopen',      [ChatController::class, 'reopen']);
 
-    // 運営掲示板（ログイン中の全ユーザーが閲覧・投稿可能）
+    // お問い合わせ掲示板（ログイン中の全ユーザーが閲覧・投稿可能）
     Route::get('board/threads',            [BoardController::class, 'index']);
     Route::post('board/threads',           [BoardController::class, 'store']);
     Route::get('board/threads/{id}',       [BoardController::class, 'show']);
     Route::post('board/threads/{id}/posts',[BoardController::class, 'storePost']);
     Route::put('board/posts/{id}',         [BoardController::class, 'updatePost']);
 
-    // 運営掲示板：管理者のみ（状態変更・削除）
+    // お問い合わせ掲示板：管理者のみ（状態変更・削除）
     Route::middleware('role:admin')->group(function () {
         Route::patch('board/threads/{id}/status',     [BoardController::class, 'updateStatus']);
         Route::patch('board/threads/{id}/visibility', [BoardController::class, 'updateVisibility']);
