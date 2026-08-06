@@ -235,6 +235,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 確認済みアイテムは「相場登録」アイコンから他サイト相場を手動登録（前述「価格データ解析」）
 - **アイテム削除（admin）**: 出品・買取・取引履歴と紐づく場合は禁止せず、件数入りの**確認モーダル**を表示。承諾すると関連する出品・買取・取引チャット・取引履歴ごと削除する（確認は `window.confirm` ではなく状態駆動のモーダルで実装。タブ非アクティブ時のダイアログ抑制を回避）。`buy_requests` は `item_id` を RESTRICT 参照するため、`Listing` と同様にアイテム本体より先に明示削除する（紐づく `trade_chats` は cascade、`trade_history.buy_request_id` は nullOnDelete）。確認レスポンスは `buy_request_count` も返す
 - **admin限定**: ユーザー管理（権限変更・利用停止・解除）
+- **利用状況解析（admin限定）**: `/admin/analytics`（ヘッダー管理メニュー「利用状況解析」）で出品数・買取数・取引成立数を日別に集計表示する。期間は 7日／30日（既定）／90日／1年 から選択。期間合計のサマリーカードと日別推移の折れ線グラフ（recharts）で表示する。出品数・買取数は**作成ベース**（後に取り下げ・期限切れ・成立になったものも含む）、取引成立数は `trade_history` の**相場対象（`is_valid = true`）のみ**（宣伝ポストと同じ流儀）。日付は JST（Asia/Tokyo）の日単位で丸める（DBはUTC保存のため、DB方言に依存しないようPHP側でJST日付に変換して集計）
 
 ### 10-B. SNS宣伝（宣伝ポスト・admin限定）
 X（旧Twitter）への宣伝用に、対象期間の
@@ -430,6 +431,7 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 │   ├── /admin/announcements  # お知らせ管理（admin限定）
 │   ├── /admin/promo-tweets   # 宣伝ポスト（X向け文面生成・admin限定）
 │   ├── /admin/batch-runs     # バッチ実行履歴（定期バッチの稼働状況・admin限定）
+│   ├── /admin/analytics      # 利用状況解析（出品数・買取数・取引成立数の日次集計・admin限定）
 │   ├── /admin/bonus-value-labels # 項目名候補マスタ管理（付加効果/追加効果タブ切替・editor/admin）
 │   ├── /admin/binder-labels  # レシピのバインダー候補マスタ管理（editor/admin）
 │   └── /admin/excluded-items # アイテム種別管理（共通の種別割当・ユーザー個別設定の共通化・サーバ登録対象外・admin限定）
@@ -1316,6 +1318,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `POST /api/admin/users/:id/unsuspend` — 停止解除
 - `POST /api/admin/users/:id/verify` — メール認証を手動で完了にする（メール送信失敗時の救済）
 - `GET /api/admin/batch-runs` — バッチ（Artisanコマンド）の実行履歴を新しい順（直近200件）で返す。`{ runs, commands }` を返し、`command` クエリで特定バッチに絞り込める。`commands` はフィルタ用のコマンド名一覧
+- `GET /api/admin/analytics/usage` — 利用状況の日次集計。`days` クエリ（1〜365・既定30）で期間を指定。JST日付単位で出品数（`listings.created_at`）・買取数（`buy_requests.created_at`）・取引成立数（`trade_history.traded_at`・`is_valid=true` のみ）を集計し、`{ days, from, to, totals: { listings, buy_requests, trades }, daily: [{ date, listings, buy_requests, trades }] }`（期間内全日ゼロ埋め・昇順）を返す
 
 ---
 
@@ -1573,6 +1576,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
 | `tests/Feature/AnnouncementApiTest.php` | お知らせ管理API（`link_new_tab` の作成・更新・デフォルト false = 同じウィンドウ・`target_type` の作成/正規化/バリデーション・公開一覧の対象ユーザー絞り込み all/staff/specific・`specific` の既読化＝本人を対象から外し0人で削除/対象外・all/staff・未ログインは拒否） |
 | `tests/Feature/BatchRunTest.php` | バッチ実行履歴（`BatchCommand` の success/failed 記録・実行履歴API の権限/新しい順/コマンド絞り込み） |
+| `tests/Feature/AdminAnalyticsApiTest.php` | 利用状況解析API（権限401/403・日次集計・JST日付境界・期間外除外・`is_valid=false` 除外・`days` バリデーション・既定30日） |
 
 > 既知の未カバー領域（今後追加推奨）: `GET /api/listings/:id` の公開制限(404)、アイテム削除の確認モーダル(409)/`force`連鎖削除、`items/:id/merge`、アセット種別の絞り込み、パスワード再設定の期限切れ・スロットル(429)。
 
