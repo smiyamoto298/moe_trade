@@ -260,6 +260,13 @@ export default function Header() {
                       >
                         バッチ実行履歴
                       </Link>
+                      <Link
+                        to="/admin/analytics"
+                        onClick={() => setAdminOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-border hover:text-white transition-colors"
+                      >
+                        利用状況解析
+                      </Link>
                       {/* ローカル開発専用: 本番データの取込（本番では非表示） */}
                       {isLocal && (
                         <button
@@ -441,6 +448,13 @@ export default function Header() {
                       className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
                     >
                       バッチ実行履歴
+                    </Link>
+                    <Link
+                      to="/admin/analytics"
+                      onClick={closeMobile}
+                      className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                    >
+                      利用状況解析
                     </Link>
                     {/* ローカル開発専用: 本番データの取込（本番では非表示） */}
                     {isLocal && (

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminAnalyticsController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\AuthController;
@@ -336,6 +337,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // バッチ（Artisanコマンド）の実行履歴
         Route::get('admin/batch-runs', [AdminController::class, 'batchRuns']);
+
+        // 利用状況解析（出品数・買取数・取引成立数の日次集計）
+        Route::get('admin/analytics/usage', [AdminAnalyticsController::class, 'usage']);
 
         // 本番データのローカル取込（ローカル環境専用・本番では 403）
         Route::post('admin/dev/pull-prod', [AdminController::class, 'pullProdData']);
