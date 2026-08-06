@@ -61,9 +61,9 @@ class AdminAnalyticsApiTest extends TestCase
     }
 
     /**
-     * 指定日時（UTC）に成立した取引履歴を作成する。
+     * 指定日時（UTC）に成立した出品由来の取引履歴を作成する。
      */
-    private function makeTradeAt(string $utc, bool $isValid = true): TradeHistory
+    private function makeTradeAt(string $utc, bool $isValid = true, ?User $seller = null, ?User $buyer = null): TradeHistory
     {
         // 裏付けの出品は集計期間外に置き、出品数のカウントを汚さない
         $listing = $this->makeListingAt('2026-07-01 00:00:00');
@@ -71,12 +71,34 @@ class AdminAnalyticsApiTest extends TestCase
         return TradeHistory::create([
             'listing_id' => $listing->id,
             'item_id'    => $listing->item_id,
-            'seller_id'  => $listing->user_id,
+            'seller_id'  => ($seller ?? $listing->user)->id,
+            'buyer_id'   => $buyer?->id,
             'price'      => 1000,
             'currency'   => 'AC',
             'server'     => 'Emerald',
             'is_valid'   => $isValid,
             'traded_at'  => $utc,
+        ]);
+    }
+
+    /**
+     * 指定日時（UTC）に成立した買取由来の取引履歴を作成する。
+     */
+    private function makeBuyRequestTradeAt(string $utc, ?User $seller = null, ?User $buyer = null): TradeHistory
+    {
+        // 裏付けの買取募集は集計期間外に置き、買取数のカウントを汚さない
+        $buyRequest = $this->makeBuyRequestAt('2026-07-01 00:00:00', $buyer);
+
+        return TradeHistory::create([
+            'buy_request_id' => $buyRequest->id,
+            'item_id'        => $buyRequest->item_id,
+            'seller_id'      => ($seller ?? $this->makeUser())->id,
+            'buyer_id'       => $buyRequest->user_id,
+            'price'          => 1000,
+            'currency'       => 'AC',
+            'server'         => 'Emerald',
+            'is_valid'       => true,
+            'traded_at'      => $utc,
         ]);
     }
 
@@ -115,6 +137,8 @@ class AdminAnalyticsApiTest extends TestCase
             ->assertJsonPath('totals.listings', 3)
             ->assertJsonPath('totals.buy_requests', 1)
             ->assertJsonPath('totals.trades', 1)
+            ->assertJsonPath('totals.listing_trades', 1)
+            ->assertJsonPath('totals.buy_request_trades', 0)
             ->assertJsonCount(7, 'daily');
 
         $daily = collect($res->json('daily'))->keyBy('date');
@@ -163,6 +187,62 @@ class AdminAnalyticsApiTest extends TestCase
         $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
 
         $res->assertOk()->assertJsonPath('totals.trades', 1);
+    }
+
+    public function test_成立は出品由来と買取由来に分かれて集計される(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        // JST 8/5 に出品由来1件と買取由来1件、JST 8/6 に買取由来1件（UTC 8/5 16:00 = JST 8/6 01:00）
+        $this->makeTradeAt('2026-08-05 09:00:00');
+        $this->makeBuyRequestTradeAt('2026-08-05 05:00:00');
+        $this->makeBuyRequestTradeAt('2026-08-05 16:00:00');
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+
+        $res->assertOk()
+            ->assertJsonPath('totals.listing_trades', 1)
+            ->assertJsonPath('totals.buy_request_trades', 2)
+            ->assertJsonPath('totals.trades', 3);
+
+        $daily = collect($res->json('daily'))->keyBy('date');
+        $this->assertSame(1, $daily['2026-08-05']['listing_trades']);
+        $this->assertSame(1, $daily['2026-08-05']['buy_request_trades']);
+        $this->assertSame(1, $daily['2026-08-06']['buy_request_trades']);
+        $this->assertSame(2, $daily['2026-08-05']['trades']);
+    }
+
+    public function test_取引にかかわったユニークユーザー数を返す(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        $alice = $this->makeUser();
+        $bob   = $this->makeUser();
+        $carol = $this->makeUser();
+
+        // alice→bob の出品由来、carol→bob の買取由来。bob は両方に登場するが1人として数える
+        $this->makeTradeAt('2026-08-05 09:00:00', seller: $alice, buyer: $bob);
+        $this->makeBuyRequestTradeAt('2026-08-06 01:00:00', seller: $carol, buyer: $bob);
+        // 相場対象外（is_valid=false）の取引の参加者は数えない
+        $this->makeTradeAt('2026-08-05 10:00:00', isValid: false, seller: $this->makeUser(), buyer: $this->makeUser());
+        // 期間外の取引の参加者も数えない
+        $this->makeTradeAt('2026-07-01 09:00:00', seller: $this->makeUser());
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+
+        $res->assertOk()->assertJsonPath('totals.trade_users', 3);
+    }
+
+    public function test_buyer_idが無い旧データでもユニークユーザー数を集計できる(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        // buyer_id = null（旧データ）は売り手だけ数える
+        $this->makeTradeAt('2026-08-05 09:00:00');
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+
+        $res->assertOk()->assertJsonPath('totals.trade_users', 1);
     }
 
     public function test_daysの指定が不正なら422(): void

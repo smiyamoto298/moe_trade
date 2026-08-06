@@ -19,7 +19,8 @@ const PERIODS = [
 const SERIES = [
   { key: 'listings', label: '出品', color: '#3b82f6', dash: undefined },
   { key: 'buy_requests', label: '買取', color: '#059669', dash: '5 3' },
-  { key: 'trades', label: '取引成立', color: '#d97706', dash: '2 2' },
+  { key: 'listing_trades', label: '出品成立', color: '#d97706', dash: '2 2' },
+  { key: 'buy_request_trades', label: '買取成立', color: '#db2777', dash: '8 3 2 3' },
 ] as const
 
 // 「YYYY-MM-DD」を「M/D」に短縮（X軸ラベル用）
@@ -63,7 +64,7 @@ export default function AdminAnalyticsPage() {
         </div>
       </div>
       <p className="text-sm text-gray-400 mb-5">
-        出品・買取の登録件数（取り下げ・期限切れ分も含む）と取引成立件数（相場対象のみ）を日別に集計します。日付は日本時間です。
+        出品・買取の登録件数（取り下げ・期限切れ分も含む）と取引成立件数（出品由来・買取由来別、相場対象のみ）を日別に集計します。日付は日本時間です。
       </p>
 
       {loading ? (
@@ -73,7 +74,7 @@ export default function AdminAnalyticsPage() {
       ) : (
         <>
           {/* 期間合計 */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
             {SERIES.map(({ key, label, color }) => (
               <div key={key} className="bg-surface rounded-lg px-4 py-3 text-center">
                 <p className="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1.5">
@@ -83,6 +84,13 @@ export default function AdminAnalyticsPage() {
                 <p className="text-lg font-bold text-white">{data.totals[key].toLocaleString()} 件</p>
               </div>
             ))}
+            <div
+              className="bg-surface rounded-lg px-4 py-3 text-center"
+              title="期間内の取引成立に売り手・買い手として関わったユーザーの数（重複なし）"
+            >
+              <p className="text-xs text-gray-400 mb-1">取引ユーザー</p>
+              <p className="text-lg font-bold text-white">{data.totals.trade_users.toLocaleString()} 人</p>
+            </div>
           </div>
 
           {/* 日別推移 */}
