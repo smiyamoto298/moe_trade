@@ -74,12 +74,18 @@ export default function Header() {
   const handlePullProd = async () => {
     setAdminOpen(false)
     setMobileOpen(false)
+    // 事前に起動しておくSSHトンネルのコマンド。実コマンド（本番ホスト名等）は公開リポジトリに
+    // 置かないため、gitignore 済みの frontend/.env.local の VITE_PROD_TUNNEL_CMD から読む。
+    const tunnelCmd =
+      (import.meta.env.VITE_PROD_TUNNEL_CMD as string | undefined) ??
+      'ssh -N -o ExitOnForwardFailure=yes -L 13306:<本番DBホスト>:3306 <SSHユーザー>@<SSHホスト>'
     const ok = await confirm(
-      '本番データ（IP・キャラ名・ログイン情報はマスキング済み）をローカルDBへ取り込みます。',
+      '本番データ（IP・キャラ名・ログイン情報はマスキング済み）をローカルDBへ取り込みます。\n事前にホスト側で以下のSSHトンネルを起動しておいてください（未起動だと接続エラーで失敗します）。',
       {
         title: '本番データ取込',
         danger: true,
         confirmLabel: '取り込む',
+        code: tunnelCmd,
         highlight: 'ローカルDBの現在のデータはすべて削除され、置き換えられます。',
       }
     )

@@ -7,6 +7,8 @@ interface DialogOptions {
   danger?: boolean
   /** 強調表示する警告文（メッセージの下に琥珀色のボックスで表示）。 */
   highlight?: string
+  /** コマンド等をコピー可能な等幅ブロックで表示する（メッセージと highlight の間）。 */
+  code?: string
   /** 任意のチェックボックス（「今後表示しない」等）。状態は onCheckbox で受け取る。 */
   checkbox?: { label: string; defaultChecked?: boolean }
   /** チェックボックスの最終状態（確認/キャンセルいずれの確定時にも呼ばれる）。 */
@@ -50,6 +52,8 @@ const INITIAL: DialogState = { open: false, message: '', kind: 'confirm', option
  */
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DialogState>(INITIAL)
+  // code ブロックの「コピー」ボタンの押下済み表示（ダイアログを閉じるとリセット）
+  const [copied, setCopied] = useState(false)
 
   const confirm = useCallback(
     (message: string, options: DialogOptions = {}) =>
@@ -88,6 +92,16 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     // prompt は OK で入力文字列、キャンセル/閉じるで null を返す
     state.resolve?.(state.kind === 'prompt' ? (result ? state.input : null) : result)
     setState(INITIAL)
+    setCopied(false)
+  }
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+    } catch {
+      /* clipboard 不可の環境（http 等）ではテキストを手動選択してコピーしてもらう */
+    }
   }
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -128,6 +142,20 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 }}
                 className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
               />
+            )}
+            {options.code && (
+              <div className="relative">
+                <pre className="text-xs font-mono text-gray-200 bg-black/40 border border-surface-border rounded px-3 py-2 pr-20 overflow-x-auto whitespace-pre-wrap break-all select-all">
+                  {options.code}
+                </pre>
+                <button
+                  type="button"
+                  onClick={() => copyCode(options.code!)}
+                  className="absolute top-1.5 right-1.5 text-xs text-gray-300 hover:text-white bg-surface border border-surface-border rounded px-2 py-1 transition-colors"
+                >
+                  {copied ? 'コピー済み' : 'コピー'}
+                </button>
+              </div>
             )}
             {options.highlight && (
               <p className="text-sm font-medium text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded px-3 py-2 whitespace-pre-line">
