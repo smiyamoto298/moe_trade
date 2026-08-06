@@ -235,7 +235,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 確認済みアイテムは「相場登録」アイコンから他サイト相場を手動登録（前述「価格データ解析」）
 - **アイテム削除（admin）**: 出品・買取・取引履歴と紐づく場合は禁止せず、件数入りの**確認モーダル**を表示。承諾すると関連する出品・買取・取引チャット・取引履歴ごと削除する（確認は `window.confirm` ではなく状態駆動のモーダルで実装。タブ非アクティブ時のダイアログ抑制を回避）。`buy_requests` は `item_id` を RESTRICT 参照するため、`Listing` と同様にアイテム本体より先に明示削除する（紐づく `trade_chats` は cascade、`trade_history.buy_request_id` は nullOnDelete）。確認レスポンスは `buy_request_count` も返す
 - **admin限定**: ユーザー管理（権限変更・利用停止・解除）
-- **利用状況解析（admin限定）**: `/admin/analytics`（ヘッダー管理メニュー「利用状況解析」）で出品数・買取数・取引成立数を日別に集計表示する。期間は 7日／30日（既定）／90日／1年 から選択。期間合計のサマリーカードと日別推移の折れ線グラフ（recharts）で表示する。出品数・買取数は**作成ベース**（後に取り下げ・期限切れ・成立になったものも含む）、取引成立数は `trade_history` の**相場対象（`is_valid = true`）のみ**（宣伝ポストと同じ流儀）。日付は JST（Asia/Tokyo）の日単位で丸める（DBはUTC保存のため、DB方言に依存しないようPHP側でJST日付に変換して集計）
+- **利用状況解析（admin限定）**: `/admin/analytics`（ヘッダー管理メニュー「利用状況解析」）で出品数・買取数・取引成立数（**出品由来＝出品成立／買取由来＝買取成立の内訳別**）を日別に集計表示する。期間は 7日／30日（既定）／90日／1年 から選択。期間合計のサマリーカード（出品・買取・出品成立・買取成立・**取引ユーザー**＝期間内の成立取引に売り手・買い手として関わったユニークユーザー数）と日別推移の折れ線グラフ（recharts・4系列）で表示する。出品数・買取数は**作成ベース**（後に取り下げ・期限切れ・成立になったものも含む）、取引成立数は `trade_history` の**相場対象（`is_valid = true`）のみ**（宣伝ポストと同じ流儀）で、買取由来は `buy_request_id` の有無で判別する。日付は JST（Asia/Tokyo）の日単位で丸める（DBはUTC保存のため、DB方言に依存しないようPHP側でJST日付に変換して集計）
 
 ### 10-B. SNS宣伝（宣伝ポスト・admin限定）
 X（旧Twitter）への宣伝用に、対象期間の
@@ -1318,7 +1318,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `POST /api/admin/users/:id/unsuspend` — 停止解除
 - `POST /api/admin/users/:id/verify` — メール認証を手動で完了にする（メール送信失敗時の救済）
 - `GET /api/admin/batch-runs` — バッチ（Artisanコマンド）の実行履歴を新しい順（直近200件）で返す。`{ runs, commands }` を返し、`command` クエリで特定バッチに絞り込める。`commands` はフィルタ用のコマンド名一覧
-- `GET /api/admin/analytics/usage` — 利用状況の日次集計。`days` クエリ（1〜365・既定30）で期間を指定。JST日付単位で出品数（`listings.created_at`）・買取数（`buy_requests.created_at`）・取引成立数（`trade_history.traded_at`・`is_valid=true` のみ）を集計し、`{ days, from, to, totals: { listings, buy_requests, trades }, daily: [{ date, listings, buy_requests, trades }] }`（期間内全日ゼロ埋め・昇順）を返す
+- `GET /api/admin/analytics/usage` — 利用状況の日次集計。`days` クエリ（1〜365・既定30）で期間を指定。JST日付単位で出品数（`listings.created_at`）・買取数（`buy_requests.created_at`）・取引成立数（`trade_history.traded_at`・`is_valid=true` のみ。`buy_request_id` の有無で出品由来 `listing_trades` ／買取由来 `buy_request_trades` に分割、`trades` は合計）を集計し、`{ days, from, to, totals: { listings, buy_requests, listing_trades, buy_request_trades, trades, trade_users }, daily: [{ date, listings, buy_requests, listing_trades, buy_request_trades, trades }] }`（期間内全日ゼロ埋め・昇順）を返す。`trade_users` は期間内の有効な成立取引に `seller_id` / `buyer_id` として関わったユニークユーザー数（`buyer_id` が null の旧データは売り手のみ数える）
 
 ---
 
@@ -1576,7 +1576,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
 | `tests/Feature/AnnouncementApiTest.php` | お知らせ管理API（`link_new_tab` の作成・更新・デフォルト false = 同じウィンドウ・`target_type` の作成/正規化/バリデーション・公開一覧の対象ユーザー絞り込み all/staff/specific・`specific` の既読化＝本人を対象から外し0人で削除/対象外・all/staff・未ログインは拒否） |
 | `tests/Feature/BatchRunTest.php` | バッチ実行履歴（`BatchCommand` の success/failed 記録・実行履歴API の権限/新しい順/コマンド絞り込み） |
-| `tests/Feature/AdminAnalyticsApiTest.php` | 利用状況解析API（権限401/403・日次集計・JST日付境界・期間外除外・`is_valid=false` 除外・`days` バリデーション・既定30日） |
+| `tests/Feature/AdminAnalyticsApiTest.php` | 利用状況解析API（権限401/403・日次集計・JST日付境界・期間外除外・`is_valid=false` 除外・出品由来/買取由来の分割・取引ユニークユーザー数・`days` バリデーション・既定30日） |
 
 > 既知の未カバー領域（今後追加推奨）: `GET /api/listings/:id` の公開制限(404)、アイテム削除の確認モーダル(409)/`force`連鎖削除、`items/:id/merge`、アセット種別の絞り込み、パスワード再設定の期限切れ・スロットル(429)。
 
