@@ -23,6 +23,15 @@ const SERIES = [
   { key: 'buy_request_trades', label: '買取成立', color: '#db2777', dash: '8 3 2 3' },
 ] as const
 
+type SeriesKey = (typeof SERIES)[number]['key']
+
+const ALL_VISIBLE: Record<SeriesKey, boolean> = {
+  listings: true,
+  buy_requests: true,
+  listing_trades: true,
+  buy_request_trades: true,
+}
+
 // 「YYYY-MM-DD」を「M/D」に短縮（X軸ラベル用）
 const fmtDate = (iso: string): string => {
   const [, m, d] = iso.split('-')
@@ -34,6 +43,11 @@ export default function AdminAnalyticsPage() {
   const [data, setData] = useState<UsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // グラフに表示する系列（チェックボックスで切替）
+  const [visible, setVisible] = useState<Record<SeriesKey, boolean>>(ALL_VISIBLE)
+
+  const allVisible = SERIES.every(({ key }) => visible[key])
+  const shownSeries = SERIES.filter(({ key }) => visible[key])
 
   useEffect(() => {
     setLoading(true)
@@ -93,36 +107,70 @@ export default function AdminAnalyticsPage() {
             </div>
           </div>
 
-          {/* 日別推移 */}
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            日別推移（{fmtDate(data.from)}〜{fmtDate(data.to)}）
-          </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={data.daily} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#353858" />
-              <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fill: '#9ca3af', fontSize: 11 }} minTickGap={24} />
-              <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} width={40} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#242740', border: '1px solid #353858', borderRadius: '6px' }}
-                labelStyle={{ color: '#d1d5db', marginBottom: 4 }}
-                labelFormatter={(v: string) => v}
-                formatter={(v: number) => `${v} 件`}
-              />
-              <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
-              {SERIES.map(({ key, label, color, dash }) => (
-                <Line
-                  key={key}
-                  type="monotone"
-                  dataKey={key}
-                  stroke={color}
-                  dot={false}
-                  name={label}
-                  strokeWidth={2}
-                  strokeDasharray={dash}
+          {/* 日別推移（チェックボックスで表示する系列を切替） */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              日別推移（{fmtDate(data.from)}〜{fmtDate(data.to)}）
+            </h2>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ml-auto">
+              <label className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allVisible}
+                  onChange={() =>
+                    setVisible(
+                      allVisible
+                        ? { listings: false, buy_requests: false, listing_trades: false, buy_request_trades: false }
+                        : ALL_VISIBLE
+                    )
+                  }
+                  className="accent-gray-400"
                 />
+                すべて
+              </label>
+              {SERIES.map(({ key, label, color }) => (
+                <label key={key} className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={visible[key]}
+                    onChange={() => setVisible((v) => ({ ...v, [key]: !v[key] }))}
+                    style={{ accentColor: color }}
+                  />
+                  {label}
+                </label>
               ))}
-            </LineChart>
-          </ResponsiveContainer>
+            </div>
+          </div>
+          {shownSeries.length === 0 ? (
+            <p className="text-sm text-gray-500 py-10 text-center">表示する系列が選択されていません。</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={data.daily} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#353858" />
+                <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fill: '#9ca3af', fontSize: 11 }} minTickGap={24} />
+                <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} width={40} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#242740', border: '1px solid #353858', borderRadius: '6px' }}
+                  labelStyle={{ color: '#d1d5db', marginBottom: 4 }}
+                  labelFormatter={(v: string) => v}
+                  formatter={(v: number) => `${v} 件`}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
+                {shownSeries.map(({ key, label, color, dash }) => (
+                  <Line
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    stroke={color}
+                    dot={false}
+                    name={label}
+                    strokeWidth={2}
+                    strokeDasharray={dash}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
     </div>
