@@ -100,6 +100,9 @@ export const itemsApi = {
     recipe_name?: string | null
     recipe_binder?: string | null
     recipe_entries?: { name: string | null; skill_requirements: Record<string, number> }[]
+    target_pet?: string | null
+    pet_item_effect?: string | null
+    set_items?: string[] | null
     bonus_effects?: {
       effect_name: string
       values: { value: number | string; value_unit: string; label?: string }[]
@@ -167,6 +170,9 @@ export const itemsApi = {
     recipe_name?: string | null
     recipe_binder?: string | null
     recipe_entries?: { name: string | null; skill_requirements: Record<string, number> }[]
+    target_pet?: string | null
+    pet_item_effect?: string | null
+    set_items?: string[] | null
     is_equipment_set?: boolean
     set_piece_category_ids?: number[]
     bonus_effects?: {

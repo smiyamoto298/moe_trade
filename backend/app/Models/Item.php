@@ -13,6 +13,7 @@ class Item extends Model
         'skill_requirements', 'mastery_requirements',
         'placement', 'asset_width', 'asset_height', 'storage_count', 'special_function',
         'pet_name', 'recipe_name', 'recipe_binder', 'recipe_entries',
+        'target_pet', 'pet_item_effect', 'set_items',
         'verified_status', 'submitted_by', 'verified_by', 'verified_at',
         'locked_by_staff',
     ];
@@ -29,6 +30,7 @@ class Item extends Model
             'skill_requirements' => 'array',
             'mastery_requirements' => 'array',
             'recipe_entries' => 'array',
+            'set_items' => 'array',
             'asset_width' => 'integer',
             'asset_height' => 'integer',
             'storage_count' => 'integer',

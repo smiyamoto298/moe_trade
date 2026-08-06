@@ -179,8 +179,9 @@ function SkillBadges({ skills }: { skills: [string, number][] }) {
   )
 }
 
-// 「その他」種別（未開封ペット・レシピ）の固有情報セル。
-// ペット名 と、レシピの各エントリ（レシピ名 + そのレシピ名の必要スキル値）をバッジで表示する。
+// 「その他」種別（未開封ペット・レシピ・ペット用アイテム・アイテムセット）の固有情報セル。
+// ペット名、レシピの各エントリ（レシピ名 + そのレシピ名の必要スキル値）、
+// ペット用アイテムの対象ペット・効果、アイテムセットのアイテムリストをバッジで表示する。
 export function OtherInfoCell({ item }: { item: Item }) {
   // レシピ：recipe_entries があればエントリごとに表示。無ければ旧単一フィールドへフォールバック。
   const recipeEntries = item.recipe_entries && item.recipe_entries.length > 0
@@ -188,8 +189,11 @@ export function OtherInfoCell({ item }: { item: Item }) {
     : (item.recipe_name || (item.skill_requirements && Object.keys(item.skill_requirements).length > 0)
         ? [{ name: item.recipe_name ?? null, skill_requirements: item.skill_requirements ?? {} }]
         : [])
+  const setItems = item.set_items ?? []
 
-  if (!item.pet_name && recipeEntries.length === 0) return <span className="text-xs text-gray-600">—</span>
+  if (!item.pet_name && recipeEntries.length === 0 && !item.target_pet && !item.pet_item_effect && setItems.length === 0) {
+    return <span className="text-xs text-gray-600">—</span>
+  }
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -198,6 +202,29 @@ export function OtherInfoCell({ item }: { item: Item }) {
           <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
             ペット名: <span className="text-white font-medium">{item.pet_name}</span>
           </span>
+        </div>
+      )}
+      {(item.target_pet || item.pet_item_effect) && (
+        <div className="flex flex-wrap gap-1">
+          {item.target_pet && (
+            <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+              対象ペット: <span className="text-white font-medium">{item.target_pet}</span>
+            </span>
+          )}
+          {item.pet_item_effect && (
+            <span className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+              効果: <span className="text-white font-medium">{item.pet_item_effect}</span>
+            </span>
+          )}
+        </div>
+      )}
+      {setItems.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {setItems.map((name, i) => (
+            <span key={i} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-200">
+              {name}
+            </span>
+          ))}
         </div>
       )}
       {recipeEntries.map((e, i) => (

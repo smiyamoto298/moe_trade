@@ -8,6 +8,7 @@ import CustomStatsEditor from '../../components/CustomStatsEditor'
 import Spinner from '../../components/Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces, membersToForm } from '../../components/EquipmentSetPiecesEditor'
 import RecipeEntriesEditor, { type RecipeEntryForm, recipeEntriesToPayload, itemToRecipeEntries } from '../../components/RecipeEntriesEditor'
+import SetItemsEditor, { setItemsToPayload } from '../../components/SetItemsEditor'
 import SkillRequirementInputs from '../../components/SkillRequirementInputs'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../../types'
 import { applyCopyRename, type CopyRename } from '../../utils/copyRename'
@@ -15,7 +16,7 @@ import { parseHashtags, formatHashtags } from '../../utils/hashtags'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 import { mergeBaseStats, splitBaseStats, type CustomStatRow } from '../../utils/customStats'
-import { OTHER_PET, OTHER_RECIPE, techniqueCategoryIds } from '../../utils/itemType'
+import { OTHER_PET, OTHER_RECIPE, OTHER_PET_ITEM, OTHER_ITEM_SET, techniqueCategoryIds } from '../../utils/itemType'
 import { normalizeOfficialUrl } from '../../utils/officialUrl'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
@@ -46,9 +47,11 @@ const isEquipmentSetCategory = (cat: ItemCategory) =>
 const isAssetCategory = (cat: ItemCategory) =>
   cat.parent_id === null && cat.name === 'アセット'
 
-// 「その他」配下の子カテゴリ判定（未開封ペット / レシピ）
+// 「その他」配下の子カテゴリ判定（未開封ペット / レシピ / ペット用アイテム / アイテムセット）
 const isPetCategory = (cat: ItemCategory) => cat.name === OTHER_PET
 const isRecipeCategory = (cat: ItemCategory) => cat.name === OTHER_RECIPE
+const isPetItemCategory = (cat: ItemCategory) => cat.name === OTHER_PET_ITEM
+const isItemSetCategory = (cat: ItemCategory) => cat.name === OTHER_ITEM_SET
 
 export default function AdminItemEditPage() {
   const { id } = useParams<{ id: string }>()
@@ -95,6 +98,8 @@ export default function AdminItemEditPage() {
     storage_count: '',
     special_function: '' as '' | AssetFunction,
     pet_name: '',
+    target_pet: '',
+    pet_item_effect: '',
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
   // 追加効果「その他」（項目名の自由入力。保存時 base_stats へマージ）
@@ -103,6 +108,8 @@ export default function AdminItemEditPage() {
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
   // レシピの {バインダー, レシピ名, 必要スキル値} エントリ（複数）
   const [recipeEntries, setRecipeEntries] = useState<RecipeEntryForm[]>([])
+  // アイテムセットの構成アイテム名リスト（自由入力・複数）
+  const [setItems, setSetItems] = useState<string[]>([])
   // ハッシュタグ（admin/editor は固定タグ・通常タグの両方を1つのテキストボックスで編集。例: #和風 #袴）
   const [fixedTagsText, setFixedTagsText] = useState('')
   const [userTagsText, setUserTagsText] = useState('')
@@ -136,10 +143,14 @@ export default function AdminItemEditPage() {
         storage_count: item.storage_count != null ? String(item.storage_count) : '',
         special_function: (item.special_function ?? '') as '' | AssetFunction,
         pet_name: item.pet_name ?? '',
+        target_pet: item.target_pet ?? '',
+        pet_item_effect: item.pet_item_effect ?? '',
       })
       if (!asCopy) setVerifiedStatus(item.verified_status)
       // レシピのエントリを復元（recipe_entries 優先、無ければ旧単一フィールドから合成）
       setRecipeEntries(itemToRecipeEntries(item))
+      // アイテムセットの構成アイテム名リストを復元
+      setSetItems([...(item.set_items ?? [])])
       // ハッシュタグをテキストボックスへ復元（コピー時も引き継ぐ）
       const tags = item.hashtags ?? []
       setFixedTagsText(formatHashtags(tags.filter((h) => h.is_fixed)))
@@ -209,10 +220,12 @@ export default function AdminItemEditPage() {
   const selectedCategory = allCategories.find((c) => String(c.id) === form.category_id)
   const isEquipSet = selectedCategory ? isEquipmentSetCategory(selectedCategory) : false
   const isAsset = selectedCategory ? isAssetCategory(selectedCategory) : false
-  // 「その他」種別（未開封ペット / レシピ）
+  // 「その他」種別（未開封ペット / レシピ / ペット用アイテム / アイテムセット）
   const isPet = selectedCategory ? isPetCategory(selectedCategory) : false
   const isRecipe = selectedCategory ? isRecipeCategory(selectedCategory) : false
-  const isOther = isPet || isRecipe
+  const isPetItem = selectedCategory ? isPetItemCategory(selectedCategory) : false
+  const isItemSet = selectedCategory ? isItemSetCategory(selectedCategory) : false
+  const isOther = isPet || isRecipe || isPetItem || isItemSet
   // 親カテゴリが「テクニック」かどうか
   const isSkill = (() => {
     if (!selectedCategory) return false
@@ -453,6 +466,9 @@ export default function AdminItemEditPage() {
         special_function: isAsset ? (form.special_function || null) : null,
         // 「その他」種別固有
         pet_name: isPet ? (form.pet_name.trim() || null) : null,
+        target_pet: isPetItem ? (form.target_pet.trim() || null) : null,
+        pet_item_effect: isPetItem ? (form.pet_item_effect.trim() || null) : null,
+        set_items: isItemSet ? setItemsToPayload(setItems) : null,
         // レシピは recipe_entries を送る（recipe_name/recipe_binder/skill_requirements はサーバ側で派生）
         ...(isRecipe && { recipe_entries: recipeEntriesToPayload(recipeEntries) }),
         bonus_effects: isPlain ? bonusEffects
@@ -618,6 +634,45 @@ export default function AdminItemEditPage() {
           <RecipeEntriesEditor
             value={recipeEntries}
             onChange={setRecipeEntries}
+          />
+        </div>
+        )}
+
+        {/* ペット用アイテム：対象ペット・効果 */}
+        {isPetItem && (
+        <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-300">ペット用アイテム情報</h2>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">対象ペット</label>
+            <input
+              type="text"
+              value={form.target_pet}
+              onChange={(e) => setField('target_pet', e.target.value)}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              placeholder="このアイテムを使えるペット"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">効果</label>
+            <input
+              type="text"
+              value={form.pet_item_effect}
+              onChange={(e) => setField('pet_item_effect', e.target.value)}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              placeholder="使用したときの効果"
+            />
+          </div>
+        </div>
+        )}
+
+        {/* アイテムセット：アイテムリスト（自由入力・複数） */}
+        {isItemSet && (
+        <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-300">アイテムセット情報</h2>
+          <p className="text-[10px] text-gray-500">セットに含まれるアイテム名を登録できます。</p>
+          <SetItemsEditor
+            value={setItems}
+            onChange={setSetItems}
           />
         </div>
         )}

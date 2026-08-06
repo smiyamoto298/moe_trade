@@ -7,12 +7,13 @@ import CustomStatsEditor from './CustomStatsEditor'
 import Spinner from './Spinner'
 import EquipmentSetPiecesEditor, { type EquipmentSetForm, emptyEquipmentSetForm, formToPieces } from './EquipmentSetPiecesEditor'
 import RecipeEntriesEditor, { type RecipeEntryForm, recipeEntriesToPayload } from './RecipeEntriesEditor'
+import SetItemsEditor, { setItemsToPayload } from './SetItemsEditor'
 import SkillRequirementInputs from './SkillRequirementInputs'
 import type { Item, ItemCategory, AssetPlacement, AssetFunction } from '../types'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../utils/constants'
 import { useBonusValueLabels } from '../hooks/useBonusValueLabels'
 import { mergeBaseStats, type CustomStatRow } from '../utils/customStats'
-import { OTHER_PET, OTHER_RECIPE, techniqueCategoryIds } from '../utils/itemType'
+import { OTHER_PET, OTHER_RECIPE, OTHER_PET_ITEM, OTHER_ITEM_SET, techniqueCategoryIds } from '../utils/itemType'
 import { normalizeOfficialUrl } from '../utils/officialUrl'
 
 interface BonusValueForm {
@@ -41,9 +42,11 @@ const isEquipmentSetCategory = (cat: ItemCategory) =>
 const isAssetCategory = (cat: ItemCategory) =>
   cat.parent_id === null && cat.name === 'アセット'
 
-// 「その他」配下の子カテゴリ判定（未開封ペット / レシピ）
+// 「その他」配下の子カテゴリ判定（未開封ペット / レシピ / ペット用アイテム / アイテムセット）
 const isPetCategory = (cat: ItemCategory) => cat.name === OTHER_PET
 const isRecipeCategory = (cat: ItemCategory) => cat.name === OTHER_RECIPE
+const isPetItemCategory = (cat: ItemCategory) => cat.name === OTHER_PET_ITEM
+const isItemSetCategory = (cat: ItemCategory) => cat.name === OTHER_ITEM_SET
 
 interface Props {
   onRegistered: (item: Item) => void
@@ -80,6 +83,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
     storage_count: '',
     special_function: '' as '' | AssetFunction,
     pet_name: '',
+    target_pet: '',
+    pet_item_effect: '',
   })
   const [bonusEffects, setBonusEffects] = useState<BonusEffectForm[]>([])
   // 追加効果「その他」（項目名の自由入力。保存時 base_stats へマージ）
@@ -88,6 +93,8 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const [equipSetForm, setEquipSetForm] = useState<EquipmentSetForm>(emptyEquipmentSetForm())
   // レシピの {バインダー, レシピ名, 必要スキル値} エントリ（複数）
   const [recipeEntries, setRecipeEntries] = useState<RecipeEntryForm[]>([])
+  // アイテムセットの構成アイテム名リスト（自由入力・複数）
+  const [setItems, setSetItems] = useState<string[]>([])
 
   useEffect(() => {
     setMastersLoading(true)
@@ -101,10 +108,12 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const selectedCategory = allCategories.find((c) => String(c.id) === form.category_id)
   const isEquipSet = selectedCategory ? isEquipmentSetCategory(selectedCategory) : false
   const isAsset = selectedCategory ? isAssetCategory(selectedCategory) : false
-  // 「その他」種別（未開封ペット / レシピ）
+  // 「その他」種別（未開封ペット / レシピ / ペット用アイテム / アイテムセット）
   const isPet = selectedCategory ? isPetCategory(selectedCategory) : false
   const isRecipe = selectedCategory ? isRecipeCategory(selectedCategory) : false
-  const isOther = isPet || isRecipe
+  const isPetItem = selectedCategory ? isPetItemCategory(selectedCategory) : false
+  const isItemSet = selectedCategory ? isItemSetCategory(selectedCategory) : false
+  const isOther = isPet || isRecipe || isPetItem || isItemSet
   // 親カテゴリが「テクニック」かどうか
   const isSkill = (() => {
     if (!selectedCategory) return false
@@ -213,6 +222,9 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         special_function: isAsset ? (form.special_function || null) : null,
         // 「その他」種別固有
         pet_name: isPet ? (form.pet_name.trim() || null) : null,
+        target_pet: isPetItem ? (form.target_pet.trim() || null) : null,
+        pet_item_effect: isPetItem ? (form.pet_item_effect.trim() || null) : null,
+        set_items: isItemSet ? setItemsToPayload(setItems) : null,
         // レシピは recipe_entries を送る（recipe_name/recipe_binder/skill_requirements はサーバ側で派生）
         ...(isRecipe && { recipe_entries: recipeEntriesToPayload(recipeEntries) }),
         bonus_effects: isPlain ? bonusEffects
@@ -364,6 +376,45 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
           <RecipeEntriesEditor
             value={recipeEntries}
             onChange={setRecipeEntries}
+          />
+        </div>
+      )}
+
+      {/* ペット用アイテム：対象ペット・効果 */}
+      {isPetItem && (
+        <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-primary-400">ペット用アイテム情報</p>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">対象ペット</label>
+            <input
+              type="text"
+              value={form.target_pet}
+              onChange={(e) => setField('target_pet', e.target.value)}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              placeholder="このアイテムを使えるペット"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">効果</label>
+            <input
+              type="text"
+              value={form.pet_item_effect}
+              onChange={(e) => setField('pet_item_effect', e.target.value)}
+              className="w-full bg-surface border border-surface-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500"
+              placeholder="使用したときの効果"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* アイテムセット：アイテムリスト（自由入力・複数） */}
+      {isItemSet && (
+        <div className="border border-primary-500/30 bg-primary-500/5 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-primary-400">アイテムセット情報</p>
+          <p className="text-[10px] text-gray-500">セットに含まれるアイテム名を登録できます。</p>
+          <SetItemsEditor
+            value={setItems}
+            onChange={setSetItems}
           />
         </div>
       )}

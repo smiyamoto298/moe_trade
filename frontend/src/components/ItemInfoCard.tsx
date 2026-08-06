@@ -70,8 +70,9 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
         </div>
       )}
 
-      {/* 「その他」種別情報（未開封ペット: ペット名 / レシピ: バインダー・レシピ名・必要スキル値の組を複数） */}
-      {(item.pet_name || recipeEntries.length > 0) && (
+      {/* 「その他」種別情報（未開封ペット: ペット名 / レシピ: レシピ名・必要スキル値の組を複数 /
+          ペット用アイテム: 対象ペット・効果 / アイテムセット: アイテムリスト） */}
+      {(item.pet_name || recipeEntries.length > 0 || item.target_pet || item.pet_item_effect || (item.set_items?.length ?? 0) > 0) && (
         <div className="mb-4">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{item.category.name}情報</h2>
           {item.pet_name && (
@@ -79,6 +80,34 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
               <div className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
                 <span className="text-gray-400">ペット名</span>
                 <span className="text-white font-medium">{item.pet_name}</span>
+              </div>
+            </div>
+          )}
+          {(item.target_pet || item.pet_item_effect) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {item.target_pet && (
+                <div className="bg-surface rounded px-3 py-1.5 flex justify-between gap-3 text-sm">
+                  <span className="text-gray-400 shrink-0">対象ペット</span>
+                  <span className="text-white font-medium text-right">{item.target_pet}</span>
+                </div>
+              )}
+              {item.pet_item_effect && (
+                <div className="bg-surface rounded px-3 py-1.5 flex justify-between gap-3 text-sm">
+                  <span className="text-gray-400 shrink-0">効果</span>
+                  <span className="text-white font-medium text-right">{item.pet_item_effect}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {(item.set_items?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">アイテムリスト</p>
+              <div className="flex flex-wrap gap-1">
+                {item.set_items!.map((name, i) => (
+                  <span key={i} className="text-xs bg-surface border border-surface-border rounded px-2 py-0.5 text-gray-200">
+                    {name}
+                  </span>
+                ))}
               </div>
             </div>
           )}
@@ -113,11 +142,11 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
       )}
 
       {/* 装備セットはセット本体の性能（古いデータ）は無視し、セット内訳の部位ごとの性能のみ表示する */}
-      {!item.is_equipment_set && Object.keys(item.base_stats).length > 0 && (
+      {!item.is_equipment_set && Object.keys(item.base_stats ?? {}).length > 0 && (
         <div className="mb-4">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">追加効果</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {Object.entries(item.base_stats).map(([key, val]) => (
+            {Object.entries(item.base_stats ?? {}).map(([key, val]) => (
               <div key={key} className="bg-surface rounded px-3 py-1.5 flex justify-between text-sm">
                 <span className="text-gray-400">{BASE_STAT_LABELS[key] ?? key}</span>
                 <span className="text-white font-medium">{formatSignedValue(val)}</span>
@@ -157,9 +186,9 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
         </div>
       )}
 
-      {!item.is_equipment_set && item.special_conditions.length > 0 && (
+      {!item.is_equipment_set && (item.special_conditions ?? []).length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {item.special_conditions.map((c) => (
+          {(item.special_conditions ?? []).map((c) => (
             <span
               key={c}
               title={SPECIAL_CONDITIONS[c]}

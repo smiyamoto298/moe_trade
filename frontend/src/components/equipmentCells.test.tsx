@@ -87,6 +87,31 @@ describe('OtherInfoCell', () => {
     render(<OtherInfoCell item={itemWithRecipeEntries(null)} />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })
+
+  it('ペット用アイテムの対象ペットと効果を表示する', () => {
+    const item = itemWithRecipeEntries(null, {
+      target_pet: 'もこもこ羊',
+      pet_item_effect: '成長率が上がる',
+    })
+    render(<OtherInfoCell item={item} />)
+
+    expect(screen.getByText('対象ペット:')).toBeInTheDocument()
+    expect(screen.getByText('もこもこ羊')).toBeInTheDocument()
+    expect(screen.getByText('効果:')).toBeInTheDocument()
+    expect(screen.getByText('成長率が上がる')).toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('アイテムセットのアイテムリストを表示する', () => {
+    const item = itemWithRecipeEntries(null, {
+      set_items: ['銅の剣', '回復ポーション'],
+    })
+    render(<OtherInfoCell item={item} />)
+
+    expect(screen.getByText('銅の剣')).toBeInTheDocument()
+    expect(screen.getByText('回復ポーション')).toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
 })
 
 // design.md「装備セット」: 出品一覧の付加効果列では、テクニック部位（ノアピース・秘伝の書）は

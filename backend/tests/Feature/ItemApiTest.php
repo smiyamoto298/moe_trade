@@ -1257,6 +1257,72 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseHas('items', ['name' => '未開封のもこもこ羊', 'pet_name' => 'もこもこ羊']);
     }
 
+    public function test_ペット用アイテムは対象ペットと効果を保存できる(): void
+    {
+        $user    = $this->makeUser();
+        $other   = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $petItem = ItemCategory::create(['name' => 'ペット用アイテム', 'parent_id' => $other->id, 'sort_order' => 2]);
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id'     => $petItem->id,
+            'name'            => 'ペットのおやつ',
+            'target_pet'      => 'もこもこ羊',
+            'pet_item_effect' => '成長率が上がる',
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('target_pet', 'もこもこ羊')
+            ->assertJsonPath('pet_item_effect', '成長率が上がる');
+        $this->assertDatabaseHas('items', [
+            'name'            => 'ペットのおやつ',
+            'target_pet'      => 'もこもこ羊',
+            'pet_item_effect' => '成長率が上がる',
+        ]);
+    }
+
+    public function test_アイテムセットはアイテムリストを保存できる_空エントリは除去される(): void
+    {
+        $user    = $this->makeUser();
+        $other   = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $itemSet = ItemCategory::create(['name' => 'アイテムセット', 'parent_id' => $other->id, 'sort_order' => 3]);
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $itemSet->id,
+            'name'        => '初心者応援セット',
+            'set_items'   => ['銅の剣', '  ', '回復ポーション', ''],
+        ]);
+
+        $res->assertStatus(201);
+        $item = Item::find($res->json('id'));
+        // 空白のみのエントリは除去されて保存される
+        $this->assertSame(['銅の剣', '回復ポーション'], $item->set_items);
+    }
+
+    public function test_アイテムセット更新でアイテムリストを差し替えできる_全て空ならnull(): void
+    {
+        $editor  = $this->makeUserWithRole('editor');
+        $other   = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $itemSet = ItemCategory::create(['name' => 'アイテムセット', 'parent_id' => $other->id, 'sort_order' => 3]);
+
+        $id = $this->actingAs($editor, 'sanctum')->postJson('/api/items', [
+            'category_id' => $itemSet->id,
+            'name'        => '差し替え前セット',
+            'set_items'   => ['銅の剣'],
+        ])->json('id');
+
+        // 差し替え
+        $this->actingAs($editor, 'sanctum')->putJson("/api/items/{$id}", [
+            'set_items' => ['鉄の剣', '鉄の盾'],
+        ])->assertOk();
+        $this->assertSame(['鉄の剣', '鉄の盾'], Item::find($id)->set_items);
+
+        // 全て空なら null にクリアされる
+        $this->actingAs($editor, 'sanctum')->putJson("/api/items/{$id}", [
+            'set_items' => [],
+        ])->assertOk();
+        $this->assertNull(Item::find($id)->set_items);
+    }
+
     public function test_レシピはエントリ_レシピ名と必要スキル値を保存する(): void
     {
         $user   = $this->makeUser();

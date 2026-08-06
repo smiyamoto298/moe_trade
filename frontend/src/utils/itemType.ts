@@ -4,10 +4,12 @@ import type { ItemCategory, ItemType } from '../types'
 export const TECHNIQUE_CATEGORY = 'テクニック'
 export const ASSET_CATEGORY = 'アセット'
 export const EQUIPMENT_SET_CATEGORY = '装備セット'
-// 既存種別に当てはまらないアイテムの親種別（子: 未開封ペット / レシピ）
+// 既存種別に当てはまらないアイテムの親種別（子: 未開封ペット / レシピ / ペット用アイテム / アイテムセット）
 export const OTHER_CATEGORY = 'その他'
 export const OTHER_PET = '未開封ペット'
 export const OTHER_RECIPE = 'レシピ'
+export const OTHER_PET_ITEM = 'ペット用アイテム'
+export const OTHER_ITEM_SET = 'アイテムセット'
 
 /**
  * カテゴリのトップ（最上位）カテゴリ名を返す。

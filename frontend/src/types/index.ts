@@ -105,6 +105,9 @@ export interface Item {
   recipe_binder?: string | null          // レガシー: レシピはバインダーを持たなくなった（列は残置・常に null）
   // レシピ: {レシピ名, 必要スキル値} の組を複数保持。レシピ以外では null/未定義。
   recipe_entries?: RecipeEntry[] | null
+  target_pet?: string | null             // ペット用アイテム: 対象ペット
+  pet_item_effect?: string | null        // ペット用アイテム: 効果
+  set_items?: string[] | null            // アイテムセット: 構成アイテム名リスト
   verified_status: VerifiedStatus
   submitted_by: number | null
   // editor/admin が編集・確認すると true。true の間は登録者(user)が上書き編集できない（排他制御）。

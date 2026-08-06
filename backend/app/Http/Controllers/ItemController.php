@@ -164,6 +164,12 @@ class ItemController extends Controller
             'pet_name'                 => 'nullable|string|max:100',
             'recipe_name'              => 'nullable|string|max:200',
             'recipe_binder'            => 'nullable|string|max:100',
+            // ペット用アイテム: 対象ペット・効果（自由入力）
+            'target_pet'               => 'nullable|string|max:100',
+            'pet_item_effect'          => 'nullable|string|max:500',
+            // アイテムセット: 構成アイテム名リスト（自由入力・複数）
+            'set_items'                => 'nullable|array',
+            'set_items.*'              => 'nullable|string|max:200',
             // レシピ: {レシピ名, 必要スキル値} の組を複数（送られた場合は派生カラムをこれから算出）
             'recipe_entries'                       => 'nullable|array',
             'recipe_entries.*.name'                => 'nullable|string|max:200',
@@ -190,6 +196,8 @@ class ItemController extends Controller
 
         // レシピ: recipe_entries から派生カラム（recipe_name/recipe_binder/skill_requirements）を算出
         $data = $this->normalizeRecipeEntries($data);
+        // アイテムセット: set_items の空エントリを除去
+        $data = $this->normalizeSetItems($data);
 
         $user = $request->user();
         // editor/admin は登録時に確認済み/確認中を選べる（verified フラグ）。
@@ -304,6 +312,12 @@ class ItemController extends Controller
             'pet_name'                 => 'nullable|string|max:100',
             'recipe_name'              => 'nullable|string|max:200',
             'recipe_binder'            => 'nullable|string|max:100',
+            // ペット用アイテム: 対象ペット・効果（自由入力）
+            'target_pet'               => 'nullable|string|max:100',
+            'pet_item_effect'          => 'nullable|string|max:500',
+            // アイテムセット: 構成アイテム名リスト（自由入力・複数）
+            'set_items'                => 'nullable|array',
+            'set_items.*'              => 'nullable|string|max:200',
             // レシピ: {レシピ名, 必要スキル値} の組を複数（送られた場合は派生カラムをこれから算出）
             'recipe_entries'                       => 'nullable|array',
             'recipe_entries.*.name'                => 'nullable|string|max:200',
@@ -328,6 +342,8 @@ class ItemController extends Controller
 
         // レシピ: recipe_entries が送られた場合のみ派生カラムを算出（部分更新の他フィールドは壊さない）
         $data = $this->normalizeRecipeEntries($data);
+        // アイテムセット: set_items が送られた場合のみ空エントリを除去
+        $data = $this->normalizeSetItems($data);
 
         $isSet = array_key_exists('pieces', $data)
             && (($data['is_equipment_set'] ?? $item->is_equipment_set));
@@ -560,6 +576,28 @@ class ItemController extends Controller
             }
         }
         $data['skill_requirements'] = $aggregated === [] ? null : $aggregated;
+
+        return $data;
+    }
+
+    /**
+     * アイテムセットの set_items（構成アイテム名リスト）を正規化する。
+     * 送られていない場合はそのまま。空白のみのエントリは除去し、全て空なら null にする。
+     */
+    private function normalizeSetItems(array $data): array
+    {
+        if (!array_key_exists('set_items', $data)) {
+            return $data;
+        }
+
+        $items = [];
+        foreach ((array) ($data['set_items'] ?? []) as $name) {
+            $name = trim((string) $name);
+            if ($name !== '') {
+                $items[] = $name;
+            }
+        }
+        $data['set_items'] = $items === [] ? null : $items;
 
         return $data;
     }
