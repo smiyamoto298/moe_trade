@@ -102,7 +102,7 @@ describe('OtherInfoCell', () => {
     expect(screen.queryByText('—')).not.toBeInTheDocument()
   })
 
-  it('アイテムセットのアイテムリストを1行1アイテムで縦に表示する', () => {
+  it('アイテムセットのアイテムリストを1つの枠内に1行1アイテムで表示する', () => {
     const item = itemWithRecipeEntries(null, {
       set_items: ['銅の剣', '回復ポーション'],
     })
@@ -111,10 +111,12 @@ describe('OtherInfoCell', () => {
     expect(screen.getByText('銅の剣')).toBeInTheDocument()
     expect(screen.getByText('回復ポーション')).toBeInTheDocument()
     expect(screen.queryByText('—')).not.toBeInTheDocument()
-    // アイテムリストは横並び（flex-wrap）ではなく縦並び（flex-col）で改行表示する
-    const container = screen.getByText('銅の剣').parentElement!
-    expect(container.className).toContain('flex-col')
-    expect(container.className).not.toContain('flex-wrap')
+    // 全アイテムが同一の枠（border 付きコンテナ）に入り、各アイテムは行要素（<p>）で改行表示される
+    const box = screen.getByText('銅の剣').parentElement!
+    expect(box).toBe(screen.getByText('回復ポーション').parentElement)
+    expect(box.className).toContain('border')
+    expect(screen.getByText('銅の剣').tagName).toBe('P')
+    expect(screen.getByText('回復ポーション').tagName).toBe('P')
   })
 })
 

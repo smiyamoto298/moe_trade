@@ -102,11 +102,10 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
           {(item.set_items?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs text-gray-500 mb-1">アイテムリスト</p>
-              <div className="flex flex-wrap gap-1">
+              {/* 1つの枠にまとめ、枠内で1行1アイテムの改行表示にする（一覧の情報列と同じ見た目） */}
+              <div className="inline-block bg-surface rounded px-3 py-2 text-sm space-y-0.5">
                 {item.set_items!.map((name, i) => (
-                  <span key={i} className="text-xs bg-surface border border-surface-border rounded px-2 py-0.5 text-gray-200">
-                    {name}
-                  </span>
+                  <p key={i} className="text-gray-200">{name}</p>
                 ))}
               </div>
             </div>

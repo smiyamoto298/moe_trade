@@ -219,12 +219,10 @@ export function OtherInfoCell({ item }: { item: Item }) {
         </div>
       )}
       {setItems.length > 0 && (
-        // アイテムリストは1行1アイテムで縦に並べる（横に折り返すと境界が読み取りにくいため）
-        <div className="flex flex-col gap-1 items-start">
+        // アイテムリストは1つの枠にまとめ、枠内で1行1アイテムの改行表示にする
+        <div className="self-start text-xs bg-surface border border-surface-border rounded px-2 py-1 text-gray-200 space-y-0.5">
           {setItems.map((name, i) => (
-            <span key={i} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-200">
-              {name}
-            </span>
+            <p key={i}>{name}</p>
           ))}
         </div>
       )}
