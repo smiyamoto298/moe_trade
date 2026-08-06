@@ -86,7 +86,8 @@ export default function Header() {
         danger: true,
         confirmLabel: '取り込む',
         code: tunnelCmd,
-        highlight: 'ローカルDBの現在のデータはすべて削除され、置き換えられます。',
+        highlight:
+          'ローカルDBの現在のデータはすべて削除され、スキーマごと置き換えられます。取込後、本番に未デプロイのマイグレーションは自動で適用しなおされます。',
       }
     )
     if (!ok) return

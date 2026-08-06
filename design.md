@@ -1406,9 +1406,10 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 ローカル開発機で本番に近いデータを使って検証するため、本番DBをマスキングしてローカルDBへ複製する仕組み。**ローカル環境専用**で、本番では一切動作させない。
 
-- **コマンド**: `php artisan db:pull-prod`（`App\Console\Commands\PullProdData`・`BatchCommand` 継承で `batch_runs` に記録）。本番MySQLへ接続（`config/database.php` の `prod` 接続＝`PROD_DB_*`、読み取り専用ユーザー推奨）してテーブルを読み、ローカルの対象テーブルを `truncate` してから複製する（破壊的）。`prod` 接続情報はローカル開発機の `.env` にだけ置き、**本番サーバの `.env` には絶対に置かない**。
+- **コマンド**: `php artisan db:pull-prod`（`App\Console\Commands\PullProdData`・`BatchCommand` 継承で `batch_runs` に記録）。本番MySQLへ接続（`config/database.php` の `prod` 接続＝`PROD_DB_*`、読み取り専用ユーザー推奨）し、対象テーブルを**スキーマごと複製**する（ローカル側を drop → 本番の `SHOW CREATE TABLE` で再作成 → データ投入。破壊的）。`prod` 接続情報はローカル開発機の `.env` にだけ置き、**本番サーバの `.env` には絶対に置かない**。
+- **マイグレーションの適用しなおし**: `migrations` テーブルも本番の適用状態ごと複製し、**取込の最後に `php artisan migrate` を自動実行**する。これにより本番に未デプロイのマイグレーション（スキーマ変更・データ変換・バックフィル含む）が取込データに対して適用しなおされ、ローカルのコードとDBの整合が取れる。適用しなおしたマイグレーション名は取込結果の要約に含まれる。本番に存在しないローカルのテーブルは drop され、未デプロイ分のマイグレーションが再作成する（SQLite テスト環境ではトランザクション内で FK 無効化が効かないため、drop は FK 依存の子→親順で行う）。ローカルと本番の DB ドライバが異なる場合はエラーで拒否する。
 - **接続経路（重要）**: 本番サーバは**外部からの MySQL(3306) をファイアウォールで遮断**しているため、直結はできない（タイムアウト）。**SSHトンネル経由**で接続し、`.env` の `PROD_DB_HOST` / `PROD_DB_PORT` はトンネル出口（php コンテナから見たホスト側）を指す。トンネルスクリプトと経路の詳細は非公開運用ドキュメント（`OPERATIONS.md`）参照。取込前にトンネルを起動しておくこと。
-- **安全装置**: `app()->environment('production')` のときは実行を拒否。`PROD_DB_HOST` 未設定なら設定エラーで失敗。複製しないテーブル（`migrations`/`sessions`/`*_tokens`/`cache`/`jobs`/`batch_runs` 等）はスキップし、ローカルに無い列・テーブルは無視する（スキーマ差異耐性）。
+- **安全装置**: `app()->environment('production')` のときは実行を拒否。`PROD_DB_*` 未設定なら設定エラーで失敗。複製しないテーブル（`sessions`/`*_tokens`/`cache`/`jobs`/`batch_runs` 等）はローカルのスキーマ・データをそのまま維持する（ログイン中のセッションも保持）。
 - **マスキング**（`App\Support\ProdDataMasker`・マスキング後も判別可能な形を維持）:
   - IPアドレス（`users.register_ip`/`trade_history.seller_ip`・`buyer_ip`/`trade_chats.request_ip`）→ `10.x.y.z`（プライベート空間）への**決定的**変換。同一IPは同一値になるため「同一IPからの複数アカウント検出」等はそのまま機能し、元IPは復元できない。
   - キャラクター名（`user_characters.character_name`）→ `キャラ{id}`、ゲームアカウント名（`moe_accounts.name`）→ `アカウント{id}`（id で一意）。
