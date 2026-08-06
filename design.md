@@ -511,6 +511,7 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 - **未開封ペット**: ペット名（`pet_name`）を入力する。
 - **ペット用アイテム**: 対象ペット（`target_pet`・自由入力テキスト）と効果（`pet_item_effect`・自由入力テキスト）を入力する。
 - **アイテムセット**: アイテムリスト（`set_items` JSON 配列・アイテム名の自由入力テキストを複数登録可能）を入力する。登録・編集フォームは共通の `SetItemsEditor` で項目を追加・削除する。保存時（`ItemController::store`/`update` の `normalizeSetItems`）に空白のみのエントリを除去し、全て空なら NULL にする。装備セット（`is_equipment_set`）とは別種別で、リストは名前の文字列のみ（アイテムIDの紐付けは行わない）。
+  - **アイテム名検索の対象**: 出品一覧（`GET /api/listings` の `item_name`）・買取一覧（`GET /api/buy-requests` の `item_name`）・アイテム一覧（`GET /api/items` の `name`）の名前検索は、アイテム名に加えて **アイテムセットの `set_items` 内の名前にも部分一致**する（`CAST(set_items AS CHAR) LIKE` の OR 条件。買取の複数アイテム名 `item_names[]`＝アイテムボックス貼り付けの完全一致検索は対象外）。このため `set_items` は Unicode エスケープなしで保存する（`App\Casts\UnescapedJson` キャスト。標準 'array' キャストは日本語を `\uXXXX` にエスケープし、SQLite テストで LIKE が一致しないため）。
 - **レシピ**: **レシピ名・必要スキル値の組（エントリ）を複数登録できる**（`items.recipe_entries` JSON 配列。要素は `{ "name", "skill_requirements" }`）。装備セット（1本体に複数の設定グループ）を参考にした構造で、**必要スキル値はレシピ名ごとに個別**に設定する（作成に必要なスキル値。必要マスタリは持たない）。レシピはバインダーを持たない（旧仕様のバインダー入力は廃止）。
   - 単一の `recipe_name` は **第1エントリからの派生互換値**（一覧・詳細の後方互換表示用）。`recipe_binder` 列はレシピでは未使用で常に NULL（`binder_labels` マスタ・管理画面・公開APIは残置するがレシピからは参照・供給しない）。`items.skill_requirements` は**全エントリの必要スキル値を各スキル最大値で集約**した検索用の値（下記絞り込みで使用）。保存時（`ItemController::store`/`update`）に `recipe_entries` からこれらを算出する。
   - 登録・編集フォーム（`NewItemForm` / `AdminItemEditPage`）は共通の `RecipeEntriesEditor` でエントリを追加・削除する。既存の単一データ（`recipe_entries` 未設定）は 1 エントリとして読み込む。
