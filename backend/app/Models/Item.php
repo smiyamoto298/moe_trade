@@ -30,7 +30,9 @@ class Item extends Model
             'skill_requirements' => 'array',
             'mastery_requirements' => 'array',
             'recipe_entries' => 'array',
-            'set_items' => 'array',
+            // set_items はアイテム名検索（LIKE）の対象になるため、日本語を \uXXXX に
+            // エスケープせず UTF-8 のまま保存する（SQLite テストで LIKE を成立させる）
+            'set_items' => \App\Casts\UnescapedJson::class,
             'asset_width' => 'integer',
             'asset_height' => 'integer',
             'storage_count' => 'integer',

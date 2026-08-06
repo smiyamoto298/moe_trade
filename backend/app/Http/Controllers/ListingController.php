@@ -29,9 +29,12 @@ class ListingController extends Controller
         }
         $this->applyItemTypeFilter($query, $itemType);
 
-        // フィルター
+        // フィルター（アイテム名。アイテムセットはアイテムリスト set_items 内の名前にも部分一致）
         $query->when($request->item_name, fn($q) =>
-            $q->whereHas('item', fn($iq) => $iq->where('name', 'like', "%{$request->item_name}%"))
+            $q->whereHas('item', fn($iq) => $iq->where(function ($w) use ($request) {
+                $w->where('name', 'like', "%{$request->item_name}%")
+                  ->orWhereRaw('CAST(set_items AS CHAR) LIKE ?', ["%{$request->item_name}%"]);
+            }))
         );
         // ハッシュタグでの絞り込み（タグ名は完全一致・大文字小文字を無視）
         $query->when($request->filled('hashtag'), function ($q) use ($request) {

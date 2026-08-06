@@ -33,6 +33,30 @@ class BuyRequestApiTest extends TestCase
         return $buyRequest;
     }
 
+    public function test_買取一覧のアイテム名検索はアイテムセットのアイテムリストにも一致する(): void
+    {
+        $cats     = $this->makeCategoryTree();
+        $otherTop = \App\Models\ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $itemSet  = \App\Models\ItemCategory::create(['name' => 'アイテムセット', 'parent_id' => $otherTop->id, 'sort_order' => 3]);
+
+        $set   = $this->makeItem(['name' => '初心者応援セット', 'category_id' => $itemSet->id, 'set_items' => ['銅の剣', '回復ポーション']]);
+        $sword = $this->makeItem(['name' => '銅の剣', 'category_id' => $cats['sword']->id]);
+        $this->makeBuyRequest($set);
+        $this->makeBuyRequest($sword);
+
+        $names = fn($res) => collect($res->json('data'))->pluck('item.name')->sort()->values()->all();
+
+        // 名前一致（通常アイテム）とアイテムリスト内一致（アイテムセット）の両方がヒット
+        $res = $this->getJson('/api/buy-requests?' . http_build_query(['item_name' => '銅の剣']));
+        $res->assertOk();
+        $this->assertSame(['初心者応援セット', '銅の剣'], $names($res));
+
+        // リスト内の名前の部分一致でもヒットする
+        $res2 = $this->getJson('/api/buy-requests?' . http_build_query(['item_name' => '回復']));
+        $res2->assertOk();
+        $this->assertSame(['初心者応援セット'], $names($res2));
+    }
+
     public function test_active_でも期限切れの買取は一覧に出ない(): void
     {
         // バッチが走る前（status は active のまま）でも、期限超過は一覧から除外される

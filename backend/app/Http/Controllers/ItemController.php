@@ -21,7 +21,11 @@ class ItemController extends Controller
                 'listings as active_listing_count' => fn($q) => $q->where('status', 'active'),
                 'buyRequests as active_buy_request_count' => fn($q) => $q->where('status', 'active'),
             ])
-            ->when($request->name, fn($q) => $q->where('name', 'like', "%{$request->name}%"))
+            // アイテム名検索（アイテムセットはアイテムリスト set_items 内の名前にも部分一致）
+            ->when($request->name, fn($q) => $q->where(function ($w) use ($request) {
+                $w->where('name', 'like', "%{$request->name}%")
+                  ->orWhereRaw('CAST(set_items AS CHAR) LIKE ?', ["%{$request->name}%"]);
+            }))
             // ハッシュタグでの絞り込み（タグ名は完全一致・大文字小文字を無視）
             ->when($request->filled('hashtag'), function ($q) use ($request) {
                 $tag = mb_strtolower(trim((string) $request->hashtag));

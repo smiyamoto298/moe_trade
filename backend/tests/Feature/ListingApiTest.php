@@ -749,6 +749,36 @@ class ListingApiTest extends TestCase
         $this->assertSame(['各種ポーションのレシピ'], $names($res2));
     }
 
+    public function test_アイテム名検索はアイテムセットのアイテムリストにも一致する(): void
+    {
+        $cats     = $this->makeCategoryTree();
+        $otherTop = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $itemSet  = ItemCategory::create(['name' => 'アイテムセット', 'parent_id' => $otherTop->id, 'sort_order' => 3]);
+
+        // アイテムリストに「銅の剣」を含むアイテムセットと、名前が「銅の剣」の通常アイテム
+        $set   = $this->makeItem(['name' => '初心者応援セット', 'category_id' => $itemSet->id, 'set_items' => ['銅の剣', '回復ポーション']]);
+        $sword = $this->makeItem(['name' => '銅の剣', 'category_id' => $cats['sword']->id]);
+        $this->makeListing(null, $set);
+        $this->makeListing(null, $sword);
+
+        $names = fn($res) => collect($res->json('data'))->pluck('item.name')->sort()->values()->all();
+
+        // 「銅の剣」検索: 通常アイテム（名前一致）とアイテムセット（リスト内一致）の両方がヒット
+        $res = $this->getJson('/api/listings?' . http_build_query(['item_name' => '銅の剣']));
+        $res->assertOk();
+        $this->assertSame(['初心者応援セット', '銅の剣'], $names($res));
+
+        // 「回復」部分一致: アイテムセットのみヒット
+        $res2 = $this->getJson('/api/listings?' . http_build_query(['item_name' => '回復']));
+        $res2->assertOk();
+        $this->assertSame(['初心者応援セット'], $names($res2));
+
+        // リストにも名前にも無い語はヒットしない
+        $res3 = $this->getJson('/api/listings?' . http_build_query(['item_name' => '存在しない']));
+        $res3->assertOk();
+        $this->assertSame([], $names($res3));
+    }
+
     public function test_出品詳細は出品中と取引成立のみ公開され他は404(): void
     {
         // active は閲覧可

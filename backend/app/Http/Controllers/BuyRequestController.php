@@ -30,9 +30,12 @@ class BuyRequestController extends Controller
             ->visible($statuses)
             ->whereHas('user', fn($q) => $q->where('is_suspended', false));
 
-        // --- アイテム名フィルター（単一・部分一致） ---
+        // --- アイテム名フィルター（単一・部分一致。アイテムセットはアイテムリスト set_items 内の名前にも一致） ---
         $query->when($request->item_name, fn($q) =>
-            $q->whereHas('item', fn($iq) => $iq->where('name', 'like', '%' . $request->item_name . '%'))
+            $q->whereHas('item', fn($iq) => $iq->where(function ($w) use ($request) {
+                $w->where('name', 'like', '%' . $request->item_name . '%')
+                  ->orWhereRaw('CAST(set_items AS CHAR) LIKE ?', ['%' . $request->item_name . '%']);
+            }))
         );
 
         // --- 複数アイテム名フィルター（item_names[]・いずれかに一致） ---

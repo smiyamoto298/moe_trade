@@ -1323,6 +1323,29 @@ class ItemApiTest extends TestCase
         $this->assertNull(Item::find($id)->set_items);
     }
 
+    public function test_アイテム一覧の名前検索はアイテムセットのアイテムリストにも一致する(): void
+    {
+        $other   = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $itemSet = ItemCategory::create(['name' => 'アイテムセット', 'parent_id' => $other->id, 'sort_order' => 3]);
+        $sword   = ItemCategory::create(['name' => '刀剣', 'sort_order' => 0]);
+
+        $this->makeItem(['name' => '初心者応援セット', 'category_id' => $itemSet->id, 'set_items' => ['銅の剣', '回復ポーション']]);
+        $this->makeItem(['name' => '銅の剣', 'category_id' => $sword->id]);
+
+        // 名前一致（通常アイテム）とアイテムリスト内一致（アイテムセット）の両方がヒット
+        $res = $this->getJson('/api/items?name=' . urlencode('銅の剣'));
+        $res->assertOk();
+        $this->assertEqualsCanonicalizing(
+            ['初心者応援セット', '銅の剣'],
+            collect($res->json('data'))->pluck('name')->all()
+        );
+
+        // リスト内の名前の部分一致でもヒットする
+        $res2 = $this->getJson('/api/items?name=' . urlencode('回復'));
+        $res2->assertOk();
+        $this->assertSame(['初心者応援セット'], collect($res2->json('data'))->pluck('name')->all());
+    }
+
     public function test_レシピはエントリ_レシピ名と必要スキル値を保存する(): void
     {
         $user   = $this->makeUser();
