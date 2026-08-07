@@ -220,7 +220,8 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - **レスポンシブ対応（出品一覧テーブルと同方式）**: テーブルを囲むコンテナの実幅をCSSコンテナクエリ（`.resp-table-container` / `.resp-col-wide`、`frontend/src/index.css`）で判定し、**コンテナ幅720px未満**で詳細列（種別・追加効果/付加効果/特殊条件等の効果列・取引情報・状態）を隠して「アイテム名・操作」中心の表示に減らす。隠した主要情報（種別・状態・取引情報）はアイテム名の下に `.resp-narrow-only` のまとめ表示として出す。種別タブはモバイルで文字・余白を縮める。詳細はコンテナ幅が広がるか「詳細を見る」リンクから確認できる
 - **並び替えセレクト（全タブ）**: 種別タブ（装備品/テクニック/アセット/その他）の隣に**あいうえお順（既定）／新着順／更新順**のプルダウンを置く。クライアント側で適用する（一覧は全件取得済みのためAPI再取得は不要）。あいうえお順は `name` の昇順（`localeCompare('ja')`）でAPI返却順（`GET /api/items` の `ORDER BY name`）と一致、新着順は `created_at`、更新順は `updated_at` の降順。日時が欠落する場合は `id` 降順をフォールバックにする
 - **管理者の初期表示（確認中の自動表示）**: admin がアイテム一覧を開いたとき、確認中（未確認）アイテムが1件でもあれば、既定でフィルタを「確認中」・並び替えを「更新順」に設定する（確認待ちをすぐ処理できるようにする）。現在の種別タブに確認中が無ければ、確認中のある最初のタブ（装備品→テクニック→アセット→その他の順。装備品は既定表示に合わせセット構成部位を除いて判定）へ切り替える。初回ロード（アイテム＋カテゴリ）完了時に一度だけ適用し、編集ページから戻ったとき（navigation state でタブ・フィルタを復元する場合）や editor・一般ユーザー・未ログインには適用しない。**種別タブを切り替えたときも同様に、admin は切替先タブに確認中があればフィルタを「確認中」に、無ければ「すべて」にする**（admin 以外は従来どおり常に「すべて」へリセット）
-- **「装備セットを展開表示」チェックボックス（装備品タブのみ・デフォルトOFF）**: OFF はセット本体のみ表示して構成部位アイテム（`equipment_set_members` で紐付く piece）を隠し、ON は構成部位を表示してセット本体を隠す。セットに属さない通常アイテムは常に表示。すべて/未確認/確認済みの件数も表示中のアイテムに連動
+- **フィルタタブは「すべて/確認中/不明」**（各タブに件数表示）。「確認中」は `verified_status = 'unverified'` のアイテム。**「不明」は付加効果に値が不明（`value_unit === 'checking'`）の項目を持つアイテム**を表示する（装備セット本体は構成部位 `set_members` の付加効果も判定に含める。クライアント側の絞り込みのみ）。旧「確認済み」タブは廃止
+- **「装備セットを展開表示」チェックボックス（装備品タブのみ・デフォルトOFF）**: OFF はセット本体のみ表示して構成部位アイテム（`equipment_set_members` で紐付く piece）を隠し、ON は構成部位を表示してセット本体を隠す。セットに属さない通常アイテムは常に表示。すべて/確認中/不明の件数も表示中のアイテムに連動
 - 装備セット本体の行は、**出品一覧と同じ表示**にそろえる（共通コンポーネント `frontend/src/components/equipmentCells.tsx`）。アイテム名の下に**構成部位（部位カテゴリ名チップ）**を並べ、**追加効果・付加効果列は構成部位を効果内容でグループ化して部位名つきで表示**（設定が異なる部位は両方表示）する。セット本体自身の `base_stats` / `bonus_effects` は旧データのため表示しない（部位ごとの性能が正）
 - **「取引情報を表示」チェックボックス（全タブ・デフォルトON）**: 各アイテム行に**取引情報列（出品数・買取数）**を表示する（OFFで非表示）。件数はそのアイテムに紐づく**募集中（`status = active`）の出品（`listings`）・買取（`buy_requests`）の件数**。`GET /api/items` が各アイテムに `active_listing_count` / `active_buy_request_count`（`withCount`）を付与して返す
 - アイテム編集（装備品: 追加効果・付加効果・特殊条件・染色 / スキル: 必要スキル値・必要マスタリ）
@@ -235,7 +236,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 確認済みアイテムは「相場登録」アイコンから他サイト相場を手動登録（前述「価格データ解析」）
 - **アイテム削除（admin）**: 出品・買取・取引履歴と紐づく場合は禁止せず、件数入りの**確認モーダル**を表示。承諾すると関連する出品・買取・取引チャット・取引履歴ごと削除する（確認は `window.confirm` ではなく状態駆動のモーダルで実装。タブ非アクティブ時のダイアログ抑制を回避）。`buy_requests` は `item_id` を RESTRICT 参照するため、`Listing` と同様にアイテム本体より先に明示削除する（紐づく `trade_chats` は cascade、`trade_history.buy_request_id` は nullOnDelete）。確認レスポンスは `buy_request_count` も返す
 - **admin限定**: ユーザー管理（権限変更・利用停止・解除）
-- **利用状況解析（admin限定）**: `/admin/analytics`（ヘッダー管理メニュー「利用状況解析」）で出品数・買取数・取引成立数（**出品由来＝出品成立／買取由来＝買取成立の内訳別**）を日別に集計表示する。期間は 7日／30日（既定）／90日／1年 から選択。期間合計のサマリーカード（出品・買取・出品成立・買取成立・**取引ユーザー**＝期間内の成立取引に売り手・買い手として関わったユニークユーザー数）と日別推移の折れ線グラフ（recharts・4系列）で表示する。グラフは**系列ごとのチェックボックス**（系列色付き）で表示・非表示を切り替えられ、**「すべて」チェック**で一括切替できる（全チェック時に押すと全非表示、部分チェック時に押すと全表示。全系列を非表示にするとグラフの代わりに案内文を表示）。出品数・買取数は**作成ベース**（後に取り下げ・期限切れ・成立になったものも含む）、取引成立数は `trade_history` の**相場対象（`is_valid = true`）のみ**（宣伝ポストと同じ流儀）で、買取由来は `buy_request_id` の有無で判別する。日付は JST（Asia/Tokyo）の日単位で丸める（DBはUTC保存のため、DB方言に依存しないようPHP側でJST日付に変換して集計）
+- **利用状況解析（admin限定）**: `/admin/analytics`（ヘッダー管理メニュー「利用状況解析」）で出品数・買取数・取引成立数（**出品由来＝出品成立／買取由来＝買取成立の内訳別**）を日別に集計表示する。期間は 7日／30日（既定）／90日／1年 から選択。期間合計のサマリーカード（登録・出品・買取・成立・出品成立・買取成立・**取引ユーザー**＝期間内の成立取引に売り手・買い手として関わったユニークユーザー数）と日別推移の折れ線グラフ（recharts・6系列。**登録＝出品＋買取、成立＝出品成立＋買取成立の合算系列**を含む）で表示する。**既定表示は合算の「登録」「成立」の2系列のみ**。グラフは**系列ごとのチェックボックス**（系列色付き）で表示・非表示を切り替えられ、**「すべて」チェック**で一括切替できる（全チェック時に押すと全非表示、部分チェック時に押すと全表示。全系列を非表示にするとグラフの代わりに案内文を表示）。出品数・買取数は**作成ベース**（後に取り下げ・期限切れ・成立になったものも含む）、取引成立数は `trade_history` の**相場対象（`is_valid = true`）のみ**（宣伝ポストと同じ流儀）で、買取由来は `buy_request_id` の有無で判別する。日付は JST（Asia/Tokyo）の日単位で丸める（DBはUTC保存のため、DB方言に依存しないようPHP側でJST日付に変換して集計）
 
 ### 10-B. SNS宣伝（宣伝ポスト・admin限定）
 X（旧Twitter）への宣伝用に、対象期間の
@@ -582,7 +583,8 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 表示箇所すべてに適用する（登録・編集フォームの入力欄は対象外）。
 
 付加効果の値1件の表示は `formatBonusValueDisplay`（`utils/constants.ts`）に集約する。`value_unit` が
-`text` のときはテキストをそのまま（符号・単位なし）、`checking` のときは値に関わらず「確認中」、
+`text` のときはテキストをそのまま（符号・単位なし）、`checking` のときは値に関わらず「不明」
+（旧表示「確認中」。保存値は `checking` のまま変えないため、既存データも表示だけ「不明」になる）、
 `none` のときは空文字（値を出さず**項目名のみ**を表示）とする。
 それ以外は `formatSignedValue` ＋ 単位サフィックス（`unitSuffix`: `%`/`倍`/`/min`）。
 `checking`/`none` のように値を持たない単位は `isLabelOnlyUnit` で判定し、フォームでは値入力欄を出さず
@@ -811,14 +813,15 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 ]
 ```
 
-`value_unit` の値: `%` / `fixed`（固定値） / `x`（倍率） / `per_min`（毎分） / `text`（テキスト） / `checking`（確認中） / `none`（なし）
+`value_unit` の値: `%` / `fixed`（固定値） / `x`（倍率） / `per_min`（毎分） / `text`（テキスト） / `checking`（不明） / `none`（なし）
 
 - `text`: `value` は数値ではなく**文字列**を保持する。フォームの値欄はテキスト入力になる。
-- `checking`: 値が未確定の項目。**項目名（`label`）のみ設定**し `value` は空（`''`）。フォームでは値欄を出さず、
-  一覧・詳細などの表示箇所では「確認中」と表示する（`formatBonusValueDisplay`）。送信時は `value` が空でも
+- `checking`: 値が不明（未確定）の項目。**項目名（`label`）のみ設定**し `value` は空（`''`）。フォームでは値欄を出さず、
+  一覧・詳細などの表示箇所では「不明」と表示する（`formatBonusValueDisplay`。旧表示は「確認中」。
+  保存値は `checking` のまま変えないため、既存データも表示だけ「不明」になる）。送信時は `value` が空でも
   `value_unit === 'checking'` の要素は除外せず保存する。
 - `none`: 値を持たない項目。**項目名（`label`）のみ設定**し `value` は空（`''`）。フォームでは値欄を出さず
-  「項目名のみ」と表示する。表示箇所では値も「確認中」も出さず**項目名のみ**を表示する
+  「項目名のみ」と表示する。表示箇所では値も「不明」も出さず**項目名のみ**を表示する
   （`formatBonusValueDisplay` は空文字を返す）。送信時は `value` が空でも除外せず保存する。
 
 ### item_hashtags（アイテムのハッシュタグ）
@@ -1324,7 +1327,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `POST /api/admin/users/:id/unsuspend` — 停止解除
 - `POST /api/admin/users/:id/verify` — メール認証を手動で完了にする（メール送信失敗時の救済）
 - `GET /api/admin/batch-runs` — バッチ（Artisanコマンド）の実行履歴を新しい順（直近200件）で返す。`{ runs, commands }` を返し、`command` クエリで特定バッチに絞り込める。`commands` はフィルタ用のコマンド名一覧
-- `GET /api/admin/analytics/usage` — 利用状況の日次集計。`days` クエリ（1〜365・既定30）で期間を指定。JST日付単位で出品数（`listings.created_at`）・買取数（`buy_requests.created_at`）・取引成立数（`trade_history.traded_at`・`is_valid=true` のみ。`buy_request_id` の有無で出品由来 `listing_trades` ／買取由来 `buy_request_trades` に分割、`trades` は合計）を集計し、`{ days, from, to, totals: { listings, buy_requests, listing_trades, buy_request_trades, trades, trade_users }, daily: [{ date, listings, buy_requests, listing_trades, buy_request_trades, trades }] }`（期間内全日ゼロ埋め・昇順）を返す。`trade_users` は期間内の有効な成立取引に `seller_id` / `buyer_id` として関わったユニークユーザー数（`buyer_id` が null の旧データは売り手のみ数える）
+- `GET /api/admin/analytics/usage` — 利用状況の日次集計。`days` クエリ（1〜365・既定30）で期間を指定。JST日付単位で出品数（`listings.created_at`）・買取数（`buy_requests.created_at`）・取引成立数（`trade_history.traded_at`・`is_valid=true` のみ。`buy_request_id` の有無で出品由来 `listing_trades` ／買取由来 `buy_request_trades` に分割、`trades` は合計）を集計し、登録の合算 `registrations`（= listings + buy_requests）も含めて `{ days, from, to, totals: { listings, buy_requests, registrations, listing_trades, buy_request_trades, trades, trade_users }, daily: [{ date, listings, buy_requests, registrations, listing_trades, buy_request_trades, trades }] }`（期間内全日ゼロ埋め・昇順）を返す。`trade_users` は期間内の有効な成立取引に `seller_id` / `buyer_id` として関わったユニークユーザー数（`buyer_id` が null の旧データは売り手のみ数える）
 
 ---
 
@@ -1583,7 +1586,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
 | `tests/Feature/AnnouncementApiTest.php` | お知らせ管理API（`link_new_tab` の作成・更新・デフォルト false = 同じウィンドウ・`target_type` の作成/正規化/バリデーション・公開一覧の対象ユーザー絞り込み all/staff/specific・`specific` の既読化＝本人を対象から外し0人で削除/対象外・all/staff・未ログインは拒否） |
 | `tests/Feature/BatchRunTest.php` | バッチ実行履歴（`BatchCommand` の success/failed 記録・実行履歴API の権限/新しい順/コマンド絞り込み） |
-| `tests/Feature/AdminAnalyticsApiTest.php` | 利用状況解析API（権限401/403・日次集計・JST日付境界・期間外除外・`is_valid=false` 除外・出品由来/買取由来の分割・取引ユニークユーザー数・`days` バリデーション・既定30日） |
+| `tests/Feature/AdminAnalyticsApiTest.php` | 利用状況解析API（権限401/403・日次集計・登録の合算 `registrations`・JST日付境界・期間外除外・`is_valid=false` 除外・出品由来/買取由来の分割・取引ユニークユーザー数・`days` バリデーション・既定30日） |
 
 > 既知の未カバー領域（今後追加推奨）: `GET /api/listings/:id` の公開制限(404)、アイテム削除の確認モーダル(409)/`force`連鎖削除、`items/:id/merge`、アセット種別の絞り込み、パスワード再設定の期限切れ・スロットル(429)。
 
@@ -1621,7 +1624,7 @@ docker compose exec php vendor/bin/phpunit
 | `src/utils/copyRename.test.ts` | コピー時の名前変更 `applyCopyRename`（全出現箇所の置換・複数置換の順次適用・末尾追加・空欄/未指定時は変更なし） |
 | `src/components/ItemDetailModal.test.tsx` | アイテム詳細モーダル（`GET /api/items/:id` で基本情報・確認中バッジ・ハッシュタグ・相場を表示・相場取得失敗時も詳細は続行・取得失敗時のエラー表示・「詳細ページを開く」は新タブ・✕/オーバーレイで閉じる・itemId 変更で再取得） |
 | `src/pages/OwnedItemsPage.test.tsx` | アイテムボックス（自動再紐づけ・表示切替/種別タブ・重複確認・種別変更・カスタム種別・公式DBリンク・貼り付けアコーディオン・買取ありフィルタ・紐づけ済み行のアイテム名クリックで詳細モーダル表示） |
-| `src/pages/admin/AdminAnalyticsPage.test.tsx` | 利用状況解析ページ（初期表示は全系列・サマリーカード・系列チェックボックスの表示/非表示切替・「すべて」の一括切替と全非表示時の案内文・部分チェック時の「すべて」の挙動） |
+| `src/pages/admin/AdminAnalyticsPage.test.tsx` | 利用状況解析ページ（初期表示は合算の「登録」「成立」2系列のみ・サマリーカード・系列チェックボックスの表示/非表示切替・「すべて」の一括切替と全非表示時の案内文） |
 
 実行方法:
 ```bash
