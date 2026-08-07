@@ -774,6 +774,16 @@ describe('OwnedItemsPage 貼り付け領域のアコーディオン', () => {
     expect(mockedSetPasteOpen).toHaveBeenLastCalledWith(true)
   })
 
+  it('見出しの右側に再取り込み時の自動削除の説明書きを表示する', async () => {
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow()]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    const header = await screen.findByRole('button', { name: /アイテムボックスを貼り付け/ })
+    expect(header).toHaveTextContent('※再取り込みすると、貼り付けた一覧にないアイテムは自動で削除されます。')
+  })
+
   it('保存された状態が「閉じる」なら初期表示から折りたたむ', async () => {
     mockedPasteOpen.mockReturnValueOnce(false)
     mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow()]) })

@@ -874,7 +874,10 @@ export default function OwnedItemsPage() {
           className="w-full flex items-center justify-between text-left"
           title={pasteOpen ? '貼り付け領域を折りたたむ' : '貼り付け領域を開く'}
         >
-          <h2 className="text-sm font-semibold text-gray-300">アイテムボックスを貼り付け</h2>
+          <span className="flex flex-wrap items-baseline gap-x-2">
+            <h2 className="text-sm font-semibold text-gray-300">アイテムボックスを貼り付け</h2>
+            <span className="text-xs text-gray-500">※再取り込みすると、貼り付けた一覧にないアイテムは自動で削除されます。</span>
+          </span>
           <span className="text-xs text-gray-400" aria-hidden>{pasteOpen ? '▲' : '▼'}</span>
         </button>
         {pasteOpen && (<>
