@@ -5,6 +5,8 @@ export interface UsageDaily {
   date: string
   listings: number
   buy_requests: number
+  // 登録の合計（listings + buy_requests）
+  registrations: number
   // 出品由来の取引成立
   listing_trades: number
   // 買取由来の取引成立（trade_history.buy_request_id あり）
@@ -22,6 +24,7 @@ export interface UsageResponse {
   totals: {
     listings: number
     buy_requests: number
+    registrations: number
     listing_trades: number
     buy_request_trades: number
     trades: number

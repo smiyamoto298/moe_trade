@@ -174,7 +174,8 @@ export default function PriceAnalytics({ analytics, itemName }: Props) {
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">相場変動</h3>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={history} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#353858" />
+              {/* 罫線は背景（#1a1d2e）に埋もれないよう白に近い色にする */}
+              <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
               <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 11 }} />
               <YAxis
                 tick={{ fill: '#9ca3af', fontSize: 11 }}

@@ -136,6 +136,7 @@ class AdminAnalyticsApiTest extends TestCase
             ->assertJsonPath('to', '2026-08-06')
             ->assertJsonPath('totals.listings', 3)
             ->assertJsonPath('totals.buy_requests', 1)
+            ->assertJsonPath('totals.registrations', 4)
             ->assertJsonPath('totals.trades', 1)
             ->assertJsonPath('totals.listing_trades', 1)
             ->assertJsonPath('totals.buy_request_trades', 0)
@@ -145,9 +146,13 @@ class AdminAnalyticsApiTest extends TestCase
         $this->assertSame(2, $daily['2026-08-05']['listings']);
         $this->assertSame(1, $daily['2026-08-06']['listings']);
         $this->assertSame(1, $daily['2026-08-06']['buy_requests']);
+        // 登録は出品＋買取の合算（8/5=出品2、8/6=出品1＋買取1）
+        $this->assertSame(2, $daily['2026-08-05']['registrations']);
+        $this->assertSame(2, $daily['2026-08-06']['registrations']);
         $this->assertSame(1, $daily['2026-08-05']['trades']);
         // 該当のない日はゼロ埋めされる
         $this->assertSame(0, $daily['2026-07-31']['listings']);
+        $this->assertSame(0, $daily['2026-07-31']['registrations']);
     }
 
     public function test_JSTの日付境界で集計される(): void

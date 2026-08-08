@@ -15,21 +15,43 @@ const PERIODS = [
 ] as const
 
 // 系列の定義。色は暗色サーフェス上でのコントラスト・色覚多様性を検証済みのパレット。
-// 緑と橙は色だけでは区別しづらい組み合わせのため、破線・点線でも区別できるようにする。
+// 線種で系列の役割を区別する: 合算（登録・成立）＝太い実線、登録の内訳（出品・買取）＝通常の実線、
+// 成立の内訳（出品成立・買取成立）＝破線（色だけでは区別しづらい組み合わせ向けにパターンも変える）。
+// 登録＝出品＋買取、成立＝出品成立＋買取成立の合算系列（既定表示はこの2本のみ）。
 const SERIES = [
-  { key: 'listings', label: '出品', color: '#3b82f6', dash: undefined },
-  { key: 'buy_requests', label: '買取', color: '#059669', dash: '5 3' },
-  { key: 'listing_trades', label: '出品成立', color: '#d97706', dash: '2 2' },
-  { key: 'buy_request_trades', label: '買取成立', color: '#db2777', dash: '8 3 2 3' },
+  { key: 'registrations', label: '登録', color: '#8b5cf6', width: 3, dash: undefined },
+  { key: 'listings', label: '出品', color: '#3b82f6', width: 2, dash: undefined },
+  { key: 'buy_requests', label: '買取', color: '#059669', width: 2, dash: undefined },
+  { key: 'trades', label: '成立', color: '#ef4444', width: 3, dash: undefined },
+  { key: 'listing_trades', label: '出品成立', color: '#d97706', width: 2, dash: '7 4' },
+  { key: 'buy_request_trades', label: '買取成立', color: '#db2777', width: 2, dash: '3 3' },
 ] as const
 
 type SeriesKey = (typeof SERIES)[number]['key']
 
 const ALL_VISIBLE: Record<SeriesKey, boolean> = {
+  registrations: true,
   listings: true,
   buy_requests: true,
+  trades: true,
   listing_trades: true,
   buy_request_trades: true,
+}
+
+const NONE_VISIBLE: Record<SeriesKey, boolean> = {
+  registrations: false,
+  listings: false,
+  buy_requests: false,
+  trades: false,
+  listing_trades: false,
+  buy_request_trades: false,
+}
+
+// 既定表示は合算の「登録」「成立」のみ（内訳はチェックボックスで追加表示）
+const DEFAULT_VISIBLE: Record<SeriesKey, boolean> = {
+  ...NONE_VISIBLE,
+  registrations: true,
+  trades: true,
 }
 
 // 「YYYY-MM-DD」を「M/D」に短縮（X軸ラベル用）
@@ -44,7 +66,7 @@ export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   // グラフに表示する系列（チェックボックスで切替）
-  const [visible, setVisible] = useState<Record<SeriesKey, boolean>>(ALL_VISIBLE)
+  const [visible, setVisible] = useState<Record<SeriesKey, boolean>>(DEFAULT_VISIBLE)
 
   const allVisible = SERIES.every(({ key }) => visible[key])
   const shownSeries = SERIES.filter(({ key }) => visible[key])
@@ -78,7 +100,7 @@ export default function AdminAnalyticsPage() {
         </div>
       </div>
       <p className="text-sm text-gray-400 mb-5">
-        出品・買取の登録件数（取り下げ・期限切れ分も含む）と取引成立件数（出品由来・買取由来別、相場対象のみ）を日別に集計します。日付は日本時間です。
+        出品・買取の登録件数（取り下げ・期限切れ分も含む）と取引成立件数（出品由来・買取由来別、相場対象のみ）を日別に集計します。「登録」は出品＋買取、「成立」は出品成立＋買取成立の合算です。日付は日本時間です。
       </p>
 
       {loading ? (
@@ -88,7 +110,7 @@ export default function AdminAnalyticsPage() {
       ) : (
         <>
           {/* 期間合計 */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
             {SERIES.map(({ key, label, color }) => (
               <div key={key} className="bg-surface rounded-lg px-4 py-3 text-center">
                 <p className="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1.5">
@@ -117,13 +139,7 @@ export default function AdminAnalyticsPage() {
                 <input
                   type="checkbox"
                   checked={allVisible}
-                  onChange={() =>
-                    setVisible(
-                      allVisible
-                        ? { listings: false, buy_requests: false, listing_trades: false, buy_request_trades: false }
-                        : ALL_VISIBLE
-                    )
-                  }
+                  onChange={() => setVisible(allVisible ? NONE_VISIBLE : ALL_VISIBLE)}
                   className="accent-gray-400"
                 />
                 すべて
@@ -146,7 +162,8 @@ export default function AdminAnalyticsPage() {
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={data.daily} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#353858" />
+                {/* 罫線は背景（#1a1d2e）に埋もれないよう白に近い色にする */}
+                <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
                 <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fill: '#9ca3af', fontSize: 11 }} minTickGap={24} />
                 <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} width={40} allowDecimals={false} />
                 <Tooltip
@@ -156,7 +173,7 @@ export default function AdminAnalyticsPage() {
                   formatter={(v: number) => `${v} 件`}
                 />
                 <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
-                {shownSeries.map(({ key, label, color, dash }) => (
+                {shownSeries.map(({ key, label, color, width, dash }) => (
                   <Line
                     key={key}
                     type="monotone"
@@ -164,7 +181,7 @@ export default function AdminAnalyticsPage() {
                     stroke={color}
                     dot={false}
                     name={label}
-                    strokeWidth={2}
+                    strokeWidth={width}
                     strokeDasharray={dash}
                   />
                 ))}
