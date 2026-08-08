@@ -12,7 +12,7 @@ import InlineHashtags from '../../components/InlineHashtags'
 import OfficialDbLink from '../../components/OfficialDbLink'
 import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
 
-type Filter = 'all' | 'unverified' | 'verified'
+type Filter = 'all' | 'unverified' | 'unknown'
 type Mode = 'equipment' | 'skill' | 'asset' | 'other'
 // 並び替え: あいうえお順（名前・既定）/ 新着順（作成日時の新しい順）/ 更新順（更新日時の新しい順）
 type Sort = 'name' | 'newest' | 'updated'
@@ -158,6 +158,12 @@ export default function AdminItemsPage() {
       : m === 'other' ? otherCategoryIds.has(i.category.id)
       : !skillCategoryIds.has(i.category.id) && !assetCategoryIds.has(i.category.id)
         && !otherCategoryIds.has(i.category.id) && !setMemberIds.has(i.id)
+
+  // 付加効果に「不明」（value_unit === 'checking'）の値を持つか。
+  // 装備セット本体は自身の bonus_effects を表示しないため、構成部位（set_members）も見る。
+  const hasUnknownBonusValue = (i: Item): boolean =>
+    [i, ...(i.set_members ?? [])].some((it) =>
+      (it.bonus_effects ?? []).some((e) => (e.values ?? []).some((v) => v.value_unit === 'checking')))
 
   // 種別タブ m に確認中アイテムがあるか
   const hasUnverifiedIn = (m: Mode) =>
@@ -384,7 +390,7 @@ export default function AdminItemsPage() {
 
   const filtered = modeItems.filter((i) => {
     if (filter === 'unverified' && i.verified_status !== 'unverified') return false
-    if (filter === 'verified' && i.verified_status !== 'verified') return false
+    if (filter === 'unknown' && !hasUnknownBonusValue(i)) return false
     // ハッシュタグ絞り込み（タグ名・大文字小文字を無視）
     if (tagFilter && !(i.hashtags ?? []).some((h) => h.tag.toLowerCase() === tagFilter.toLowerCase())) return false
     return true
@@ -407,6 +413,8 @@ export default function AdminItemsPage() {
   )
 
   const unverifiedCount = modeItems.filter((i) => i.verified_status === 'unverified').length
+  // 付加効果に「不明」の値を持つアイテム数（「不明」タブの件数表示）
+  const unknownCount = modeItems.filter(hasUnknownBonusValue).length
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
@@ -511,7 +519,7 @@ export default function AdminItemsPage() {
       {/* フィルター・検索 */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex rounded-md overflow-hidden border border-surface-border">
-          {(['all', 'unverified', 'verified'] as Filter[]).map((f) => (
+          {(['all', 'unverified', 'unknown'] as Filter[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -519,7 +527,7 @@ export default function AdminItemsPage() {
                 filter === f ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white'
               }`}
             >
-              {f === 'all' ? `すべて (${modeItems.length})` : f === 'unverified' ? `確認中 (${unverifiedCount})` : `確認済み (${modeItems.length - unverifiedCount})`}
+              {f === 'all' ? `すべて (${modeItems.length})` : f === 'unverified' ? `確認中 (${unverifiedCount})` : `不明 (${unknownCount})`}
             </button>
           ))}
         </div>

@@ -220,7 +220,7 @@ describe('AdminItemsPage 装備セットを展開表示', () => {
     expect(within(row).queryByText(/攻撃力/)).not.toBeInTheDocument()
   })
 
-  it('件数タブ（すべて/未確認/確認済み）は表示中のアイテムに連動する', async () => {
+  it('件数タブ（すべて/確認中/不明）は表示中のアイテムに連動する', async () => {
     renderPage()
     await waitForLoaded()
 
@@ -230,6 +230,58 @@ describe('AdminItemsPage 装備セットを展開表示', () => {
     // チェックあり: 通常アイテム + 部位2件 = 3件
     await userEvent.click(screen.getByRole('checkbox', { name: '装備セットを展開表示' }))
     expect(await screen.findByRole('button', { name: 'すべて (3)' })).toBeInTheDocument()
+  })
+})
+
+describe('AdminItemsPage 不明タブ（付加効果に不明の値があるアイテム）', () => {
+  // design.md「管理機能」: フィルタタブは「すべて/確認中/不明」。「不明」は付加効果に
+  // value_unit === 'checking'（表示「不明」）の値を持つアイテムだけを表示する（確認済みタブは廃止）。
+  const unknownBonus = (id: number): Item['bonus_effects'][number] => ({
+    id,
+    effect_name: '謎の効果',
+    type: { id: 2, type_key: 'attack_up', label: '攻撃強化', category: 'attack' },
+    values: [{ label: '効果値', value: '', value_unit: 'checking' }],
+    description: '',
+  })
+  const unknownItem = makeItem({ id: 11, name: '謎の剣', bonus_effects: [unknownBonus(911)] })
+  const plainItem = makeItem({ id: 12, name: '普通の剣' })
+
+  it('「確認済み」タブは表示せず、「不明」タブを表示する', async () => {
+    mockedList.mockResolvedValue({ data: [unknownItem, plainItem] })
+    renderPage()
+    await waitForLoaded()
+
+    expect(screen.queryByRole('button', { name: /確認済み/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '不明 (1)' })).toBeInTheDocument()
+  })
+
+  it('「不明」タブは checking の値を持つアイテムだけを表示する', async () => {
+    mockedList.mockResolvedValue({ data: [unknownItem, plainItem] })
+    renderPage()
+    await waitForLoaded()
+
+    await userEvent.click(screen.getByRole('button', { name: '不明 (1)' }))
+    expect(screen.getByText('謎の剣')).toBeInTheDocument()
+    expect(screen.queryByText('普通の剣')).not.toBeInTheDocument()
+  })
+
+  it('装備セットは構成部位の付加効果に不明の値があればセット本体を表示する', async () => {
+    const unknownPiece = makeItem({ id: 103, name: '謎セットの頭', bonus_effects: [unknownBonus(912)] })
+    const unknownSet = makeItem({
+      id: 110,
+      name: '謎セット',
+      category: { id: 4, parent_id: null, name: '装備セット', sort_order: 4 },
+      is_equipment_set: true,
+      set_piece_category_ids: [11],
+      set_members: [unknownPiece],
+    })
+    mockedList.mockResolvedValue({ data: [unknownSet, unknownPiece, plainItem] })
+    renderPage()
+    await waitForLoaded()
+
+    await userEvent.click(screen.getByRole('button', { name: '不明 (1)' }))
+    expect(screen.getByText('謎セット')).toBeInTheDocument()
+    expect(screen.queryByText('普通の剣')).not.toBeInTheDocument()
   })
 })
 

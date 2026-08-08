@@ -689,7 +689,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
                       className="bg-surface border border-surface-border rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 w-full"
                     />
                     {isLabelOnlyUnit(v.value_unit) ? (
-                      <span className="text-xs text-gray-500 px-1 py-1 truncate" title={v.value_unit === 'checking' ? '項目名のみ設定（値は確認中）' : '項目名のみ設定（値なし）'}>項目名のみ</span>
+                      <span className="text-xs text-gray-500 px-1 py-1 truncate" title={v.value_unit === 'checking' ? '項目名のみ設定（値は不明）' : '項目名のみ設定（値なし）'}>項目名のみ</span>
                     ) : (
                       <input
                         type={v.value_unit === 'text' ? 'text' : 'number'}
@@ -709,7 +709,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
                       <option value="x">倍率</option>
                       <option value="per_min">毎分</option>
                       <option value="text">テキスト</option>
-                      <option value="checking">確認中</option>
+                      <option value="checking">不明</option>
                       <option value="none">なし</option>
                     </select>
                     {e.values.length > 1 && (

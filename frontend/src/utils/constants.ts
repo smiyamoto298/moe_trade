@@ -111,19 +111,19 @@ export function formatSignedValue(value: number | string, unit?: string): string
   return s.startsWith('-') ? s : `+${s}`
 }
 
-// 単位の表示サフィックス（% / 倍 / /min）。数値・テキスト・確認中以外は空。
+// 単位の表示サフィックス（% / 倍 / /min）。%・倍率・毎分以外は空。
 export function unitSuffix(unit?: string): string {
   return unit === '%' ? '%' : unit === 'x' ? '倍' : unit === 'per_min' ? '/min' : ''
 }
 
 // 付加効果の値1件の表示文字列。
 // value_unit === 'text'   … 数値ではなくテキストをそのまま表示（符号・単位なし）
-// value_unit === 'checking' … 値を持たず「確認中」と表示する（項目名のみ設定）
+// value_unit === 'checking' … 値を持たず「不明」と表示する（項目名のみ設定）
 // value_unit === 'none'   … 値を持たず空文字を返す（項目名のみ表示。呼び出し側で label だけ描画）
 // それ以外 … 符号付き数値＋単位（formatSignedValue + unitSuffix）
 export function formatBonusValueDisplay(value: number | string, unit?: string): string {
   if (unit === 'none') return ''
-  if (unit === 'checking') return '確認中'
+  if (unit === 'checking') return '不明'
   if (unit === 'text') return String(value)
   return `${formatSignedValue(value, unit)}${unitSuffix(unit)}`
 }

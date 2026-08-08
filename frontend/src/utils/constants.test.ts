@@ -196,9 +196,9 @@ describe('formatBonusValueDisplay', () => {
     expect(formatBonusValueDisplay('5〜10', 'text')).toBe('5〜10')
   })
 
-  it('checking は値に関わらず「確認中」と表示する', () => {
-    expect(formatBonusValueDisplay('', 'checking')).toBe('確認中')
-    expect(formatBonusValueDisplay(15, 'checking')).toBe('確認中')
+  it('checking は値に関わらず「不明」と表示する', () => {
+    expect(formatBonusValueDisplay('', 'checking')).toBe('不明')
+    expect(formatBonusValueDisplay(15, 'checking')).toBe('不明')
   })
 
   it('none は値に関わらず空文字（項目名のみ表示のため値は出さない）', () => {
