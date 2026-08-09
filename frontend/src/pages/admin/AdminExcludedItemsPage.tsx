@@ -14,7 +14,7 @@ import type { ExcludedItem, ExclusionType, UserExclusionSuggestion, ServerExclud
  */
 export default function AdminExcludedItemsPage() {
   usePageMeta('アイテム種別管理', 'アイテムボックスの共通の表示種別（ジャンル）割当・ユーザー個別設定の共通化・サーバ登録対象外を管理します。')
-  const { confirm, alert } = useDialog()
+  const { confirm, alert, prompt } = useDialog()
   const [rows, setRows] = useState<ExcludedItem[]>([])
   const [types, setTypes] = useState<ExclusionType[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +125,8 @@ export default function AdminExcludedItemsPage() {
   }
 
   const renameType = async (t: ExclusionType) => {
-    const name = window.prompt('種別名', t.name)?.trim()
+    // ブラウザ標準の prompt は環境により抑制されるため、ダイアログ内のテキストボックスで受け取る
+    const name = (await prompt('種別名', { title: '種別の改名', defaultValue: t.name, confirmLabel: '決定' }))?.trim()
     if (!name || name === t.name) return
     try {
       const res = await excludedItemsApi.updateType(t.id, { name })
