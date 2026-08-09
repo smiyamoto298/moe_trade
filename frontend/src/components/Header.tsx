@@ -140,15 +140,26 @@ export default function Header() {
     </>
   )
 
-  // ローカル開発中（vite dev）は本番と取り違えないようヘッダーを黄色にする
+  // ローカル開発中（vite dev）は本番と取り違えないよう画面両脇に黄色の枠線を表示する
   const isLocal = import.meta.env.DEV
 
   return (
-    <header
-      className="bg-surface-card border-b border-surface-border sticky top-0 z-50"
-      // ローカルは不透明な暗いヘッダーの上に透過した黄色を重ね、文字の視認性を保ったまま色で区別する
-      style={isLocal ? { backgroundImage: 'linear-gradient(rgba(250,204,21,0.18), rgba(250,204,21,0.18))' } : undefined}
-    >
+    <>
+      {isLocal && (
+        <>
+          <div
+            aria-hidden="true"
+            data-testid="local-env-frame-left"
+            className="fixed inset-y-0 left-0 w-1 bg-yellow-400/70 z-[100] pointer-events-none"
+          />
+          <div
+            aria-hidden="true"
+            data-testid="local-env-frame-right"
+            className="fixed inset-y-0 right-0 w-1 bg-yellow-400/70 z-[100] pointer-events-none"
+          />
+        </>
+      )}
+    <header className="bg-surface-card border-b border-surface-border sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
         <Link to="/" className="shrink-0">
           <img
@@ -577,5 +588,6 @@ export default function Header() {
         )
       })}
     </header>
+    </>
   )
 }
