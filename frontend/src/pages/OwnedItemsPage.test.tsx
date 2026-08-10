@@ -31,7 +31,8 @@ vi.mock('../utils/inventoryStore', () => ({
   setDisplayType: vi.fn(),
   getServerExcludedNames: vi.fn(() => []),
   setServerExcludedNames: vi.fn(),
-  // 貼り付け領域（アコーディオン）の開閉状態。既定は開く
+  // 貼り付け領域（アコーディオン）の開閉状態。実際の既定は閉じるだが、
+  // 多くのテストが貼り付けフォームを使うため「開いた状態が保存されている」前提にする
   getPasteOpen: vi.fn(() => true),
   setPasteOpen: vi.fn(),
 }))
@@ -745,8 +746,8 @@ describe('OwnedItemsPage アカウント管理ボタン', () => {
   })
 })
 
-// design.md「貼り付け取り込み」: 貼り付け領域はアコーディオンで折りたためる。
-// 開閉状態は端末ローカル（moe_inventory_paste_open）に保存する。
+// design.md「貼り付け取り込み」: 貼り付け領域はアコーディオンで折りたためる（既定は閉じる）。
+// 開閉状態は端末ローカル（moe_inventory_paste_open)に保存する。
 describe('OwnedItemsPage 貼り付け領域のアコーディオン', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -756,7 +757,7 @@ describe('OwnedItemsPage 貼り付け領域のアコーディオン', () => {
 
     renderPage()
 
-    // 既定は展開されていて「読込」ボタンが見える
+    // 「開く」が保存されている（モック既定）ので展開されていて「読込」ボタンが見える
     const header = await screen.findByRole('button', { name: /アイテムボックスを貼り付け/ })
     expect(header).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('button', { name: '読込' })).toBeInTheDocument()
@@ -784,7 +785,7 @@ describe('OwnedItemsPage 貼り付け領域のアコーディオン', () => {
     expect(header).toHaveTextContent('※再取り込みすると、貼り付けた一覧にないアイテムは自動で削除されます。')
   })
 
-  it('保存された状態が「閉じる」なら初期表示から折りたたむ', async () => {
+  it('保存された状態が無い（既定=閉じる）なら初期表示から折りたたむ', async () => {
     mockedPasteOpen.mockReturnValueOnce(false)
     mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow()]) })
     mockedMatch.mockResolvedValue({ data: {} })

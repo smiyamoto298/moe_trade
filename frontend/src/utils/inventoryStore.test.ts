@@ -19,6 +19,8 @@ import {
   setDisplayType,
   getServerExcludedNames,
   setServerExcludedNames,
+  getPasteOpen,
+  setPasteOpen,
   LOCAL_DB_SPLIT_KEY,
 } from './inventoryStore'
 
@@ -48,6 +50,20 @@ describe('inventoryStore - 表示種別タブの永続化', () => {
   it('カスタム種別（ct_ 付き id）のタブ選択も往復できる', () => {
     setDisplayType('ct_abc123')
     expect(getDisplayType()).toBe('ct_abc123')
+  })
+})
+
+// design.md「貼り付け取り込み」: 貼り付け領域のアコーディオンは既定で閉じる。
+// 開いた選択は端末ローカルに保存され、次回表示でも維持される。
+describe('inventoryStore - 貼り付け領域の開閉状態', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('既定は閉じる。開閉の選択が往復できる', () => {
+    expect(getPasteOpen()).toBe(false)
+    setPasteOpen(true)
+    expect(getPasteOpen()).toBe(true)
+    setPasteOpen(false)
+    expect(getPasteOpen()).toBe(false)
   })
 })
 
