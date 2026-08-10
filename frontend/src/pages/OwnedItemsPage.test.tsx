@@ -898,6 +898,44 @@ describe('OwnedItemsPage レスポンシブ表示（モバイルカード）', (
     expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument()
   })
 
+  it('lg 未満ではアカウント・種別の切替をドロップダウンで表示し、選択で絞り込める', async () => {
+    setMatchMedia(false)
+    mockedDisplayType.mockReturnValue('all')
+    const inv: InventoryData = {
+      accounts: [{ id: 'acc1', name: 'メイン' }, { id: 'acc2', name: 'サブ' }],
+      items: [
+        unlinkedRow({ id: 'r1', accountId: 'acc1', name: 'アイテムA' }),
+        unlinkedRow({ id: 'r2', accountId: 'acc2', name: 'アイテムB' }),
+      ],
+      exclusions: [],
+      customTypes: [],
+    }
+    mockedLoad.mockResolvedValue({ mode: 'local', data: inv })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    // アカウント切替はドロップダウン（ピル型タブは出さない）
+    const accSelect = await screen.findByLabelText('表示アカウント')
+    expect(within(accSelect).getByRole('option', { name: 'すべて (2)' })).toBeInTheDocument()
+    expect(within(accSelect).getByRole('option', { name: 'メイン (1)' })).toBeInTheDocument()
+    expect(within(accSelect).getByRole('option', { name: 'サブ (1)' })).toBeInTheDocument()
+    fireEvent.change(accSelect, { target: { value: 'acc2' } })
+    expect(screen.queryByText('アイテムA')).not.toBeInTheDocument()
+    expect(screen.getByText('アイテムB')).toBeInTheDocument()
+
+    // 種別切替もドロップダウン。未紐づけ行は「未登録」なので「取引可能」を選ぶと消える
+    const typeSelect = screen.getByLabelText('表示種別')
+    expect(within(typeSelect).getByRole('option', { name: /未登録/ })).toBeInTheDocument()
+    fireEvent.change(typeSelect, { target: { value: 'tradeable' } })
+    expect(screen.queryByText('アイテムB')).not.toBeInTheDocument()
+    fireEvent.change(typeSelect, { target: { value: 'all' } })
+    expect(screen.getByText('アイテムB')).toBeInTheDocument()
+
+    // カスタム種別の管理ボタンはドロップダウンの隣に残る
+    expect(screen.getByTitle('自分専用のカスタム種別を追加・改名・削除する')).toBeInTheDocument()
+  })
+
   it('カード表示でも削れチェックの変更が保存される', async () => {
     setMatchMedia(false)
     mockedDisplayType.mockReturnValue('all')

@@ -1027,6 +1027,28 @@ export default function OwnedItemsPage() {
     ? 'アイテムボックスを貼り付けて読み込んでください。'
     : '表示できるアイテムがありません。'
 
+  // ---- フィルタ行のタブ定義（lg 以上はピル型タブ、lg 未満はドロップダウンで表示する） ----
+  const accountTabs = [
+    { id: 'all', label: 'すべて', count: inventory.items.length },
+    ...inventory.accounts.map((a) => ({
+      id: a.id,
+      label: a.name,
+      count: inventory.items.filter((i) => i.accountId === a.id).length,
+    })),
+    // 旧データに未割り当てが残っている場合のみ表示（新規取り込みでは作られない）
+    ...(inventory.items.some((i) => i.accountId == null)
+      ? [{ id: 'unassigned', label: '未割り当て', count: inventory.items.filter((i) => i.accountId == null).length }]
+      : []),
+  ]
+  const typeTabs: { id: DisplayType; label: string }[] = [
+    { id: 'all', label: 'すべて' },
+    { id: 'tradeable', label: '取引可能' },
+    ...exclusionTypes.map((t) => ({ id: t.id as DisplayType, label: t.name })),
+    // ユーザーごとのカスタム種別（自分専用）
+    ...inventory.customTypes.map((t) => ({ id: t.id as DisplayType, label: t.name })),
+    { id: 'unset', label: '未登録' },
+  ]
+
   if (loading) {
     return <div className="max-w-6xl mx-auto px-4 py-6"><Spinner center /></div>
   }
@@ -1158,41 +1180,43 @@ export default function OwnedItemsPage() {
         {/* 1段目: アカウント切替＋マークのみ＋サーバ登録対象外。
             モバイルでは横に押し合って窮屈になるため縦積みにする（sm 以上で横並び） */}
         <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
-          {/* 表示切替（アカウントごとのタブ。セレクトボックスからタブ表示へ）。
+          {/* 表示切替（アカウントごと）。lg 以上はピル型タブ、lg 未満は場所を取らないドロップダウン。
               アカウントが増えても右上のボタン群は固定したいので、タブ側を flex-1 で残り幅に折り返させる */}
           <div className="flex items-start gap-2 flex-1 min-w-0">
             <span className="text-xs text-gray-400 w-8 shrink-0 pt-1.5">表示</span>
-            <div className="flex flex-wrap items-center gap-2 min-w-0">
-            {[
-              { id: 'all', label: 'すべて', count: inventory.items.length },
-              ...inventory.accounts.map((a) => ({
-                id: a.id,
-                label: a.name,
-                count: inventory.items.filter((i) => i.accountId === a.id).length,
-              })),
-              // 旧データに未割り当てが残っている場合のみ表示（新規取り込みでは作られない）
-              ...(inventory.items.some((i) => i.accountId == null)
-                ? [{ id: 'unassigned', label: '未割り当て', count: inventory.items.filter((i) => i.accountId == null).length }]
-                : []),
-            ].map((tab) => {
-              const active = filterAccountId === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setFilterAccountId(tab.id)}
-                  aria-pressed={active}
-                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                    active
-                      ? 'bg-primary-500 border-primary-500 text-white'
-                      : 'border-surface-border text-gray-300 hover:text-white hover:border-gray-500'
-                  }`}
-                >
-                  {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({tab.count})</span>
-                </button>
-              )
-            })}
-            </div>
+            {isDesktop ? (
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+              {accountTabs.map((tab) => {
+                const active = filterAccountId === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFilterAccountId(tab.id)}
+                    aria-pressed={active}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                      active
+                        ? 'bg-primary-500 border-primary-500 text-white'
+                        : 'border-surface-border text-gray-300 hover:text-white hover:border-gray-500'
+                    }`}
+                  >
+                    {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({tab.count})</span>
+                  </button>
+                )
+              })}
+              </div>
+            ) : (
+              <select
+                value={filterAccountId}
+                onChange={(e) => setFilterAccountId(e.target.value)}
+                aria-label="表示アカウント"
+                className="flex-1 min-w-0 bg-surface border border-surface-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary-500"
+              >
+                {accountTabs.map((tab) => (
+                  <option key={tab.id} value={tab.id}>{tab.label} ({tab.count})</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 shrink-0">
             <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 hover:border-amber-500/70 cursor-pointer text-xs text-amber-200 transition-colors">
@@ -1223,45 +1247,66 @@ export default function OwnedItemsPage() {
           </div>
         </div>
 
-        {/* 2段目: 表示種別（ジャンル）切替。アカウント切替と同じ単一選択タブ */}
+        {/* 2段目: 表示種別（ジャンル）切替。lg 以上はアカウント切替と同じ単一選択タブ、lg 未満はドロップダウン */}
         <div className="flex items-start gap-2">
           <span className="text-xs text-gray-400 w-8 shrink-0 pt-1.5">種別</span>
-          <div className="flex flex-wrap items-center gap-2 min-w-0">
-          {([
-            { id: 'all' as DisplayType, label: 'すべて' },
-            { id: 'tradeable' as DisplayType, label: '取引可能' },
-            ...exclusionTypes.map((t) => ({ id: t.id as DisplayType, label: t.name })),
-            // ユーザーごとのカスタム種別（自分専用）
-            ...inventory.customTypes.map((t) => ({ id: t.id as DisplayType, label: t.name })),
-            { id: 'unset' as DisplayType, label: '未登録' },
-          ]).map((tab) => {
-            const active = displayType === tab.id
-            const count = typeCounts.get(tab.id) ?? 0
-            return (
-              <button
-                key={String(tab.id)}
-                type="button"
-                onClick={() => selectDisplayType(tab.id)}
-                aria-pressed={active}
-                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                  active
-                    ? 'bg-primary-500 border-primary-500 text-white'
-                    : 'border-surface-border text-gray-300 hover:text-white hover:border-gray-500'
-                }`}
+          {isDesktop ? (
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+            {typeTabs.map((tab) => {
+              const active = displayType === tab.id
+              const count = typeCounts.get(tab.id) ?? 0
+              return (
+                <button
+                  key={String(tab.id)}
+                  type="button"
+                  onClick={() => selectDisplayType(tab.id)}
+                  aria-pressed={active}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                    active
+                      ? 'bg-primary-500 border-primary-500 text-white'
+                      : 'border-surface-border text-gray-300 hover:text-white hover:border-gray-500'
+                  }`}
+                >
+                  {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({count})</span>
+                </button>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => setCustomTypeModalOpen(true)}
+              className="text-xs px-3 py-1 rounded-full border border-dashed border-surface-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+              title="自分専用のカスタム種別を追加・改名・削除する"
+            >
+              ⚙ カスタム種別
+            </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <select
+                value={String(displayType)}
+                onChange={(e) => {
+                  const tab = typeTabs.find((t) => String(t.id) === e.target.value)
+                  if (tab) selectDisplayType(tab.id)
+                }}
+                aria-label="表示種別"
+                className="flex-1 min-w-0 bg-surface border border-surface-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary-500"
               >
-                {tab.label} <span className={active ? 'text-white/70' : 'text-gray-500'}>({count})</span>
+                {typeTabs.map((tab) => (
+                  <option key={String(tab.id)} value={String(tab.id)}>
+                    {tab.label} ({typeCounts.get(tab.id) ?? 0})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setCustomTypeModalOpen(true)}
+                className="shrink-0 text-xs px-3 py-1.5 rounded-full border border-dashed border-surface-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+                title="自分専用のカスタム種別を追加・改名・削除する"
+              >
+                ⚙ カスタム種別
               </button>
-            )
-          })}
-          <button
-            type="button"
-            onClick={() => setCustomTypeModalOpen(true)}
-            className="text-xs px-3 py-1 rounded-full border border-dashed border-surface-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
-            title="自分専用のカスタム種別を追加・改名・削除する"
-          >
-            ⚙ カスタム種別
-          </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
