@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDialog } from '../contexts/DialogContext'
 import { useAuth } from '../contexts/AuthContext'
 import { usePageMeta } from '../hooks/usePageMeta'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { itemsApi } from '../api/items'
 import { buyRequestsApi } from '../api/buyRequests'
 import { excludedItemsApi, serverExcludedItemsApi } from '../api/excludedItems'
@@ -815,8 +816,216 @@ export default function OwnedItemsPage() {
   const saveLabel =
     saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '✓ 保存済み' : saveState === 'error' ? '⚠ 保存に失敗' : ''
 
+  // lg（1024px）以上はテーブル、未満はカード型リストで一覧を表示する（レスポンシブ対応）。
+  // matchMedia が使えない環境（テスト等）ではテーブル表示にフォールバックする。
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
+
   // テーブルヘッダーのセル共通クラス。lg 以上では画面上部（表示切替バーの直下）に sticky 固定する。
   const thCls = 'border-b border-surface-border bg-surface-card lg:sticky lg:z-20 lg:top-[var(--thead-top)]'
+
+  // ---- 行表示の共通パーツ（デスクトップのテーブル行とモバイルのカードで共用） ----
+
+  // マーク（★）トグル
+  const renderMarkButton = (row: OwnedItem) => (
+    <button
+      onClick={() => patchRow(row.id, { marked: !row.marked })}
+      title={row.marked ? 'マークを外す' : 'マークする'}
+      className={`text-lg leading-none transition-colors ${row.marked ? 'text-amber-400' : 'text-gray-600 hover:text-gray-400'}`}
+    >
+      {row.marked ? '★' : '☆'}
+    </button>
+  )
+
+  // アイテム情報。登録アイテムに紐づく場合は登録アイテムの情報のみ表示する。
+  const renderItemInfo = (row: OwnedItem) => {
+    const linked = !!row.item
+    return linked ? (
+      <>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* アイテム情報登録済みの行は、名前クリックで詳細をポップアップ表示する */}
+          <button
+            type="button"
+            onClick={() => setDetailItemId(row.itemId!)}
+            title="アイテム詳細を表示"
+            className="text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors"
+          >
+            {row.item!.name}
+          </button>
+          {row.item!.verified_status === 'unverified' && (
+            <span title="確認中アイテム" className="text-[10px] text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1 py-0.5">⚠ 確認中</span>
+          )}
+        </div>
+        <p className="text-[11px] text-gray-500">{row.item!.category.name}</p>
+        {row.item!.official_url && (
+          <div className="mt-0.5">
+            <OfficialDbLink url={row.item!.official_url} />
+          </div>
+        )}
+        {(Object.keys(row.item!.base_stats).length > 0 || row.item!.mithril) && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            <BaseStatBadges item={row.item!} />
+          </div>
+        )}
+      </>
+    ) : (
+      <>
+        <p className="text-white font-medium">{row.name}</p>
+        {row.category && <p className="text-[11px] text-gray-500">{row.category}</p>}
+        {/* 取引可能以外の種別が割り当てられた行は、登録（候補/新規登録）ボタンを出さない。
+            未設定の行のみ登録を促す。「...」省略名は候補ボタン、完全名は新規登録ボタン。 */}
+        {rowType(row) === 'unset' && (
+          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+            {isTruncatedName(row.name) ? (
+              <button
+                onClick={() => setCandidateRowId(row.id)}
+                className="text-xs bg-sky-600/80 hover:bg-sky-600 text-white px-2 py-0.5 rounded transition-colors"
+              >
+                候補
+              </button>
+            ) : (
+              <button
+                onClick={() => openNewItemForm(row.id, row.name)}
+                className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-2 py-0.5 rounded transition-colors"
+              >
+                + 新規登録
+              </button>
+            )}
+          </div>
+        )}
+      </>
+    )
+  }
+
+  // 種別（表示ジャンル）バッジ。どの行もクリックで種別を変更できる。
+  // 取引可能（登録済みの派生種別）も、種別を割り当てればそちらが優先される。
+  const renderTypeBadge = (row: OwnedItem) => {
+    const et = rowType(row)
+    if (et === 'tradeable') {
+      return (
+        <button
+          onClick={() => setTypeDialogRowId(row.id)}
+          className="inline-flex items-center gap-1 text-[11px] bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-300 rounded px-2 py-0.5 whitespace-nowrap transition-colors"
+          title="登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます"
+        >
+          取引可能
+          <span aria-hidden>✎</span>
+        </button>
+      )
+    }
+    // 未設定 / 共通（管理者）/ ユーザー割当 のいずれもクリックで種別を変更できる。
+    // 共通割当はユーザーが自分用に上書きできる（実効種別はユーザー割当が優先）。
+    const name = normalizeName(row.name)
+    const isUserAssigned = userMap.has(name)
+    const isCommon = !isUserAssigned && et !== 'unset' && commonMap.has(name)
+    const cls =
+      et === 'unset'
+        ? 'bg-surface hover:bg-surface-border border-dashed border-surface-border text-gray-400'
+        : isCommon
+          ? 'bg-surface hover:bg-surface-border border-surface-border text-gray-300'
+          : 'bg-primary-500/10 hover:bg-primary-500/20 border-primary-500/40 text-primary-300'
+    return (
+      <button
+        onClick={() => setTypeDialogRowId(row.id)}
+        className={`inline-flex items-center gap-1 text-[11px] border rounded px-2 py-0.5 whitespace-nowrap transition-colors ${cls}`}
+        title={
+          et === 'unset'
+            ? 'このアイテムの種別を設定'
+            : isCommon
+              ? '管理者の共通種別。クリックで自分用に変更できます'
+              : '種別を変更・解除'
+        }
+      >
+        {et === 'unset' ? '未設定' : typeName(et)}
+        {isCommon && <span className="text-[9px] text-gray-500 border border-surface-border rounded px-1 leading-none">共通</span>}
+        <span aria-hidden>✎</span>
+      </button>
+    )
+  }
+
+  // 買取中価格（複数あるときは最高値を表示・クリックで売却ページへ）。買取が無ければ null。
+  const renderBuyPrice = (row: OwnedItem) => {
+    const buy = row.itemId != null ? buyPrices[row.itemId] : undefined
+    if (!buy) return null
+    return (
+      <div className="flex flex-col items-end">
+        <button
+          onClick={() => goWithGuard(`/buy-requests/${buy.buy_request_id}`)}
+          title={buy.count > 1 ? `買取${buy.count}件中の最高値。売却ページへ移動します。` : 'この買取に売却する'}
+          className="text-sm font-semibold text-emerald-400 hover:text-emerald-300 hover:underline whitespace-nowrap"
+        >
+          {buy.price.toLocaleString()} {buy.currency}
+        </button>
+        {buy.count > 1 && (
+          <span className="text-[10px] text-gray-500 whitespace-nowrap">最高 / 全{buy.count}件</span>
+        )}
+      </div>
+    )
+  }
+
+  // 操作ボタン群（出品/出品中・相場・端末のみ・削除）。wrapper のクラスはレイアウトごとに指定する。
+  const renderActions = (row: OwnedItem, wrapperCls: string) => {
+    const linked = !!row.item
+    // 自分が募集中の出品があるか（アイテム・削れ・染色がすべて一致する出品の件数）
+    const variantKey = row.itemId != null ? `${row.itemId}:${row.worn ? 1 : 0}:${row.dyed ? 1 : 0}` : null
+    const listedCount = variantKey ? (myItemCounts?.listing_variants?.[variantKey] ?? 0) : 0
+    return (
+      <div className={wrapperCls}>
+        {linked && (
+          listedCount > 0 ? (
+            <span
+              title={`削れ・染色まで一致する出品中アイテム（${listedCount}件）`}
+              className="text-xs bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 px-2 py-1 rounded whitespace-nowrap"
+            >
+              出品中{listedCount > 1 ? ` ${listedCount}件` : ''}
+            </span>
+          ) : (
+            <button
+              onClick={() => goWithGuard('/listings/new', { presetItem: row.item, presetWorn: row.worn, presetDyed: row.dyed })}
+              className="text-xs bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/50 text-primary-300 px-2 py-1 rounded transition-colors"
+              title="このアイテムを出品する"
+            >
+              出品
+            </button>
+          )
+        )}
+        {linked && (
+          <button
+            onClick={() => setAnalyticsItem({ id: row.itemId!, name: row.item!.name })}
+            className="text-xs bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2 py-1 rounded transition-colors"
+            title="相場情報"
+          >
+            相場
+          </button>
+        )}
+        <button
+          onClick={() => toggleUserServerExcluded(row.name)}
+          className={`text-xs px-2 py-1 rounded border transition-colors ${
+            isServerExcludedName(row.name)
+              ? 'bg-amber-900/30 border-amber-700/50 text-amber-300'
+              : 'bg-surface hover:bg-surface-border border-surface-border text-gray-400'
+          }`}
+          title={isServerExcludedName(row.name)
+            ? 'サーバ登録対象外（端末のみ保存）。クリックで解除'
+            : 'このアイテムをサーバ登録対象外（端末のみ保存）にする'}
+        >
+          {isServerExcludedName(row.name) ? '🔒 端末のみ' : '端末のみ'}
+        </button>
+        <button
+          onClick={() => removeRow(row.id)}
+          className="text-xs text-gray-500 hover:text-red-400 px-1 transition-colors"
+          title="この行を削除"
+          aria-label="削除"
+        >
+          ✕
+        </button>
+      </div>
+    )
+  }
+
+  // 一覧が空のときのメッセージ（テーブル・カード共通）
+  const emptyMessage = inventory.items.length === 0
+    ? 'アイテムボックスを貼り付けて読み込んでください。'
+    : '表示できるアイテムがありません。'
 
   if (loading) {
     return <div className="max-w-6xl mx-auto px-4 py-6"><Spinner center /></div>
@@ -946,8 +1155,9 @@ export default function OwnedItemsPage() {
         className="flex flex-col gap-2 sticky z-30 bg-surface/90 backdrop-blur px-4 py-2 rounded-lg"
         style={{ top: headerH }}
       >
-        {/* 1段目: アカウント切替＋マークのみ＋サーバ登録対象外 */}
-        <div className="flex items-start gap-3">
+        {/* 1段目: アカウント切替＋マークのみ＋サーバ登録対象外。
+            モバイルでは横に押し合って窮屈になるため縦積みにする（sm 以上で横並び） */}
+        <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
           {/* 表示切替（アカウントごとのタブ。セレクトボックスからタブ表示へ）。
               アカウントが増えても右上のボタン群は固定したいので、タブ側を flex-1 で残り幅に折り返させる */}
           <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -984,7 +1194,7 @@ export default function OwnedItemsPage() {
             })}
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+          <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 shrink-0">
             <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 hover:border-amber-500/70 cursor-pointer text-xs text-amber-200 transition-colors">
               <input type="checkbox" checked={markedOnly} onChange={(e) => setMarkedOnly(e.target.checked)} className="accent-amber-500 w-4 h-4" />
               <span>★ マークのみ ({markedCount})</span>
@@ -1055,160 +1265,47 @@ export default function OwnedItemsPage() {
         </div>
       </div>
 
-      {/* 一覧 */}
-      {/* lg 以上では overflow を visible にして、ヘッダー行を画面（ビューポート）上部に sticky 固定する。
-          overflow-x-auto は overflow-y も auto 扱いとなりスクロールコンテナ化して sticky が効かないため、
-          横スクロールが不要になる lg 以上でのみ visible に切り替える。--thead-top はヘッダー＋表示切替バーの高さ。 */}
-      <div
-        className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto lg:overflow-visible"
-        style={{ '--thead-top': `${headerH + filterBarH}px` } as CSSProperties}
-      >
-        <table className="w-full min-w-[820px] text-sm">
-          <thead>
-            <tr className="text-xs text-gray-400">
-              <th className={`${thCls} px-2 py-3 text-center w-10`}>★</th>
-              <th className={`${thCls} px-4 py-3 text-left`}>アイテム</th>
-              <th className={`${thCls} px-3 py-3 text-left`}>種別</th>
-              {filterAccountId === 'all' && <th className={`${thCls} px-3 py-3 text-left`}>アカウント</th>}
-              <th className={`${thCls} px-3 py-3 text-right`}>個数</th>
-              <th className={`${thCls} px-2 py-3 text-center`}>削れ</th>
-              <th className={`${thCls} px-2 py-3 text-center`}>染色</th>
-              <th className={`${thCls} px-3 py-3 text-left`}>メモ</th>
-              <th className={`${thCls} px-3 py-3 text-right whitespace-nowrap`}>買取中</th>
-              <th className={`${thCls} px-4 py-3`} />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-surface-border">
-            {visibleItems.length === 0 ? (
-              <tr><td colSpan={filterAccountId === 'all' ? 10 : 9} className="text-center py-12 text-gray-500">
-                {inventory.items.length === 0 ? 'アイテムボックスを貼り付けて読み込んでください。' : '表示できるアイテムがありません。'}
-              </td></tr>
-            ) : (
-              visibleItems.map((row) => {
-                const linked = !!row.item
-                const buy = row.itemId != null ? buyPrices[row.itemId] : undefined
-                // 自分が募集中の出品があるか（アイテム・削れ・染色がすべて一致する出品の件数）
-                const variantKey = row.itemId != null ? `${row.itemId}:${row.worn ? 1 : 0}:${row.dyed ? 1 : 0}` : null
-                const listedCount = variantKey ? (myItemCounts?.listing_variants?.[variantKey] ?? 0) : 0
-                return (
-                  <tr key={row.id} className={linked ? '' : 'bg-yellow-900/5'}>
+      {/* 一覧（lg 以上: テーブル / lg 未満: カード型リスト）。
+          matchMedia で切り替えて片方だけ描画する（CSS の hidden 併記だとフォーム要素が二重になるため）。 */}
+      {isDesktop ? (
+        /* lg 以上では overflow を visible にして、ヘッダー行を画面（ビューポート）上部に sticky 固定する。
+           overflow-x-auto は overflow-y も auto 扱いとなりスクロールコンテナ化して sticky が効かないため、
+           横スクロールが不要になる lg 以上でのみ visible に切り替える。--thead-top はヘッダー＋表示切替バーの高さ。 */
+        <div
+          className="bg-surface-card border border-surface-border rounded-lg overflow-x-auto lg:overflow-visible"
+          style={{ '--thead-top': `${headerH + filterBarH}px` } as CSSProperties}
+        >
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="text-xs text-gray-400">
+                <th className={`${thCls} px-2 py-3 text-center w-10`}>★</th>
+                <th className={`${thCls} px-4 py-3 text-left`}>アイテム</th>
+                <th className={`${thCls} px-3 py-3 text-left`}>種別</th>
+                {filterAccountId === 'all' && <th className={`${thCls} px-3 py-3 text-left`}>アカウント</th>}
+                <th className={`${thCls} px-3 py-3 text-right`}>個数</th>
+                <th className={`${thCls} px-2 py-3 text-center`}>削れ</th>
+                <th className={`${thCls} px-2 py-3 text-center`}>染色</th>
+                <th className={`${thCls} px-3 py-3 text-left`}>メモ</th>
+                <th className={`${thCls} px-3 py-3 text-right whitespace-nowrap`}>買取中</th>
+                <th className={`${thCls} px-4 py-3`} />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-border">
+              {visibleItems.length === 0 ? (
+                <tr><td colSpan={filterAccountId === 'all' ? 10 : 9} className="text-center py-12 text-gray-500">
+                  {emptyMessage}
+                </td></tr>
+              ) : (
+                visibleItems.map((row) => (
+                  <tr key={row.id} className={row.item ? '' : 'bg-yellow-900/5'}>
                     {/* マーク */}
-                    <td className="px-2 py-3 text-center">
-                      <button
-                        onClick={() => patchRow(row.id, { marked: !row.marked })}
-                        title={row.marked ? 'マークを外す' : 'マークする'}
-                        className={`text-lg leading-none transition-colors ${row.marked ? 'text-amber-400' : 'text-gray-600 hover:text-gray-400'}`}
-                      >
-                        {row.marked ? '★' : '☆'}
-                      </button>
-                    </td>
+                    <td className="px-2 py-3 text-center">{renderMarkButton(row)}</td>
 
-                    {/* アイテム情報。登録アイテムに紐づく場合は登録アイテムの情報のみ表示する。 */}
-                    <td className="px-4 py-3">
-                      {linked ? (
-                        <>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {/* アイテム情報登録済みの行は、名前クリックで詳細をポップアップ表示する */}
-                            <button
-                              type="button"
-                              onClick={() => setDetailItemId(row.itemId!)}
-                              title="アイテム詳細を表示"
-                              className="text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors"
-                            >
-                              {row.item!.name}
-                            </button>
-                            {row.item!.verified_status === 'unverified' && (
-                              <span title="確認中アイテム" className="text-[10px] text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 rounded px-1 py-0.5">⚠ 確認中</span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-gray-500">{row.item!.category.name}</p>
-                          {row.item!.official_url && (
-                            <div className="mt-0.5">
-                              <OfficialDbLink url={row.item!.official_url} />
-                            </div>
-                          )}
-                          {(Object.keys(row.item!.base_stats).length > 0 || row.item!.mithril) && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              <BaseStatBadges item={row.item!} />
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-white font-medium">{row.name}</p>
-                          {row.category && <p className="text-[11px] text-gray-500">{row.category}</p>}
-                          {/* 取引可能以外の種別が割り当てられた行は、登録（候補/新規登録）ボタンを出さない。
-                              未設定の行のみ登録を促す。「...」省略名は候補ボタン、完全名は新規登録ボタン。 */}
-                          {rowType(row) === 'unset' && (
-                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                              {isTruncatedName(row.name) ? (
-                                <button
-                                  onClick={() => setCandidateRowId(row.id)}
-                                  className="text-xs bg-sky-600/80 hover:bg-sky-600 text-white px-2 py-0.5 rounded transition-colors"
-                                >
-                                  候補
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => openNewItemForm(row.id, row.name)}
-                                  className="text-xs bg-yellow-600/80 hover:bg-yellow-600 text-white px-2 py-0.5 rounded transition-colors"
-                                >
-                                  + 新規登録
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </td>
+                    {/* アイテム情報 */}
+                    <td className="px-4 py-3">{renderItemInfo(row)}</td>
 
-                    {/* 種別（表示ジャンル）。どの行もクリックで種別を変更できる。
-                        取引可能（登録済みの派生種別）も、種別を割り当てればそちらが優先される。 */}
-                    <td className="px-3 py-3">
-                      {(() => {
-                        const et = rowType(row)
-                        if (et === 'tradeable') {
-                          return (
-                            <button
-                              onClick={() => setTypeDialogRowId(row.id)}
-                              className="inline-flex items-center gap-1 text-[11px] bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-300 rounded px-2 py-0.5 whitespace-nowrap transition-colors"
-                              title="登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます"
-                            >
-                              取引可能
-                              <span aria-hidden>✎</span>
-                            </button>
-                          )
-                        }
-                        // 未設定 / 共通（管理者）/ ユーザー割当 のいずれもクリックで種別を変更できる。
-                        // 共通割当はユーザーが自分用に上書きできる（実効種別はユーザー割当が優先）。
-                        const name = normalizeName(row.name)
-                        const isUserAssigned = userMap.has(name)
-                        const isCommon = !isUserAssigned && et !== 'unset' && commonMap.has(name)
-                        const cls =
-                          et === 'unset'
-                            ? 'bg-surface hover:bg-surface-border border-dashed border-surface-border text-gray-400'
-                            : isCommon
-                              ? 'bg-surface hover:bg-surface-border border-surface-border text-gray-300'
-                              : 'bg-primary-500/10 hover:bg-primary-500/20 border-primary-500/40 text-primary-300'
-                        return (
-                          <button
-                            onClick={() => setTypeDialogRowId(row.id)}
-                            className={`inline-flex items-center gap-1 text-[11px] border rounded px-2 py-0.5 whitespace-nowrap transition-colors ${cls}`}
-                            title={
-                              et === 'unset'
-                                ? 'このアイテムの種別を設定'
-                                : isCommon
-                                  ? '管理者の共通種別。クリックで自分用に変更できます'
-                                  : '種別を変更・解除'
-                            }
-                          >
-                            {et === 'unset' ? '未設定' : typeName(et)}
-                            {isCommon && <span className="text-[9px] text-gray-500 border border-surface-border rounded px-1 leading-none">共通</span>}
-                            <span aria-hidden>✎</span>
-                          </button>
-                        )
-                      })()}
-                    </td>
+                    {/* 種別（表示ジャンル） */}
+                    <td className="px-3 py-3">{renderTypeBadge(row)}</td>
 
                     {/* アカウント（すべて表示時のみ） */}
                     {filterAccountId === 'all' && (
@@ -1240,86 +1337,76 @@ export default function OwnedItemsPage() {
                       />
                     </td>
 
-                    {/* 買取中価格（複数あるときは最高値を表示・クリックで売却ページへ） */}
+                    {/* 買取中価格 */}
                     <td className="px-3 py-3 text-right">
-                      {buy ? (
-                        <div className="flex flex-col items-end">
-                          <button
-                            onClick={() => goWithGuard(`/buy-requests/${buy.buy_request_id}`)}
-                            title={buy.count > 1 ? `買取${buy.count}件中の最高値。売却ページへ移動します。` : 'この買取に売却する'}
-                            className="text-sm font-semibold text-emerald-400 hover:text-emerald-300 hover:underline whitespace-nowrap"
-                          >
-                            {buy.price.toLocaleString()} {buy.currency}
-                          </button>
-                          {buy.count > 1 && (
-                            <span className="text-[10px] text-gray-500 whitespace-nowrap">最高 / 全{buy.count}件</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-600">—</span>
-                      )}
+                      {renderBuyPrice(row) ?? <span className="text-xs text-gray-600">—</span>}
                     </td>
 
                     {/* 操作 */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {linked && (
-                          listedCount > 0 ? (
-                            <span
-                              title={`削れ・染色まで一致する出品中アイテム（${listedCount}件）`}
-                              className="text-xs bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 px-2 py-1 rounded whitespace-nowrap"
-                            >
-                              出品中{listedCount > 1 ? ` ${listedCount}件` : ''}
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => goWithGuard('/listings/new', { presetItem: row.item, presetWorn: row.worn, presetDyed: row.dyed })}
-                              className="text-xs bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/50 text-primary-300 px-2 py-1 rounded transition-colors"
-                              title="このアイテムを出品する"
-                            >
-                              出品
-                            </button>
-                          )
-                        )}
-                        {linked && (
-                          <button
-                            onClick={() => setAnalyticsItem({ id: row.itemId!, name: row.item!.name })}
-                            className="text-xs bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2 py-1 rounded transition-colors"
-                            title="相場情報"
-                          >
-                            相場
-                          </button>
-                        )}
-                        <button
-                          onClick={() => toggleUserServerExcluded(row.name)}
-                          className={`text-xs px-2 py-1 rounded border transition-colors ${
-                            isServerExcludedName(row.name)
-                              ? 'bg-amber-900/30 border-amber-700/50 text-amber-300'
-                              : 'bg-surface hover:bg-surface-border border-surface-border text-gray-400'
-                          }`}
-                          title={isServerExcludedName(row.name)
-                            ? 'サーバ登録対象外（端末のみ保存）。クリックで解除'
-                            : 'このアイテムをサーバ登録対象外（端末のみ保存）にする'}
-                        >
-                          {isServerExcludedName(row.name) ? '🔒 端末のみ' : '端末のみ'}
-                        </button>
-                        <button
-                          onClick={() => removeRow(row.id)}
-                          className="text-xs text-gray-500 hover:text-red-400 px-1 transition-colors"
-                          title="この行を削除"
-                          aria-label="削除"
-                        >
-                          ✕
-                        </button>
-                      </div>
+                      {renderActions(row, 'flex items-center justify-end gap-1.5')}
                     </td>
                   </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        /* モバイル・タブレット: 横スクロールなしで全項目を確認できるカード型リスト */
+        <div className="bg-surface-card border border-surface-border rounded-lg">
+          {visibleItems.length === 0 ? (
+            <p className="text-center py-12 text-sm text-gray-500">{emptyMessage}</p>
+          ) : (
+            <div className="divide-y divide-surface-border">
+              {visibleItems.map((row) => (
+                <div key={row.id} className={`p-3 space-y-2 ${row.item ? '' : 'bg-yellow-900/5'}`}>
+                  {/* 1段目: マーク＋アイテム情報＋買取中価格 */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="pt-0.5">{renderMarkButton(row)}</div>
+                    <div className="flex-1 min-w-0">{renderItemInfo(row)}</div>
+                    {renderBuyPrice(row) && (
+                      <div className="flex flex-col items-end shrink-0">
+                        <span className="text-[10px] text-gray-500">買取中</span>
+                        {renderBuyPrice(row)}
+                      </div>
+                    )}
+                  </div>
+                  {/* 2段目: 種別・アカウント・個数・削れ・染色 */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-8">
+                    {renderTypeBadge(row)}
+                    {filterAccountId === 'all' && (
+                      <span className="text-xs text-gray-400">{accountName(row.accountId)}</span>
+                    )}
+                    <span className="text-xs text-gray-300 whitespace-nowrap">個数 {row.count}</span>
+                    <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap">
+                      <input type="checkbox" checked={row.worn} onChange={(e) => patchRow(row.id, { worn: e.target.checked })} title="削れあり" className="accent-amber-500" />
+                      削れ
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap">
+                      <input type="checkbox" checked={row.dyed} onChange={(e) => patchRow(row.id, { dyed: e.target.checked })} title="染色済み" className="accent-fuchsia-500" />
+                      染色
+                    </label>
+                  </div>
+                  {/* 3段目: メモ＋操作ボタン */}
+                  <div className="flex flex-wrap items-center gap-2 pl-8">
+                    <input
+                      type="text"
+                      value={row.note}
+                      onChange={(e) => patchRow(row.id, { note: e.target.value })}
+                      placeholder="メモ"
+                      maxLength={500}
+                      title="このアイテムのメモ（自動保存されます）"
+                      className="flex-1 min-w-[8rem] bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-primary-500"
+                    />
+                    {renderActions(row, 'flex flex-wrap items-center justify-end gap-1.5 ml-auto')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 新規アイテム登録モーダル */}
       {newItemRow && (

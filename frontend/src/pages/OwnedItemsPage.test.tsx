@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import OwnedItemsPage from './OwnedItemsPage'
@@ -843,5 +843,96 @@ describe('OwnedItemsPage 買取ありフィルタ', () => {
     fireEvent.click(screen.getByLabelText(/買取あり/))
     expect(screen.queryByText('謎の薬')).not.toBeInTheDocument()
     expect(screen.getByText('表示できるアイテムがありません。')).toBeInTheDocument()
+  })
+})
+
+// design.md「レスポンシブ（アイテムボックス一覧）」: lg（1024px）未満は一覧をテーブルではなく
+// カード型リストで表示する（横スクロールなしで全項目を確認・操作できる）。
+// matchMedia が使えない環境（jsdom 等）ではテーブル表示にフォールバックする（上記の既存テストが該当）。
+describe('OwnedItemsPage レスポンシブ表示（モバイルカード）', () => {
+  // (min-width: 1024px) の一致/不一致を固定した matchMedia モック
+  const setMatchMedia = (matches: boolean) => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => {
+    // jsdom は matchMedia 未実装のため、テストで生やしたモックは毎回取り除く
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('lg 未満では一覧をテーブルではなくカード型リストで表示し、行の全操作が揃う', async () => {
+    setMatchMedia(false) // (min-width: 1024px) に不一致 = モバイル
+    mockedDisplayType.mockReturnValue('all')
+    const item = makeItem({ id: 12, name: '炎の大剣' })
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory([unlinkedRow({ id: 'r1', name: '炎の大剣', itemId: 12, item })]),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+    mockedPrices.mockResolvedValue({ data: { 12: { buy_request_id: 5, price: 1000, currency: 'Gold', count: 1 } } })
+
+    renderPage()
+
+    // アイテム名（詳細ボタン）は表示されるが、テーブルは描画されない
+    expect(await screen.findByRole('button', { name: '炎の大剣' })).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    // カードにもテーブルと同じ情報・操作が揃う: 種別・削れ/染色・メモ・買取中価格・出品/相場/端末のみ/削除
+    expect(screen.getByTitle('登録アイテムの既定種別（取引可能）。クリックで種別を設定でき、設定した種別が優先されます')).toBeInTheDocument()
+    expect(screen.getByTitle('削れあり')).toBeInTheDocument()
+    expect(screen.getByTitle('染色済み')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('メモ')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: '1,000 Gold' })).toBeInTheDocument())
+    expect(screen.getByTitle('このアイテムを出品する')).toBeInTheDocument()
+    expect(screen.getByTitle('相場情報')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument()
+  })
+
+  it('カード表示でも削れチェックの変更が保存される', async () => {
+    setMatchMedia(false)
+    mockedDisplayType.mockReturnValue('all')
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow({ name: '謎の薬' })]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    const worn = await screen.findByTitle('削れあり')
+    fireEvent.click(worn)
+    await waitFor(() => {
+      const saved = mockedSave.mock.calls.at(-1)?.[1] as InventoryData
+      expect(saved.items[0].worn).toBe(true)
+    }, { timeout: 2500 })
+  })
+
+  it('カード表示の空一覧にも案内メッセージを表示する', async () => {
+    setMatchMedia(false)
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([]) })
+
+    renderPage()
+
+    expect(await screen.findByText('アイテムボックスを貼り付けて読み込んでください。')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('lg 以上ではテーブル表示のまま', async () => {
+    setMatchMedia(true)
+    mockedDisplayType.mockReturnValue('all')
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow({ name: '謎の薬' })]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('謎の薬')).toBeInTheDocument())
+    expect(screen.getByRole('table')).toBeInTheDocument()
   })
 })
