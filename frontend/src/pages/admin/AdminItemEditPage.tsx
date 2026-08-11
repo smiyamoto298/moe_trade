@@ -272,9 +272,15 @@ export default function AdminItemEditPage() {
           partCategoryIds: [],
           base_stats: { ...form.base_stats },
           custom_stats: customStats.map((r) => ({ ...r })),
-          special_conditions: [...form.special_conditions],
         },
         ...equipSetForm.baseStatsGroups.slice(1),
+      ]
+      const specialGroups = [
+        {
+          partCategoryIds: [],
+          special_conditions: [...form.special_conditions],
+        },
+        ...equipSetForm.specialGroups.slice(1),
       ]
       const bonusGroups = [
         {
@@ -318,7 +324,7 @@ export default function AdminItemEditPage() {
         }
       }
 
-      setEquipSetForm({ parts, baseStatsGroups, bonusGroups })
+      setEquipSetForm({ parts, baseStatsGroups, bonusGroups, specialGroups })
       setField('category_id', val)
       return
     }
@@ -327,11 +333,12 @@ export default function AdminItemEditPage() {
     if (prev === 'equipSet' && next === 'plain') {
       const bg = equipSetForm.baseStatsGroups[0]
       const ng = equipSetForm.bonusGroups[0]
+      const sg = equipSetForm.specialGroups[0]
       setForm((p) => ({
         ...p,
         category_id: val,
         base_stats: { ...(bg?.base_stats ?? {}) },
-        special_conditions: [...(bg?.special_conditions ?? [])],
+        special_conditions: [...(sg?.special_conditions ?? [])],
       }))
       setCustomStats((bg?.custom_stats ?? []).map((r) => ({ ...r })))
       setBonusEffects((ng?.bonus_effects ?? []).map((e) => ({

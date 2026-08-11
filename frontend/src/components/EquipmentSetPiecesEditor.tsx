@@ -11,11 +11,11 @@ import { techniqueCategoryIds } from '../utils/itemType'
 // ───────────────────────────────────────────────────────────
 // 装備セットの構成部位エディタ。
 // ・部位と名称は1箇所でまとめて設定する（parts）。
-// ・追加効果・付加効果は「設定グループ」で別々に管理する。
+// ・追加効果・付加効果・特殊条件は「設定グループ」で別々に管理する。
 //   既定はそれぞれ1グループ（全部位共通）。異なる部位がある場合のみグループを追加し、対象部位を割り当てる。
 //   グループ[0] は既定グループ（明示的に割り当てられていない残り全部位に適用）。
 // ・テクニック（ノアピース・秘伝の書）も部位として選択できる。ただし装備品固有の属性は持たないため、
-//   ミスリル・染色可は入力せず、追加効果・付加効果グループの対象外（送信時は常に空）。
+//   ミスリル・染色可は入力せず、追加効果・付加効果・特殊条件グループの対象外（送信時は常に空）。
 //   代わりに部位ごとの必要スキル値・必要マスタリを入力する（テクニック部位のみ）。
 // ・送信時に formToPieces() で部位単位の pieces[] に展開する。
 // ───────────────────────────────────────────────────────────
@@ -47,16 +47,20 @@ export interface BaseStatsGroupForm {
   partCategoryIds: number[] // この設定を適用する部位（グループ[0]は空＝残り全部位）
   base_stats: Record<string, string> // 固定パラメータ（BASE_STAT_LABELS のキー）のみ
   custom_stats: CustomStatRow[]      // その他（自由入力の項目名。保存時 base_stats へマージ）
-  special_conditions: string[]
 }
 export interface BonusGroupForm {
   partCategoryIds: number[]
   bonus_effects: BonusEffectForm[]
 }
+export interface SpecialConditionsGroupForm {
+  partCategoryIds: number[]
+  special_conditions: string[]
+}
 export interface EquipmentSetForm {
   parts: EquipmentSetPartForm[]
-  baseStatsGroups: BaseStatsGroupForm[] // 先頭が既定グループ
-  bonusGroups: BonusGroupForm[]         // 先頭が既定グループ
+  baseStatsGroups: BaseStatsGroupForm[]     // 先頭が既定グループ
+  bonusGroups: BonusGroupForm[]             // 先頭が既定グループ
+  specialGroups: SpecialConditionsGroupForm[] // 先頭が既定グループ
 }
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
@@ -64,22 +68,27 @@ const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
 const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false })
 const emptyBaseGroup = (): BaseStatsGroupForm => ({
-  partCategoryIds: [], base_stats: {}, custom_stats: [], special_conditions: [],
+  partCategoryIds: [], base_stats: {}, custom_stats: [],
 })
 const emptyBonusGroup = (): BonusGroupForm => ({ partCategoryIds: [], bonus_effects: [] })
+const emptySpecialGroup = (): SpecialConditionsGroupForm => ({ partCategoryIds: [], special_conditions: [] })
 
 export const emptyEquipmentSetForm = (): EquipmentSetForm => ({
   parts: [],
   baseStatsGroups: [emptyBaseGroup()],
   bonusGroups: [emptyBonusGroup()],
+  specialGroups: [emptySpecialGroup()],
 })
 
-// 追加効果（base_stats + 特殊条件）が同一かを表すキー。ミスリル・染色は部位ごとなのでキーに含めない。
+// 追加効果（base_stats）が同一かを表すキー。ミスリル・染色は部位ごとなのでキーに含めない。
 function baseKey(m: Item): string {
-  return JSON.stringify({
-    base_stats: Object.entries(m.base_stats ?? {}).sort(([a], [b]) => a.localeCompare(b)),
-    special_conditions: [...(m.special_conditions ?? [])].sort(),
-  })
+  return JSON.stringify(
+    Object.entries(m.base_stats ?? {}).sort(([a], [b]) => a.localeCompare(b))
+  )
+}
+// 特殊条件が同一かを表すキー（順序非依存）
+function specialKey(m: Item): string {
+  return JSON.stringify([...(m.special_conditions ?? [])].sort())
 }
 // 付加効果（bonus_effects。専用技フラグも含む）が同一かを表すキー
 function bonusKey(m: Item): string {
@@ -138,9 +147,12 @@ export function membersToForm(members: Item[], techniqueCatIds: Set<number> = ne
       partCategoryIds: [],
       base_stats: fixed,
       custom_stats: custom,
-      special_conditions: m.special_conditions ?? [],
     }
   }, emptyBaseGroup)
+  const specialGroups = buildGroups<SpecialConditionsGroupForm>(effectMembers, specialKey, (m) => ({
+    partCategoryIds: [],
+    special_conditions: m.special_conditions ?? [],
+  }), emptySpecialGroup)
   const bonusGroups = buildGroups<BonusGroupForm>(effectMembers, bonusKey, (m) => ({
     partCategoryIds: [],
     bonus_effects: (m.bonus_effects ?? []).map((e) => ({
@@ -151,7 +163,7 @@ export function membersToForm(members: Item[], techniqueCatIds: Set<number> = ne
       no_warage_effect: !!e.no_warage_effect,
     })),
   }), emptyBonusGroup)
-  return { parts, baseStatsGroups, bonusGroups }
+  return { parts, baseStatsGroups, bonusGroups, specialGroups }
 }
 
 // フォーム状態を部位単位の pieces[] へ展開する（API送信用）。
@@ -162,6 +174,8 @@ export function formToPieces(form: EquipmentSetForm, techniqueCatIds: Set<number
     form.baseStatsGroups.find((g, i) => i > 0 && g.partCategoryIds.includes(catId)) ?? form.baseStatsGroups[0]
   const bonusFor = (catId: number) =>
     form.bonusGroups.find((g, i) => i > 0 && g.partCategoryIds.includes(catId)) ?? form.bonusGroups[0]
+  const specialFor = (catId: number) =>
+    form.specialGroups.find((g, i) => i > 0 && g.partCategoryIds.includes(catId)) ?? form.specialGroups[0]
 
   return form.parts.map((p) => {
     if (techniqueCatIds.has(p.category_id)) {
@@ -187,13 +201,14 @@ export function formToPieces(form: EquipmentSetForm, techniqueCatIds: Set<number
     }
     const bg = baseFor(p.category_id)
     const ng = bonusFor(p.category_id)
+    const sg = specialFor(p.category_id)
     return {
       ...(p.id ? { id: p.id } : {}),
       category_id: p.category_id,
       name: p.name.trim(),
       official_url: p.official_url.trim() || null,
       base_stats: mergeBaseStats(bg.base_stats, bg.custom_stats),
-      special_conditions: bg.special_conditions,
+      special_conditions: sg.special_conditions,
       dyeable: p.dyeable,
       mithril: p.mithril,
       // 必要スキル・マスタリはテクニック部位のみ（装備部位は null で送って既存値もクリア）
@@ -225,7 +240,7 @@ interface Props {
 }
 
 export default function EquipmentSetPiecesEditor({ categories, value, onChange, bonusValueLabelOptions, statLabelOptions }: Props) {
-  const { parts, baseStatsGroups, bonusGroups } = value
+  const { parts, baseStatsGroups, bonusGroups, specialGroups } = value
 
   // 選択可能な部位カテゴリ（武器・防具・装飾品・テクニックなどの子カテゴリ）。
   // 装備部位になり得ない「装備セット」「その他（未開封ペット・レシピ）」は除外する。
@@ -259,6 +274,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
         // 削除部位を各グループの割り当てからも外す
         baseStatsGroups: baseStatsGroups.map((g) => ({ ...g, partCategoryIds: g.partCategoryIds.filter((id) => id !== categoryId) })),
         bonusGroups: bonusGroups.map((g) => ({ ...g, partCategoryIds: g.partCategoryIds.filter((id) => id !== categoryId) })),
+        specialGroups: specialGroups.map((g) => ({ ...g, partCategoryIds: g.partCategoryIds.filter((id) => id !== categoryId) })),
       })
     } else {
       onChange({ ...value, parts: [...parts, { category_id: categoryId, name: '', mithril: false, dyeable: false, official_url: '', skill_requirements: {}, mastery_requirements: [] }] })
@@ -291,16 +307,27 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
     if (val === '') delete base_stats[key]; else base_stats[key] = val
     updateBase(gi, { base_stats })
   }
-  const toggleBaseCond = (gi: number, c: string) => {
-    const cur = baseStatsGroups[gi].special_conditions
-    updateBase(gi, { special_conditions: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c] })
-  }
   const addBaseGroup = () => onChange({ ...value, baseStatsGroups: [...baseStatsGroups, emptyBaseGroup()] })
   const removeBaseGroup = (gi: number) =>
     onChange({ ...value, baseStatsGroups: baseStatsGroups.filter((_, i) => i !== gi) })
   const toggleBasePart = (gi: number, categoryId: number) => {
     const cur = baseStatsGroups[gi].partCategoryIds
     updateBase(gi, { partCategoryIds: cur.includes(categoryId) ? cur.filter((x) => x !== categoryId) : [...cur, categoryId] })
+  }
+
+  // ── 特殊条件グループの編集 ──
+  const updateSpecial = (gi: number, patch: Partial<SpecialConditionsGroupForm>) =>
+    onChange({ ...value, specialGroups: specialGroups.map((g, i) => (i === gi ? { ...g, ...patch } : g)) })
+  const toggleSpecialCond = (gi: number, c: string) => {
+    const cur = specialGroups[gi].special_conditions
+    updateSpecial(gi, { special_conditions: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c] })
+  }
+  const addSpecialGroup = () => onChange({ ...value, specialGroups: [...specialGroups, emptySpecialGroup()] })
+  const removeSpecialGroup = (gi: number) =>
+    onChange({ ...value, specialGroups: specialGroups.filter((_, i) => i !== gi) })
+  const toggleSpecialPart = (gi: number, categoryId: number) => {
+    const cur = specialGroups[gi].partCategoryIds
+    updateSpecial(gi, { partCategoryIds: cur.includes(categoryId) ? cur.filter((x) => x !== categoryId) : [...cur, categoryId] })
   }
 
   // ── 付加効果グループの編集 ──
@@ -515,21 +542,6 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
               onChange={(rows) => updateBase(gi, { custom_stats: rows })}
               labelOptions={statLabelOptions}
             />
-
-            <details className="group">
-              <summary className="cursor-pointer text-xs font-semibold text-gray-300 py-1 flex items-center gap-1 select-none">
-                <span className="group-open:rotate-90 transition-transform inline-block">▶</span> 特殊条件
-              </summary>
-              <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                {ALL_SPECIAL.map((c) => (
-                  <label key={c} className={`flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-xs transition-colors ${g.special_conditions.includes(c) ? 'border-red-500/60 bg-red-900/20 text-red-300' : 'border-surface-border text-gray-400 hover:border-gray-500'}`}>
-                    <input type="checkbox" checked={g.special_conditions.includes(c)} onChange={() => toggleBaseCond(gi, c)} className="accent-red-500" />
-                    <span className="font-medium">{c}</span>
-                    <span className="truncate">{SPECIAL_CONDITIONS[c]}</span>
-                  </label>
-                ))}
-              </div>
-            </details>
           </div>
         ))}
         <button type="button" onClick={addBaseGroup} disabled={effectParts.length < 2}
@@ -641,6 +653,50 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
         <button type="button" onClick={addBonusGroup} disabled={effectParts.length < 2}
           className="text-xs bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-600/40 text-amber-300 px-3 py-1.5 rounded w-full transition-colors">
           + 設定グループを追加（部位ごとに付加効果を分ける）
+        </button>
+      </div>
+
+      {/* 特殊条件（設定グループ） */}
+      <div className="space-y-2 border-t border-amber-700/20 pt-3">
+        <p className="text-xs font-semibold text-amber-300">特殊条件</p>
+        {specialGroups.map((g, gi) => (
+          <div key={gi} className="border border-surface-border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              {gi === 0 ? (
+                <span className="text-xs text-gray-400">
+                  {specialGroups.length > 1 ? '既定（他グループ以外の部位）' : '全部位共通'}
+                  {specialGroups.length > 1 && (
+                    <span className="text-gray-500 ml-1">: {defaultParts(specialGroups).map((p) => partName(p.category_id)).join('・') || 'なし'}</span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-xs text-gray-400">設定グループ {gi}</span>
+              )}
+              {gi > 0 && (
+                <button type="button" onClick={() => removeSpecialGroup(gi)} className="text-xs text-red-400 hover:text-red-300">削除</button>
+              )}
+            </div>
+            {gi > 0 && (
+              <div>
+                <p className="text-[11px] text-gray-500 mb-1">対象部位</p>
+                <PartPicker groups={specialGroups} gi={gi} onToggle={(id) => toggleSpecialPart(gi, id)} />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {ALL_SPECIAL.map((c) => (
+                <label key={c} className={`flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-xs transition-colors ${g.special_conditions.includes(c) ? 'border-red-500/60 bg-red-900/20 text-red-300' : 'border-surface-border text-gray-400 hover:border-gray-500'}`}>
+                  <input type="checkbox" checked={g.special_conditions.includes(c)} onChange={() => toggleSpecialCond(gi, c)} className="accent-red-500" />
+                  <span className="font-medium">{c}</span>
+                  <span className="truncate">{SPECIAL_CONDITIONS[c]}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={addSpecialGroup} disabled={effectParts.length < 2}
+          className="text-xs bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-600/40 text-amber-300 px-3 py-1.5 rounded w-full transition-colors">
+          + 設定グループを追加（部位ごとに特殊条件を分ける）
         </button>
       </div>
     </div>

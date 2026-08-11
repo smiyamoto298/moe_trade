@@ -36,8 +36,9 @@ const TECHNIQUE_IDS = new Set([3, 31, 32])
 
 const makeForm = (parts: EquipmentSetForm['parts']): EquipmentSetForm => ({
   parts,
-  baseStatsGroups: [{ partCategoryIds: [], base_stats: {}, custom_stats: [], special_conditions: [] }],
+  baseStatsGroups: [{ partCategoryIds: [], base_stats: {}, custom_stats: [] }],
   bonusGroups: [{ partCategoryIds: [], bonus_effects: [] }],
+  specialGroups: [{ partCategoryIds: [], special_conditions: [] }],
 })
 
 // 部位フォームのファクトリ（省略項目は既定値で補う）
@@ -174,7 +175,6 @@ describe('EquipmentSetPiecesEditor テクニック部位', () => {
         partCategoryIds: [],
         base_stats: { atk: '10' },
         custom_stats: [],
-        special_conditions: ['NT'],
       }],
       bonusGroups: [{
         partCategoryIds: [],
@@ -183,6 +183,10 @@ describe('EquipmentSetPiecesEditor テクニック部位', () => {
           values: [{ value: '5', value_unit: '%', label: '火力' }],
           description: '', is_exclusive: false, no_warage_effect: false,
         }],
+      }],
+      specialGroups: [{
+        partCategoryIds: [],
+        special_conditions: ['NT'],
       }],
     }
 
@@ -239,10 +243,98 @@ describe('EquipmentSetPiecesEditor テクニック部位', () => {
     // 効果グループは装備部位（同一設定）の1グループのみ（テクニック用の空グループを作らない）
     expect(form.baseStatsGroups).toHaveLength(1)
     expect(form.bonusGroups).toHaveLength(1)
+    expect(form.specialGroups).toHaveLength(1)
     expect(form.baseStatsGroups[0].base_stats).toEqual({ atk: '10' })
     // テクニック部位の必要スキル・マスタリは部位フォームへ復元される（値は文字列化）
     const noah = form.parts.find((p) => p.category_id === 31)!
     expect(noah.skill_requirements).toEqual({ 刀剣: '80' })
     expect(noah.mastery_requirements).toEqual(['WAR'])
+  })
+})
+
+// design.md「装備セット」: 特殊条件は追加効果・付加効果と同様に独立した「設定グループ」で管理する
+describe('EquipmentSetPiecesEditor 特殊条件の設定グループ', () => {
+  const makeMember = (over: Partial<Item>): Item => ({
+    id: 1, name: '', description: null, official_url: null,
+    base_stats: {}, special_conditions: [], dyeable: false, mithril: false,
+    bonus_effects: [], is_equipment_set: false,
+    skill_requirements: null, mastery_requirements: null,
+    category: { id: 11, parent_id: 1, name: '頭(防)', sort_order: 1 },
+    ...over,
+  } as Item)
+
+  it('formToPieces は部位ごとの特殊条件グループを適用する（追加効果グループとは独立）', () => {
+    const form: EquipmentSetForm = {
+      parts: [
+        part({ category_id: 11, name: '頭装備' }),
+        part({ category_id: 12, name: '胴装備' }),
+      ],
+      // 追加効果は全部位共通の1グループ
+      baseStatsGroups: [{ partCategoryIds: [], base_stats: { atk: '10' }, custom_stats: [] }],
+      bonusGroups: [{ partCategoryIds: [], bonus_effects: [] }],
+      // 特殊条件のみ胴を別グループにする
+      specialGroups: [
+        { partCategoryIds: [], special_conditions: ['NT'] },
+        { partCategoryIds: [12], special_conditions: ['NT', 'ND'] },
+      ],
+    }
+
+    const pieces = formToPieces(form, TECHNIQUE_IDS)
+    const head = pieces.find((p) => p.category_id === 11)!
+    const body = pieces.find((p) => p.category_id === 12)!
+
+    // 追加効果は両部位とも共通グループから適用される
+    expect(head.base_stats).toEqual({ atk: 10 })
+    expect(body.base_stats).toEqual({ atk: 10 })
+    // 特殊条件は部位ごとのグループから適用される
+    expect(head.special_conditions).toEqual(['NT'])
+    expect(body.special_conditions).toEqual(['NT', 'ND'])
+  })
+
+  it('membersToForm は特殊条件を追加効果と独立にグルーピングして復元する', () => {
+    // 追加効果は全部位同一・特殊条件だけ異なる構成
+    const members: Item[] = [
+      makeMember({ id: 1, name: '頭装備', base_stats: { atk: 10 }, special_conditions: ['NT'] }),
+      makeMember({
+        id: 2, name: '胴装備', base_stats: { atk: 10 }, special_conditions: ['ND', 'NT'],
+        category: { id: 12, parent_id: 1, name: '胴(防)', sort_order: 2 },
+      }),
+      makeMember({
+        id: 3, name: '脚装備', base_stats: { atk: 10 }, special_conditions: ['NT'],
+        category: { id: 13, parent_id: 1, name: '脚(防)', sort_order: 3 },
+      }),
+    ]
+
+    const form = membersToForm(members, TECHNIQUE_IDS)
+
+    // 追加効果は1グループにまとまる（特殊条件の違いでは分割しない）
+    expect(form.baseStatsGroups).toHaveLength(1)
+    expect(form.baseStatsGroups[0].base_stats).toEqual({ atk: '10' })
+    // 特殊条件は2グループ。最多（NT: 頭・脚）が既定グループになり、胴のみ別グループ
+    expect(form.specialGroups).toHaveLength(2)
+    expect(form.specialGroups[0].partCategoryIds).toEqual([])
+    expect(form.specialGroups[0].special_conditions).toEqual(['NT'])
+    expect(form.specialGroups[1].partCategoryIds).toEqual([12])
+    expect(form.specialGroups[1].special_conditions).toEqual(['ND', 'NT'])
+  })
+
+  it('特殊条件セクションは設定グループの追加ボタンを持つ', () => {
+    const value = makeForm([
+      part({ category_id: 11, name: '頭装備' }),
+      part({ category_id: 12, name: '胴装備' }),
+    ])
+    render(
+      <EquipmentSetPiecesEditor
+        categories={categories}
+        value={value}
+        onChange={() => {}}
+        bonusValueLabelOptions={[]}
+        statLabelOptions={[]}
+      />
+    )
+
+    expect(screen.getByText('+ 設定グループを追加（部位ごとに特殊条件を分ける）')).toBeInTheDocument()
+    // 既定グループは「全部位共通」表示（追加効果・付加効果・特殊条件の3セクション分）
+    expect(screen.getAllByText('全部位共通')).toHaveLength(3)
   })
 })

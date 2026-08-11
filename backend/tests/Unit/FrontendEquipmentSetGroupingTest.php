@@ -93,6 +93,22 @@ class FrontendEquipmentSetGroupingTest extends TestCase
         $this->assertStringContainsString('label="テクニック"', $listings);
     }
 
+    public function test_登録編集フォームの特殊条件は独立した設定グループで管理する(): void
+    {
+        // design.md「装備セット」: 設定グループは追加効果・付加効果・特殊条件の3系統が独立。
+        // 特殊条件が追加効果グループへ戻る（旧UIへの回帰）を防ぐ。
+        $src = $this->frontendFile('src/components/EquipmentSetPiecesEditor.tsx');
+
+        $this->assertStringContainsString('specialGroups: SpecialConditionsGroupForm[]', $src);
+        // 送信時は部位ごとに特殊条件グループを解決して部位アイテムへ展開する
+        $this->assertStringContainsString('specialFor(p.category_id)', $src);
+        $this->assertStringContainsString('special_conditions: sg.special_conditions', $src);
+        // 復元時は特殊条件を追加効果と独立にグルーピングする
+        $this->assertStringContainsString('function specialKey', $src);
+        // 追加効果キー（baseKey）は特殊条件を含まない（含めると特殊条件差分で追加効果グループが割れる）
+        $this->assertStringNotContainsString("special_conditions: [...(m.special_conditions ?? [])].sort()", $src);
+    }
+
     public function test_性能グルーピングキーはテクニックの必要スキルマスタリも区別する(): void
     {
         // 必要スキル・マスタリが異なるテクニック部位同士を誤って1カードに統合しない
