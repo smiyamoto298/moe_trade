@@ -450,11 +450,18 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
   `equipment_set_members`（set_item_id / piece_item_id / sort_order）でセット本体に紐付く。
 - 登録/編集（editor・admin・一般ユーザー）では「設定グループ」単位で入力する。1グループに複数部位をまとめ、
   追加効果・付加効果・その他設定を1回だけ入力できる（同じ設定の部位はまとめて設定）。名前は部位ごとに個別。
+- 設定グループは**追加効果（`baseStatsGroups`）・付加効果（`bonusGroups`）・特殊条件（`specialGroups`）の3系統が独立**しており、
+  それぞれ既定はグループ[0]（全部位共通）のみ。部位ごとに設定を分けたい系統だけグループを追加して対象部位を割り当てる
+  （例: 追加効果は全部位共通のまま、特殊条件だけ胴を別グループにできる）。送信時（`formToPieces`）は系統ごとに
+  部位のグループを解決して部位アイテムへ展開し、復元時（`membersToForm`）も系統ごとに独立へグルーピングする。
+  ※ 旧UIでは特殊条件が追加効果グループ内にあり部位間で不揃いのデータが残り得たため、
+  データ移行（`2026_08_12_000001_unify_equipment_set_special_conditions`）で既存セットの特殊条件を
+  構成部位（テクニック除く）の和集合＝**全部位共通**に統一した。
 - 構成部位の名前入力欄は、追加した順ではなく**構成部位チェックボックス（カテゴリ）の並び順**で表示する。
 - 構成部位として選択できるカテゴリは装備部位（武器・防具・装飾品）と**テクニック（ノアピース・秘伝の書）**。
   装備部位になり得ない「装備セット」「その他（未開封ペット・レシピ・ペット用アイテム・アイテムセット）」は部位候補チェックボックスに表示しない。
 - **テクニック部位**は装備品固有の属性を持たないため、ミスリル・染色可の入力欄を表示せず、
-  追加効果・付加効果の設定グループの対象部位にも含めない（`techniqueCategoryIds` で判定）。
+  追加効果・付加効果・特殊条件の設定グループの対象部位にも含めない（`techniqueCategoryIds` で判定）。
   送信時（`formToPieces`）は base_stats / special_conditions / bonus_effects を常に空、mithril / dyeable を false で送り、
   復元時（`membersToForm`）はテクニック部位を効果グループの構築から除外する（部位リスト・名前・公式DB URL は他部位と同様）。
   `set_piece_category_ids`（派生キャッシュ）にはテクニックカテゴリも含まれ、「装備セットを含める」フィルタで検索できる。
@@ -1594,6 +1601,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/AuthTest.php` | 登録（ハッシュ保存・重複・正規化）／ログイン／me／再送／ログアウト |
 | `tests/Feature/PasswordResetTest.php` | 再設定メール送信・アカウント列挙対策・トークン検証・既存トークン失効 |
 | `tests/Feature/ItemApiTest.php` | アイテムCRUD・unverified編集権限・verify(editor)・削除(admin)・スキル必要値・装備セット・統合 |
+| `tests/Feature/UnifyEquipmentSetSpecialConditionsMigrationTest.php` | 装備セット特殊条件の全部位共通化移行（一部部位のみの条件を全部位へ・部位順を保った和集合・テクニック部位除外・条件なしセットとセット外アイテムは不変） |
 | `tests/Feature/ListingApiTest.php` | 出品CRUD・メール認証/停止チェック・種別/価格フィルター・renew・期限切れバッチ・**active でも期限切れは一覧/詳細(404)/取引希望から除外**・**SQLi回帰（不正キー無視）** |
 | `tests/Feature/ChatApiTest.php` | チャット作成・重複防止・成立/不成立/完了確認・相場IPチェック・未読数 |
 | `tests/Feature/BuyRequestChatApiTest.php` | 買取の売却申し出・自己取引禁止・成立履歴・相場IPチェック |
@@ -1627,6 +1635,7 @@ docker compose exec php vendor/bin/phpunit
 |---|---|
 | `src/utils/itemType.test.ts` | 種別判定（最上位カテゴリ名→ equipment / technique / asset）・親フォールバック |
 | `src/utils/equipmentSet.test.ts` | 装備セット部位のグルーピング（追加効果・付加効果・性能全体、順序非依存・ミスリル差分） |
+| `src/components/EquipmentSetPiecesEditor.test.tsx` | 装備セット構成部位エディタ（名前入力欄のカテゴリ順表示・部位候補カテゴリ・テクニック部位の効果対象外と必要スキル/マスタリ・特殊条件の独立設定グループ（`formToPieces` の部位別適用・`membersToForm` の追加効果と独立なグルーピング・グループ追加ボタン）） |
 | `src/utils/constants.test.ts` | マスタ定数の design.md 整合（マスタリ構成スキルが SKILL_GROUPS と完全一致・特殊条件15種・追加効果キー18種＋セレクト表示順・追加効果入力欄の3列構成 `STAT_INPUT_COLUMNS`・アセット選択肢）・追加効果/付加効果数値の符号付き表示 `formatSignedValue`（負数以外は + 付き） |
 | `src/utils/inventory.test.ts` | アイテムボックスの行の実効種別判定 `effectiveTypeId`（ユーザー割当＞共通割当＞取引可能＞未設定・登録アイテム紐づけ行でも割当が優先・null は既定種別へ解決・名前正規化） |
 | `src/utils/inventoryStore.test.ts` | 表示種別タブ／サーバ登録対象外名／貼り付け領域の開閉状態（既定は閉じる・開閉の往復）の永続化、DBモードの分割保存（対象外行をサーバーへ送らずローカルへ・読込時マージ・local切替でクリア） |
