@@ -22,6 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(append: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            // 日ごとのユニークアクセスユーザー記録（利用状況解析の「アクセスユーザー」集計元）
+            \App\Http\Middleware\RecordDailyAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

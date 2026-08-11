@@ -15,17 +15,21 @@ const PERIODS = [
 ] as const
 
 // 系列の定義。色は暗色サーフェス上でのコントラスト・色覚多様性を検証済みのパレット。
-// 線種で系列の役割を区別する: 合算（登録・成立）＝太い実線、登録の内訳（出品・買取）＝通常の実線、
+// 線種で系列の役割を区別する: 合算（登録・成立）とアクセス＝太い実線、登録の内訳（出品・買取）＝通常の実線、
 // 成立の内訳（出品成立・買取成立）＝破線（色だけでは区別しづらい組み合わせ向けにパターンも変える）。
-// 登録＝出品＋買取、成立＝出品成立＋買取成立の合算系列（既定表示はこの2本のみ）。
+// 登録＝出品＋買取、成立＝出品成立＋買取成立の合算系列。unit はサマリーカード・ツールチップの単位。
 const SERIES = [
-  { key: 'registrations', label: '登録', color: '#8b5cf6', width: 3, dash: undefined },
-  { key: 'listings', label: '出品', color: '#3b82f6', width: 2, dash: undefined },
-  { key: 'buy_requests', label: '買取', color: '#059669', width: 2, dash: undefined },
-  { key: 'trades', label: '成立', color: '#ef4444', width: 3, dash: undefined },
-  { key: 'listing_trades', label: '出品成立', color: '#d97706', width: 2, dash: '7 4' },
-  { key: 'buy_request_trades', label: '買取成立', color: '#db2777', width: 2, dash: '3 3' },
+  { key: 'registrations', label: '登録', color: '#8b5cf6', width: 3, dash: undefined, unit: '件' },
+  { key: 'listings', label: '出品', color: '#3b82f6', width: 2, dash: undefined, unit: '件' },
+  { key: 'buy_requests', label: '買取', color: '#059669', width: 2, dash: undefined, unit: '件' },
+  { key: 'trades', label: '成立', color: '#ef4444', width: 3, dash: undefined, unit: '件' },
+  { key: 'listing_trades', label: '出品成立', color: '#d97706', width: 2, dash: '7 4', unit: '件' },
+  { key: 'buy_request_trades', label: '買取成立', color: '#db2777', width: 2, dash: '3 3', unit: '件' },
+  { key: 'active_users', label: 'アクセス', color: '#06b6d4', width: 3, dash: undefined, unit: '人' },
 ] as const
+
+// ツールチップの単位を系列名（label）から引くためのマップ
+const UNIT_BY_LABEL: Record<string, string> = Object.fromEntries(SERIES.map((s) => [s.label, s.unit]))
 
 type SeriesKey = (typeof SERIES)[number]['key']
 
@@ -36,6 +40,7 @@ const ALL_VISIBLE: Record<SeriesKey, boolean> = {
   trades: true,
   listing_trades: true,
   buy_request_trades: true,
+  active_users: true,
 }
 
 const NONE_VISIBLE: Record<SeriesKey, boolean> = {
@@ -45,13 +50,15 @@ const NONE_VISIBLE: Record<SeriesKey, boolean> = {
   trades: false,
   listing_trades: false,
   buy_request_trades: false,
+  active_users: false,
 }
 
-// 既定表示は合算の「登録」「成立」のみ（内訳はチェックボックスで追加表示）
+// 既定表示は合算の「登録」「成立」と「アクセス」のみ（内訳はチェックボックスで追加表示）
 const DEFAULT_VISIBLE: Record<SeriesKey, boolean> = {
   ...NONE_VISIBLE,
   registrations: true,
   trades: true,
+  active_users: true,
 }
 
 // 「YYYY-MM-DD」を「M/D」に短縮（X軸ラベル用）
@@ -100,7 +107,7 @@ export default function AdminAnalyticsPage() {
         </div>
       </div>
       <p className="text-sm text-gray-400 mb-5">
-        出品・買取の登録件数（取り下げ・期限切れ分も含む）と取引成立件数（出品由来・買取由来別、相場対象のみ）を日別に集計します。「登録」は出品＋買取、「成立」は出品成立＋買取成立の合算です。日付は日本時間です。
+        出品・買取の登録件数（取り下げ・期限切れ分も含む）、取引成立件数（出品由来・買取由来別、相場対象のみ）、アクセスユーザー数（ログイン中に利用した人数・日ごとの重複なし）を日別に集計します。「登録」は出品＋買取、「成立」は出品成立＋買取成立の合算です。日付は日本時間です。
       </p>
 
       {loading ? (
@@ -111,13 +118,17 @@ export default function AdminAnalyticsPage() {
         <>
           {/* 期間合計 */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
-            {SERIES.map(({ key, label, color }) => (
-              <div key={key} className="bg-surface rounded-lg px-4 py-3 text-center">
+            {SERIES.map(({ key, label, color, unit }) => (
+              <div
+                key={key}
+                className="bg-surface rounded-lg px-4 py-3 text-center"
+                title={key === 'active_users' ? '期間内にログイン中に利用したユーザーの数（重複なし）' : undefined}
+              >
                 <p className="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1.5">
                   <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
                   {label}
                 </p>
-                <p className="text-lg font-bold text-white">{data.totals[key].toLocaleString()} 件</p>
+                <p className="text-lg font-bold text-white">{data.totals[key].toLocaleString()} {unit}</p>
               </div>
             ))}
             <div
@@ -170,7 +181,7 @@ export default function AdminAnalyticsPage() {
                   contentStyle={{ backgroundColor: '#242740', border: '1px solid #353858', borderRadius: '6px' }}
                   labelStyle={{ color: '#d1d5db', marginBottom: 4 }}
                   labelFormatter={(v: string) => v}
-                  formatter={(v: number) => `${v} 件`}
+                  formatter={(v: number, name: string) => `${v} ${UNIT_BY_LABEL[name] ?? '件'}`}
                 />
                 <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
                 {shownSeries.map(({ key, label, color, width, dash }) => (

@@ -319,6 +319,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('admin/bonus-value-labels/{id}',       [BonusValueLabelController::class, 'update']);
         Route::delete('admin/bonus-value-labels/{id}',    [BonusValueLabelController::class, 'destroy']);
 
+        // 利用状況解析（出品数・買取数・取引成立数・アクセスユーザー数の日次集計。editor / admin）
+        Route::get('admin/analytics/usage', [AdminAnalyticsController::class, 'usage']);
+
         // レシピのバインダー候補の管理
         Route::get('admin/binder-labels',          [\App\Http\Controllers\BinderLabelController::class, 'adminIndex']);
         Route::post('admin/binder-labels',         [\App\Http\Controllers\BinderLabelController::class, 'store']);
@@ -337,9 +340,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // バッチ（Artisanコマンド）の実行履歴
         Route::get('admin/batch-runs', [AdminController::class, 'batchRuns']);
-
-        // 利用状況解析（出品数・買取数・取引成立数の日次集計）
-        Route::get('admin/analytics/usage', [AdminAnalyticsController::class, 'usage']);
 
         // 本番データのローカル取込（ローカル環境専用・本番では 403）
         Route::post('admin/dev/pull-prod', [AdminController::class, 'pullProdData']);

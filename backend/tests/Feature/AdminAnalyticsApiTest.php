@@ -7,6 +7,7 @@ use App\Models\Item;
 use App\Models\Listing;
 use App\Models\TradeHistory;
 use App\Models\User;
+use App\Models\UserDailyAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -107,12 +108,16 @@ class AdminAnalyticsApiTest extends TestCase
         $this->getJson('/api/admin/analytics/usage')->assertStatus(401);
     }
 
-    public function test_一般ユーザーとeditorは利用状況解析にアクセスできない(): void
+    public function test_一般ユーザーは利用状況解析にアクセスできない(): void
     {
         $this->actingAs($this->makeUser(), 'sanctum')
             ->getJson('/api/admin/analytics/usage')->assertStatus(403);
+    }
+
+    public function test_editorは利用状況解析にアクセスできる(): void
+    {
         $this->actingAs($this->makeUserWithRole('editor'), 'sanctum')
-            ->getJson('/api/admin/analytics/usage')->assertStatus(403);
+            ->getJson('/api/admin/analytics/usage')->assertOk();
     }
 
     public function test_adminは日次の出品数買取数取引成立数を取得できる(): void
@@ -248,6 +253,64 @@ class AdminAnalyticsApiTest extends TestCase
         $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
 
         $res->assertOk()->assertJsonPath('totals.trade_users', 1);
+    }
+
+    public function test_日ごとのユニークアクセスユーザー数を返す(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        $alice = $this->makeUser();
+        $bob   = $this->makeUser();
+        $carol = $this->makeUser();
+
+        // JST 8/5 に alice・bob、8/6 に alice（リピート）。carol は期間外（7/30）
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-05']);
+        UserDailyAccess::create(['user_id' => $bob->id,   'date' => '2026-08-05']);
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-06']);
+        UserDailyAccess::create(['user_id' => $carol->id, 'date' => '2026-07-30']);
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+
+        $daily = collect($res->json('daily'))->keyBy('date');
+        $this->assertSame(2, $daily['2026-08-05']['active_users']);
+        // 8/6 は alice ＋ このリクエスト自身で記録された admin の2人
+        $this->assertSame(2, $daily['2026-08-06']['active_users']);
+        // 該当のない日はゼロ埋めされる
+        $this->assertSame(0, $daily['2026-07-31']['active_users']);
+        // 期間合計は日次の合算ではなく期間内ユニーク（alice・bob・admin。期間外の carol は含まない）
+        $res->assertJsonPath('totals.active_users', 3);
+    }
+
+    public function test_認証済みリクエストでアクセスがJST日付で記録される(): void
+    {
+        $user = $this->makeUser();
+
+        // UTC 8/5 20:00 = JST 8/6 05:00 → JST の 8/6 として記録される
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-05 20:00:00', 'UTC'));
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
+
+        $this->assertDatabaseHas('user_daily_accesses', [
+            'user_id' => $user->id,
+            'date'    => '2026-08-06',
+        ]);
+    }
+
+    public function test_同日の複数リクエストでもアクセス記録は1件のまま(): void
+    {
+        $user = $this->makeUser();
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
+        $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
+
+        $this->assertSame(1, UserDailyAccess::where('user_id', $user->id)->count());
+    }
+
+    public function test_未認証リクエストはアクセス記録されない(): void
+    {
+        $this->getJson('/api/items')->assertOk();
+
+        $this->assertSame(0, UserDailyAccess::count());
     }
 
     public function test_daysの指定が不正なら422(): void

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BuyRequest;
 use App\Models\Listing;
 use App\Models\TradeHistory;
+use App\Models\UserDailyAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
@@ -14,12 +15,14 @@ class AdminAnalyticsController extends Controller
     private const TZ = 'Asia/Tokyo';
 
     /**
-     * 利用状況の日次集計（admin限定）。
+     * 利用状況の日次集計（editor / admin）。
      * 出品数・買取数は作成ベース（後に取り下げ・期限切れになったものも含む）、
      * 取引成立数は trade_history の相場対象（is_valid=true）のみ（宣伝ポストと同じ流儀）。
      * 成立は出品由来（listing_trades）と買取由来（buy_request_trades・buy_request_id あり）に分けて返す。
      * registrations（登録=listings+buy_requests）と trades（成立=listing_trades+buy_request_trades）の合算系列も返す。
      * trade_users は期間内の成立取引に売り手・買い手として関わったユニークユーザー数。
+     * active_users は日ごとのユニークアクセスユーザー数（user_daily_accesses・RecordDailyAccess が記録）。
+     * totals.active_users は期間内に1回でもアクセスしたユニークユーザー数（日ごとの単純合算ではない）。
      */
     public function usage(Request $request)
     {
@@ -50,6 +53,15 @@ class AdminAnalyticsController extends Controller
             ->unique()
             ->count();
 
+        // 日次ユニークアクセス。date は JST 日付で保存済みなのでタイムゾーン変換不要。
+        // (user_id, date) ユニークのため日付ごとの行数がそのままユニークユーザー数になる
+        $accesses = UserDailyAccess::where('date', '>=', $from->format('Y-m-d'))
+            ->get(['user_id', 'date']);
+        $activeUsers = $accesses
+            ->countBy(fn ($a) => CarbonImmutable::parse($a->date)->format('Y-m-d'))
+            ->all();
+        $activeUsersTotal = $accesses->pluck('user_id')->unique()->count();
+
         // 期間内の全日をゼロ埋めして返す（グラフの欠損日を作らない）
         $daily = [];
         for ($d = $from; $d->lte($today); $d = $d->addDay()) {
@@ -62,6 +74,7 @@ class AdminAnalyticsController extends Controller
                 'listing_trades'     => $listingTrades[$key] ?? 0,
                 'buy_request_trades' => $buyRequestTrades[$key] ?? 0,
                 'trades'             => ($listingTrades[$key] ?? 0) + ($buyRequestTrades[$key] ?? 0),
+                'active_users'       => $activeUsers[$key] ?? 0,
             ];
         }
 
@@ -77,6 +90,7 @@ class AdminAnalyticsController extends Controller
                 'buy_request_trades' => array_sum(array_column($daily, 'buy_request_trades')),
                 'trades'             => array_sum(array_column($daily, 'trades')),
                 'trade_users'        => $tradeUsers,
+                'active_users'       => $activeUsersTotal,
             ],
             'daily'  => $daily,
         ]);

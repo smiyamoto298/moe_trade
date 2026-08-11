@@ -5,9 +5,10 @@ import { adminAnalyticsApi } from '../../api/adminAnalytics'
 import type { UsageResponse } from '../../api/adminAnalytics'
 
 // design.md「10. 管理機能 > 利用状況解析」:
-// 日別推移グラフ（6系列。登録=出品+買取、成立=出品成立+買取成立の合算を含む）は
-// 既定で「登録」「成立」の2系列のみ表示し、チェックボックスで系列ごとに表示・非表示を
-// 切り替えられ、「すべて」チェックで一括切替できる。
+// 日別推移グラフ（7系列。登録=出品+買取、成立=出品成立+買取成立の合算と、
+// 日ごとのユニークアクセスユーザー数「アクセス」を含む）は
+// 既定で「登録」「成立」「アクセス」の3系列のみ表示し、チェックボックスで系列ごとに
+// 表示・非表示を切り替えられ、「すべて」チェックで一括切替できる。
 
 vi.mock('../../api/adminAnalytics', () => ({ adminAnalyticsApi: { usage: vi.fn() } }))
 // recharts はスタブ化し、Line の dataKey だけ検証できるようにする
@@ -36,15 +37,16 @@ const makeUsage = (): UsageResponse => ({
     buy_request_trades: 1,
     trades: 3,
     trade_users: 6,
+    active_users: 9,
   },
   daily: [
-    { date: '2026-08-05', listings: 1, buy_requests: 0, registrations: 1, listing_trades: 1, buy_request_trades: 0, trades: 1 },
-    { date: '2026-08-06', listings: 2, buy_requests: 1, registrations: 3, listing_trades: 1, buy_request_trades: 1, trades: 2 },
+    { date: '2026-08-05', listings: 1, buy_requests: 0, registrations: 1, listing_trades: 1, buy_request_trades: 0, trades: 1, active_users: 4 },
+    { date: '2026-08-06', listings: 2, buy_requests: 1, registrations: 3, listing_trades: 1, buy_request_trades: 1, trades: 2, active_users: 7 },
   ],
 })
 
-const ALL_KEYS = ['registrations', 'listings', 'buy_requests', 'trades', 'listing_trades', 'buy_request_trades']
-const DEFAULT_KEYS = ['registrations', 'trades']
+const ALL_KEYS = ['registrations', 'listings', 'buy_requests', 'trades', 'listing_trades', 'buy_request_trades', 'active_users']
+const DEFAULT_KEYS = ['registrations', 'trades', 'active_users']
 const DETAIL_KEYS = ALL_KEYS.filter((k) => !DEFAULT_KEYS.includes(k))
 
 describe('AdminAnalyticsPage', () => {
@@ -53,7 +55,7 @@ describe('AdminAnalyticsPage', () => {
     mockedUsage.mockResolvedValue({ data: makeUsage() })
   })
 
-  it('初期表示は「登録」「成立」の2系列のみ表示し、サマリーカードを表示する', async () => {
+  it('初期表示は「登録」「成立」「アクセス」の3系列のみ表示し、サマリーカードを表示する', async () => {
     render(<AdminAnalyticsPage />)
 
     expect(await screen.findByTestId('line-chart')).toBeInTheDocument()
@@ -63,9 +65,10 @@ describe('AdminAnalyticsPage', () => {
     for (const key of DETAIL_KEYS) {
       expect(screen.queryByTestId(`line-${key}`)).not.toBeInTheDocument()
     }
-    // サマリーカードは全系列分（登録=17、成立=3）＋取引ユーザー
+    // サマリーカードは全系列分（登録=17、成立=3）＋アクセス（人表記）＋取引ユーザー
     expect(screen.getByText('17 件')).toBeInTheDocument()
     expect(screen.getByText('6 人')).toBeInTheDocument()
+    expect(screen.getByText('9 人')).toBeInTheDocument()
     expect(mockedUsage).toHaveBeenCalledWith(30)
   })
 

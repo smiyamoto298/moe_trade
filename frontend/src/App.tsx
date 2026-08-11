@@ -144,7 +144,7 @@ export default function App() {
           />
           <Route
             path="/admin/analytics"
-            element={<RoleRoute roles={['admin']}><AdminAnalyticsPage /></RoleRoute>}
+            element={<RoleRoute roles={['editor', 'admin']}><AdminAnalyticsPage /></RoleRoute>}
           />
           <Route
             path="/admin/excluded-items"
