@@ -295,6 +295,11 @@ X（旧Twitter）への宣伝用に、対象期間の
   - 出品詳細の「取引希望を送る」ボタン → 「取引するにはログインが必要です」（`/auth/login` への導線）に置換
 - 出品詳細・一覧の閲覧自体は未ログインでも可能（「詳細」リンクは常時表示）
 
+### 数値入力欄のホイール操作無効化
+- サイト全体で、数値入力欄（`input[type="number"]`）上のマウスホイール操作による値の増減を無効化する（スクロールのつもりで入力値を変えてしまう事故防止）
+- 実装は `frontend/src/utils/numberInputWheel.ts` の `installNumberInputWheelBlocker()`。`main.tsx` で一度だけ document にグローバル wheel リスナー（capture・passive）を登録し、**フォーカス中の数値入力欄の上で wheel が発生したら blur する**方式（値の増減はフォーカス中のみ起きるため blur で防げる。preventDefault と違いページのスクロールは妨げない）。各コンポーネント側の変更は不要
+- テスト: `frontend/src/utils/numberInputWheel.test.ts`
+
 ### マスタ取得中のローディング表示
 - セレクトボックスの選択肢など、マスタ情報の取得が完了するまでページ中央にスピナーを表示する
 - 共通コンポーネント `frontend/src/components/Spinner.tsx`（`center` 指定で縦中央寄せ）
