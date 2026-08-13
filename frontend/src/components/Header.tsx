@@ -171,8 +171,7 @@ export default function Header() {
 
         {/* デスクトップナビ（lg以上） */}
         <nav className="hidden lg:flex items-center gap-6 text-sm">
-          {navLinks}
-          {/* マイ取引・アイテムボックスをトップ階層に直接表示 */}
+          {/* ログイン時はマイ取引・アイテムボックスを先頭に表示 */}
           {user && (
             <>
               <Link
@@ -200,16 +199,19 @@ export default function Header() {
               >
                 アイテムボックス
               </Link>
-              <Link
-                to="/board"
-                className="relative text-gray-300 hover:text-white transition-colors"
-              >
-                お問い合わせ
-                {hasNewBoard && (
-                  <span className="absolute -top-1 -right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
-                )}
-              </Link>
             </>
+          )}
+          {navLinks}
+          {user && (
+            <Link
+              to="/board"
+              className="relative text-gray-300 hover:text-white transition-colors"
+            >
+              お問い合わせ
+              {hasNewBoard && (
+                <span className="absolute -top-1 -right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
+              )}
+            </Link>
           )}
           {/* 管理メニュー：editor/admin のみ表示（アイテム一覧はトップ階層へ移動） */}
           {(user?.role === 'editor' || user?.role === 'admin') && (
@@ -373,20 +375,7 @@ export default function Header() {
             onClick={() => setMobileOpen(false)}
           />
           <nav className="absolute top-0 right-0 w-72 max-w-[85vw] h-full bg-surface-card border-l border-surface-border shadow-xl overflow-y-auto flex flex-col p-4 text-sm">
-            <Link to="/all" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-              出品一覧
-            </Link>
-            <Link to="/buy-requests" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-              買取一覧
-            </Link>
-            <Link to="/items" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-              <span>アイテム一覧</span>
-              {unverifiedItemCount > 0 && (
-                <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
-                  {unverifiedItemCount}
-                </span>
-              )}
-            </Link>
+            {/* ログイン時はマイ取引・アイテムボックスを先頭に表示 */}
             {user && (
               <>
                 <Link to="/mypage" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
@@ -410,11 +399,27 @@ export default function Header() {
                 <Link to="/mypage/items" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
                   アイテムボックス
                 </Link>
-                <Link to="/board" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
-                  <span>お問い合わせ</span>
-                  {hasNewBoard && <span className="w-2 h-2 rounded-full bg-red-500" />}
-                </Link>
               </>
+            )}
+            <Link to="/all" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+              出品一覧
+            </Link>
+            <Link to="/buy-requests" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+              買取一覧
+            </Link>
+            <Link to="/items" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+              <span>アイテム一覧</span>
+              {unverifiedItemCount > 0 && (
+                <span className="bg-yellow-500 text-black text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                  {unverifiedItemCount}
+                </span>
+              )}
+            </Link>
+            {user && (
+              <Link to="/board" onClick={closeMobile} className="flex items-center justify-between py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors">
+                <span>お問い合わせ</span>
+                {hasNewBoard && <span className="w-2 h-2 rounded-full bg-red-500" />}
+              </Link>
             )}
             {(user?.role === 'editor' || user?.role === 'admin') && (
               <div className="mt-2 pt-4 border-t border-surface-border">

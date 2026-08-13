@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Header from './Header'
 
@@ -7,8 +7,12 @@ import Header from './Header'
 // ローカル開発中（import.meta.env.DEV）は本番画面と取り違えないよう、
 // 画面両脇（左右端）に黄色の縦枠線を常時表示する。本番ビルドでは表示されない。
 
+const mockAuth = vi.hoisted(() => ({
+  user: null as { role: string } | null,
+  logout: vi.fn(),
+}))
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: null, logout: vi.fn() }),
+  useAuth: () => mockAuth,
 }))
 vi.mock('../contexts/NotificationContext', () => ({
   useNotification: () => ({
@@ -37,6 +41,7 @@ const renderHeader = () =>
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  mockAuth.user = null
 })
 
 describe('Header ローカル環境の視覚的識別', () => {
@@ -58,5 +63,59 @@ describe('Header ローカル環境の視覚的識別', () => {
     renderHeader()
     const header = screen.getByRole('banner')
     expect(header.style.backgroundImage).toBe('')
+  })
+})
+
+// design.md「レイアウト・ブランド表示 > ヘッダーのナビ構成」:
+// 並び順は マイ取引 → アイテムボックス → 出品一覧 → 買取一覧 → アイテム一覧 →
+// お問い合わせ → 管理。デスクトップ・モバイルドロワーとも同一順。
+describe('Header ナビの並び順', () => {
+  const LOGGED_IN_ORDER = [
+    'マイ取引',
+    'アイテムボックス',
+    '出品一覧',
+    '買取一覧',
+    'アイテム一覧',
+    'お問い合わせ',
+  ]
+
+  // nav 内のリンクテキストを DOM 順で取り出す（バッジ等の付随テキストは除外して比較する）
+  const linkTexts = (nav: HTMLElement) =>
+    within(nav)
+      .getAllByRole('link')
+      .map((el) => LOGGED_IN_ORDER.find((label) => el.textContent?.includes(label)))
+      .filter((label): label is string => label !== undefined)
+
+  it('未ログイン時は 出品一覧 → 買取一覧 → アイテム一覧 の順で表示する', () => {
+    renderHeader()
+    const nav = screen.getByRole('navigation')
+    expect(linkTexts(nav)).toEqual(['出品一覧', '買取一覧', 'アイテム一覧'])
+  })
+
+  it('ログイン時はマイ取引・アイテムボックスを先頭に、お問い合わせを末尾に表示する（デスクトップ）', () => {
+    mockAuth.user = { role: 'user' }
+    renderHeader()
+    const nav = screen.getByRole('navigation')
+    expect(linkTexts(nav)).toEqual(LOGGED_IN_ORDER)
+  })
+
+  it('admin では お問い合わせ の後ろに管理メニューを表示する（デスクトップ）', () => {
+    mockAuth.user = { role: 'admin' }
+    renderHeader()
+    const nav = screen.getByRole('navigation')
+    const adminButton = within(nav).getByRole('button', { name: /管理/ })
+    const boardLink = within(nav).getByRole('link', { name: /お問い合わせ/ })
+    // compareDocumentPosition: FOLLOWING = 対象ノードが基準ノードより後方にある
+    expect(boardLink.compareDocumentPosition(adminButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('モバイルドロワーもデスクトップと同一順で表示する', () => {
+    mockAuth.user = { role: 'user' }
+    renderHeader()
+    fireEvent.click(screen.getByRole('button', { name: 'メニュー' }))
+    // ドロワーを開くと nav が2つ（デスクトップ・モバイル）になる。後者がドロワー
+    const navs = screen.getAllByRole('navigation')
+    expect(navs.length).toBe(2)
+    expect(linkTexts(navs[1])).toEqual(LOGGED_IN_ORDER)
   })
 })
