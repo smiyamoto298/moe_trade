@@ -276,6 +276,37 @@ describe('ListingsPage タブ', () => {
     expect(within(table).getByText('ノアピース：ヴィガー')).toBeInTheDocument()
   })
 
+  it('全てタブの情報列は、列に収まる長さ（20文字未満）の付加効果テキストをそのまま表示する', async () => {
+    // design.md「付加効果」: 全てタブの情報列は3列ぶち抜きで幅広のため、[詳細] 切替の
+    // しきい値を20文字に緩め、収まる長さのテキストはそのまま表示する
+    const fitsText = '毒・麻痺・睡眠を無効化する'   // 13文字 → そのまま表示
+    const longText = 'ペットの攻撃力と防御力と魔力と抵抗力を大きく上昇させる' // 26文字 → [詳細]
+    mockedList.mockResolvedValue(
+      page([
+        makeListing({
+          id: 4,
+          item: makeItem({
+            id: 4, name: '守護の鎧',
+            bonus_effects: [
+              { id: 1, effect_name: '状態異常耐性', is_exclusive: false, description: '', values: [{ value: fitsText, value_unit: 'text' }] },
+              { id: 2, effect_name: 'ペット強化', is_exclusive: false, description: '', values: [{ value: longText, value_unit: 'text' }] },
+            ] as unknown as Item['bonus_effects'],
+          }),
+        }),
+      ])
+    )
+    renderAt('/all')
+    await waitForLoaded()
+
+    expect(await screen.findByText('守護の鎧')).toBeInTheDocument()
+    const table = screen.getByRole('table')
+    // 収まる長さのテキストは [詳細] にせずそのまま表示
+    expect(within(table).getByText(fitsText)).toBeInTheDocument()
+    // 20文字以上は従来どおり [詳細] バッジ（全文はポップアップに含まれる）
+    expect(within(table).getByText('詳細')).toBeInTheDocument()
+    expect(within(table).getByText(longText)).toBeInTheDocument()
+  })
+
   it('各種別タブに件数バッジを表示する（counts API の結果）', async () => {
     renderAt('/listings')
     await waitForLoaded()

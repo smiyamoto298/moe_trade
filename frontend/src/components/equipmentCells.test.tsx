@@ -48,6 +48,29 @@ describe('BonusEffectList', () => {
     expect(screen.getByText('+15%')).toBeInTheDocument()
     expect(screen.queryByText('詳細')).not.toBeInTheDocument()
   })
+
+  // 「全て」タブの情報列のように幅広の列では longTextThreshold を緩め、
+  // 列に収まる長さのテキストはそのまま表示する（しきい値以上は従来どおり [詳細]）。
+  it('longTextThreshold 未満のテキスト値はそのまま表示する（幅広の列向け）', () => {
+    const item = itemWithEffects([
+      { effect_name: '特殊効果', values: [{ value: '長い説明テキストです', value_unit: 'text' }] },
+    ])
+    render(<BonusEffectList item={item} longTextThreshold={20} />)
+
+    expect(screen.getByText('長い説明テキストです')).toBeInTheDocument()
+    expect(screen.queryByText('詳細')).not.toBeInTheDocument()
+  })
+
+  it('longTextThreshold 以上のテキスト値は「詳細」バッジで表示する', () => {
+    const longText = 'とてもとても長い説明テキストで列に収まらないもの'
+    const item = itemWithEffects([
+      { effect_name: '特殊効果', values: [{ value: longText, value_unit: 'text' }] },
+    ])
+    render(<BonusEffectList item={item} longTextThreshold={20} />)
+
+    expect(screen.getByText('詳細')).toBeInTheDocument()
+    expect(screen.getByText(longText)).toBeInTheDocument()
+  })
 })
 
 function itemWithRecipeEntries(entries: RecipeEntry[] | null, extra: Partial<Item> = {}): Item {
@@ -183,6 +206,23 @@ describe('SetBonusCell テクニック部位の表示', () => {
     expect(screen.getByText('炎纏い')).toBeInTheDocument()
     expect(screen.queryByText('ノアピース：ヴィガー')).not.toBeInTheDocument()
     expect(screen.queryByText('ノアピース')).not.toBeInTheDocument()
+  })
+
+  it('longTextThreshold を部位の付加効果表示（BonusEffectList）へ引き継ぐ', () => {
+    const members = [
+      setMember({
+        id: 1, name: '頭装備',
+        bonus_effects: [{
+          id: 1, effect_name: '特殊効果', is_exclusive: false, description: '',
+          values: [{ value: '長い説明テキストです', value_unit: 'text' }],
+        } as unknown as ItemBonusEffect],
+      }),
+    ]
+    render(<SetBonusCell members={members} categories={setCategories} longTextThreshold={20} />)
+
+    // 既定（5文字）なら [詳細] になる長さでも、しきい値を緩めればそのまま表示される
+    expect(screen.getByText('長い説明テキストです')).toBeInTheDocument()
+    expect(screen.queryByText('詳細')).not.toBeInTheDocument()
   })
 
   it('categories 未指定なら従来どおり全部位を効果でグループ化する（アイテム名は表示しない）', () => {

@@ -25,8 +25,16 @@ export function BaseStatBadges({ item }: { item: Item }) {
   )
 }
 
-// 付加効果（bonus_effects）の一覧
-export function BonusEffectList({ item }: { item: Item }) {
+// テキスト値を [詳細] バッジへ切り替える既定の文字数しきい値（各種別タブの付加効果列向け）
+export const BONUS_TEXT_DETAIL_THRESHOLD = 5
+
+// 付加効果（bonus_effects）の一覧。
+// longTextThreshold で [詳細] 切替の文字数を呼び出し側の列幅に合わせて調整できる
+// （「全て」タブの情報列のように幅広の列では大きい値を渡し、収まるテキストはそのまま表示する）。
+export function BonusEffectList({ item, longTextThreshold = BONUS_TEXT_DETAIL_THRESHOLD }: {
+  item: Item
+  longTextThreshold?: number
+}) {
   return (
     <>
       {(item.bonus_effects ?? []).map((e) => (
@@ -39,8 +47,8 @@ export function BonusEffectList({ item }: { item: Item }) {
           </p>
           {e.values?.map((v, i) => {
             const disp = formatBonusValueDisplay(v.value, v.value_unit)
-            // テキスト値が長い（5文字以上）場合は一覧では [詳細] とし、ホバーで全文をポップアップ表示する。
-            const isLongText = v.value_unit === 'text' && disp.length >= 5
+            // テキスト値が列に収まらない長さの場合は一覧では [詳細] とし、ホバーで全文をポップアップ表示する。
+            const isLongText = v.value_unit === 'text' && disp.length >= longTextThreshold
             return (
               <p key={i} className="text-gray-400 whitespace-nowrap">
                 {v.label && <span>{v.label}{disp && '：'}</span>}
@@ -245,17 +253,18 @@ export function OtherInfoCell({ item }: { item: Item }) {
 // 部位カテゴリ名チップ＋部位アイテム名で表示する（categories 未指定時は従来どおり全部位を効果でグループ化）。
 // showTechniqueNames=false でテクニック部位の名前表示を抑止できる
 // （「すべて」タブの情報列のように、テクニックを呼び出し側で最後に別枠表示する場合に使う）。
-export function SetBonusCell({ members, categories, showTechniqueNames = true }: {
+export function SetBonusCell({ members, categories, showTechniqueNames = true, longTextThreshold }: {
   members: Item[]
   categories?: ItemCategory[]
   showTechniqueNames?: boolean
+  longTextThreshold?: number
 }) {
   if (members.length === 0) return <span className="text-xs text-gray-600">—</span>
   const techniqueMembers = showTechniqueNames ? techniqueMembersOf(members, categories) : []
   const effectMembers = members.filter((m) => !isTechniqueMember(m, categories))
   const groups = effectMembers.length > 0 ? groupPiecesByBonusEffects(effectMembers) : []
   const renderEffects = (m: Item) =>
-    hasBonusEffects(m) ? <BonusEffectList item={m} /> : <span className="text-xs text-gray-600">—</span>
+    hasBonusEffects(m) ? <BonusEffectList item={m} longTextThreshold={longTextThreshold} /> : <span className="text-xs text-gray-600">—</span>
   if (effectMembers.length === 0 && techniqueMembers.length === 0) {
     return <span className="text-xs text-gray-600">—</span>
   }
