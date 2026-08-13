@@ -206,7 +206,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - **購読フロー**: マイページ「🔔 ブラウザ通知を有効にする」→ Notification 許可と同時に Service Worker（`frontend/public/sw.js`）を登録し `PushManager.subscribe`（VAPID 公開鍵は `GET /api/push/public-key`）→ 購読情報を `POST /api/push/subscriptions` で保存。許可済みブラウザではログイン時に自動で再購読・最新化する（`NotificationContext`）。endpoint はブラウザ単位で一意のため、同一ブラウザで別ユーザーがログインし直すと購読の user_id を付け替える
 - **送信イベント**（`App\Support\WebPushSender`。宛先はユーザーIDのみ・操作した本人には送らない）:
   - 新しい取引希望／販売希望 → 出品者・買取登録者（順番待ち＝2番目以降は owner から見えないため通知しない）
-  - 新着チャットメッセージ → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）
+  - 新着チャットメッセージ → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）。**取引希望者（買い手）からの最初のメッセージは通知しない**：フロントの取引希望フローは「チャット作成→直後に最初のメッセージ送信」の2段階のため、両方通知すると owner に「新しい取引希望」と二重に届く。最初のメッセージは取引希望の一部としてチャット作成時の通知に代表させ、2通目以降を通知する
   - 取引成立・見送り（owner 操作）→ 取引希望者
   - オークション入札 → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
   - オークション解決（即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
@@ -1654,7 +1654,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/NotificationApiTest.php` | 通知サマリー（未読チャット・掲示板新着・対象者判定） |
 | `tests/Unit/WebPushSenderTest.php` | Web Push 送信（VAPID未設定はno-op・購読なしは送信しない・期限切れ購読の自動削除・トランザクション中はコミット後送信） |
 | `tests/Feature/PushSubscriptionApiTest.php` | Web Push 購読API（401・登録・endpoint一致のユーザー付け替え・URL検証・本人のみ解除・公開鍵取得） |
-| `tests/Feature/WebPushNotificationTest.php` | 取引イベントの Web Push（新規取引希望・順番待ち除外・買取・新着メッセージ・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
+| `tests/Feature/WebPushNotificationTest.php` | 取引イベントの Web Push（新規取引希望・順番待ち除外・買取・新着メッセージ・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
 | `tests/Feature/NotifyExpiringTradesTest.php` | 期限切れ前日の Web Push バッチ（24時間以内の出品/買取に通知・二重送信なし・24時間超/期限超過/非active/オークションは対象外・期限延長でリセットされ新期限の前日に再通知） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |
