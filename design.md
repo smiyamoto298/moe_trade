@@ -157,7 +157,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 取引希望タブ：自分が取引希望を出した一覧。各チャット行にはアイテム名に続けて出品の取引金額（`listing.price` ＋通貨）を表示する（販売希望タブの買取金額表示と同様）
 - 販売希望タブ：自分が売却を申し出た買取の一覧。各チャット行にアイテム名と買取金額（`buy_request.price` ＋通貨）を表示する
 - キャラクター管理（追加・変更・削除）
-- ブラウザ通知の有効化
+- ブラウザ通知の有効化（許可すると同時に Web Push も購読し、サイトを閉じていても通知が届く。§8 参照）
 - **期限切れ通知**: 自分の出品・買取に期限切れ（`expired`）がある場合、ページ上部に通知バナー（「期限切れの取引があります 出品N件・買取M件」＋該当タブへの誘導ボタン）を表示し、出品中／買取中タブにも「期限切れN」バッジを出す。再出品・再登録を促す。件数は `/mypage/listings`・`/mypage/buy-requests` の戻り（全ステータス）から算出し、期限切れセクションと一致する
 - 一覧＋チャットの2カラムグリッドは `lg:grid-cols-[minmax(0,1fr)_420px]`（`1fr` だと nowrap な長文プレビューの固有最小幅で左カラムが広がり、チャットパネルがページ外へはみ出す）
 
@@ -192,8 +192,21 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - **オークション価格更新バッジ**: 自分の入札がより有利な入札に抜かれると（`outbid_chats`）、ヘッダー「マイ取引」に加え、マイ取引の**「取引希望」「販売希望」タブ**にも通知バッジを表示。該当チャット行には、順番待ちではなく**「⚠ 他のユーザーが価格を更新しました」**を表示（抜かれていなければ「✓ 現在の最高/最安入札中」）。各入札チャットには**入札額と現在価格**を併記する。既読は localStorage で `outbid_at` をもとに管理
 - 既読管理はクライアント側（localStorage）。チャットを開くと該当チャット既読、掲示板閲覧で掲示板既読
 - **チャット画面・掲示板スレッドは5秒ポーリングで自動更新**（入力中テキストは別stateのため保持される）
-- ブラウザ通知（Notification API）: 新着メッセージ・掲示板新着で発火
+- ブラウザ通知（Notification API）: 新着メッセージ・掲示板新着で発火（Web Push 購読済みのブラウザでは、チャット新着のページ内通知はサーバープッシュと二重になるため抑制する）
 - 旧 `GET /api/chats/unread-count` は互換のため残置（フロントはsummaryを使用）
+
+#### Web Push（サイトを閉じていても届くプッシュ通知）
+「取引を登録したままサイトを確認しないユーザー」に取引イベントを届けるための通知チャネル。**メールアドレス等の個人情報は保持しない方針のまま通知を実現する**（保存するのはブラウザが発行する匿名の購読情報＝プッシュサービスのエンドポイントURLと暗号化鍵のみ。ユーザーはブラウザ設定からいつでも失効できる）。
+
+- **購読フロー**: マイページ「🔔 ブラウザ通知を有効にする」→ Notification 許可と同時に Service Worker（`frontend/public/sw.js`）を登録し `PushManager.subscribe`（VAPID 公開鍵は `GET /api/push/public-key`）→ 購読情報を `POST /api/push/subscriptions` で保存。許可済みブラウザではログイン時に自動で再購読・最新化する（`NotificationContext`）。endpoint はブラウザ単位で一意のため、同一ブラウザで別ユーザーがログインし直すと購読の user_id を付け替える
+- **送信イベント**（`App\Support\WebPushSender`。宛先はユーザーIDのみ・操作した本人には送らない）:
+  - 新しい取引希望／販売希望 → 出品者・買取登録者（順番待ち＝2番目以降は owner から見えないため通知しない）
+  - 新着チャットメッセージ → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）
+  - 取引成立・見送り（owner 操作）→ 取引希望者
+  - オークション入札 → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
+  - オークション解決（即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
+- **実装**: `minishlink/web-push`（VAPID）。鍵は env（`VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`・`config/webpush.php`）。**未設定なら送信は no-op**（テスト・鍵未配備の環境で安全）。DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗はログのみでリクエストを止めず、期限切れ購読（410/404）は自動削除する
+- **対応環境**: デスクトップ/Android の主要ブラウザ。iOS Safari はホーム画面追加（PWA）時のみ対応のため `manifest.webmanifest` を配布する。クリック時は既存タブをフォーカスして `/mypage` へ遷移（無ければ新規ウィンドウ）
 
 ### 9. お問い合わせ（掲示板）
 - 表示名は「お問い合わせ」（旧称: 運営掲示板。URL `/board`・APIパス・テーブル名 `board_*` は旧称のまま変更しない）
@@ -1180,6 +1193,19 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 - 管理者が「共通にしない」と却下した名前。`user-suggestions`（共通種別への昇格候補）から除外し、何人が分類していても／端末報告があっても候補に再表示しない。ユーザー割当（`user_excluded_items`）・匿名報告（`reported_excluded_names`）自体には影響しない
 
+### push_subscriptions（Web Push 購読）
+| カラム | 型 | 説明 |
+|---|---|---|
+| id | BIGINT PK | |
+| user_id | BIGINT FK→users | cascadeOnDelete（退会で購読も削除） |
+| endpoint | VARCHAR(500) UNIQUE | プッシュサービスのエンドポイントURL（ブラウザ単位で一意・匿名） |
+| public_key | VARCHAR(255) | 購読の p256dh 公開鍵（ペイロード暗号化用） |
+| auth_token | VARCHAR(255) | 購読の auth シークレット |
+| content_encoding | VARCHAR(20) | 既定 `aes128gcm` |
+| created_at / updated_at | TIMESTAMP | |
+
+- 1行 = 1ブラウザの購読。個人情報（メール等）は含まない。同一ブラウザで別ユーザーが購読し直すと endpoint 一致で user_id を付け替える。期限切れ（送信時 410/404）は自動削除
+
 ---
 
 ## APIエンドポイント（Laravel）
@@ -1242,6 +1268,9 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 ### 通知
 - `GET /api/notifications/summary` — 通知サマリー（5秒ポーリング用）。`unread_chats[]`（最後の発言が相手のチャット一覧。オークション入札は除く）・`outbid_chats[]`（オークションで自分の入札がより有利な入札に抜かれたもの。`chat_id` / `source_type` / `item_name` / `your_bid` / `current_price` / `outbid_at`。既読はクライアントの localStorage で `outbid_at` をもとに管理）・`board`（掲示板の関係する最新投稿）・`board_threads[]`・`unverified_items`（editor/admin のみ。`equipment` / `technique` / `total`）・`unorganized_label_count`（editor/admin のみ。未整理の付加効果ラベル件数）・`excluded_suggestion_count`（admin のみ。ユーザー個別除外の昇格候補件数）・`expired_count`（自分の期限切れ出品＋買取の件数。バッチ未確定の期限超過＝active かつ expires_at 過去も含む。ヘッダー「マイ取引」に通知バッジを出す）を返す
+- `GET    /api/push/public-key` — Web Push 購読用の VAPID 公開鍵（未設定なら null = Push 無効）
+- `POST   /api/push/subscriptions` — Web Push 購読の登録（`endpoint`・`keys.p256dh`・`keys.auth`・任意 `content_encoding`）。endpoint 一致で upsert し、ログイン中ユーザーへ付け替える
+- `DELETE /api/push/subscriptions` — Web Push 購読の解除（本人の endpoint のみ削除）
 
 ### チャット
 - `GET  /api/chats/unread-count` — 未読チャット数（旧。フロントは notifications/summary を使用）
@@ -1614,6 +1643,9 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/BuyRequestChatApiTest.php` | 買取の売却申し出・自己取引禁止・成立履歴・相場IPチェック |
 | `tests/Feature/TradeQueueTest.php` | 順番待ち（先着順）・匿名化・成立/不成立/完了の繰り上がり・待ち人数 |
 | `tests/Feature/NotificationApiTest.php` | 通知サマリー（未読チャット・掲示板新着・対象者判定） |
+| `tests/Unit/WebPushSenderTest.php` | Web Push 送信（VAPID未設定はno-op・購読なしは送信しない・期限切れ購読の自動削除・トランザクション中はコミット後送信） |
+| `tests/Feature/PushSubscriptionApiTest.php` | Web Push 購読API（401・登録・endpoint一致のユーザー付け替え・URL検証・本人のみ解除・公開鍵取得） |
+| `tests/Feature/WebPushNotificationTest.php` | 取引イベントの Web Push（新規取引希望・順番待ち除外・買取・新着メッセージ・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |
 | `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
@@ -1695,6 +1727,7 @@ cd frontend && npm run test:watch  # ウォッチ実行
 - [x] 出品詳細（価格データ解析）
 - [x] 管理画面（アイテム管理・ユーザー管理・装備品/スキルタブ）
 - [x] 通知機能（バッジ・ブラウザ通知）
+- [x] Web Push 通知（VAPID・Service Worker・取引イベントのサーバープッシュ）
 - [x] 未ログイン時のアクション制御・マスタ取得中のローディング表示
 
 ### Phase 2: バックエンド（完了）
