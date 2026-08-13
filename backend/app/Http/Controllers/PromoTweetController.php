@@ -94,7 +94,8 @@ class PromoTweetController extends Controller
             ->whereHas('user', fn ($q) => $q->where('is_suspended', false))
             ->count();
 
-        $siteUrl = rtrim(config('app.frontend_url'), '/') . '/listings';
+        // リンク先は出品・買取をまとめて見られる「全て」タブ（/all）
+        $siteUrl = rtrim(config('app.frontend_url'), '/') . '/all';
         $tweets  = (new PromoTweetComposer())->compose(
             $dateLabel,
             $listings,

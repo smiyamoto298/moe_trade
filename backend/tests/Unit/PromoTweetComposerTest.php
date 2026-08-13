@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
  */
 class PromoTweetComposerTest extends TestCase
 {
-    private const URL = 'https://moe-trade.sakuraweb.com/listings';
+    private const URL = 'https://moe-trade.sakuraweb.com/all';
 
     private function item(string $name, int $price = 1000, int $count = 1): array
     {

@@ -80,6 +80,7 @@ class PromoTweetApiTest extends TestCase
             'price' => 12000, 'server' => 'Emerald', 'is_valid' => true, 'traded_at' => now()->subDays(2),
         ]);
 
+        config(['app.frontend_url' => 'https://moe-trade.sakuraweb.com']);
         $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/promo-tweets');
 
         // 前回ツイート時刻が未記録なら当日0:00〜現在を集計する
@@ -103,6 +104,10 @@ class PromoTweetApiTest extends TestCase
         $this->assertStringContainsString('買)守りの盾 500AC', $all);
         $this->assertStringNotContainsString('過去の槍', $all);
         $this->assertStringNotContainsString('取り下げの斧', $all);
+
+        // サイトリンクは「全て」タブ（/all）を1通目の末尾に付ける
+        $firstTweet = $res->json('tweets.0.text');
+        $this->assertStringEndsWith("\nhttps://moe-trade.sakuraweb.com/all", $firstTweet);
     }
 
     public function test_同一アイテム同一価格の出品は個数に集約される(): void
