@@ -59,6 +59,14 @@ vi.mock('../contexts/AuthContext', () => ({
     refresh: vi.fn(),
   }),
 }))
+// 通知状態はテストごとに差し替える（granted / denied / OFF の分岐を検証するため）
+const notifState = vi.hoisted(() => ({
+  permission: 'granted',
+  supported: true,
+  optedOut: false,
+  disablePush: vi.fn(),
+  enablePush: vi.fn(),
+}))
 vi.mock('../contexts/NotificationContext', () => ({
   useNotification: () => ({
     unreadChatIds: new Set<number>(),
@@ -68,13 +76,18 @@ vi.mock('../contexts/NotificationContext', () => ({
     outbidChats: [],
     markOutbidSeen: vi.fn(),
     markAsRead: vi.fn(),
-    notifPermission: 'granted',
+    notifPermission: notifState.permission,
+    notifSupported: notifState.supported,
     pushEnabled: true,
+    pushOptedOut: notifState.optedOut,
+    disablePush: notifState.disablePush,
+    enablePush: notifState.enablePush,
     requestNotifPermission: vi.fn(),
   }),
 }))
+const dialogMocks = vi.hoisted(() => ({ confirm: vi.fn(), alert: vi.fn() }))
 vi.mock('../contexts/DialogContext', () => ({
-  useDialog: () => ({ confirm: vi.fn(), alert: vi.fn() }),
+  useDialog: () => dialogMocks,
 }))
 vi.mock('../tours/TourContext', () => ({
   useTour: () => ({ resetAllTours: vi.fn(), startTour: vi.fn() }),
@@ -97,6 +110,12 @@ describe('MyPage', () => {
     mockData.buyRequests = []
     mockData.buyingChats = []
     mockData.sellingOffers = []
+    notifState.permission = 'granted'
+    notifState.supported = true
+    notifState.optedOut = false
+    notifState.disablePush.mockClear()
+    notifState.enablePush.mockClear()
+    dialogMocks.alert.mockClear()
   })
 
   it('一覧＋チャットのグリッドは minmax(0,1fr) で左カラムの広がりを防ぐ', async () => {
@@ -121,6 +140,61 @@ describe('MyPage', () => {
     await waitFor(() => {
       expect(getByText(/通知ON（プッシュ配信中）/)).toBeTruthy()
     })
+  })
+
+  it('通知ON中は「OFFにする」ボタンを表示し、押すと購読を解除する', async () => {
+    const { getByText } = render(
+      <MemoryRouter>
+        <MyPage />
+      </MemoryRouter>
+    )
+    const btn = await waitFor(() => getByText('OFFにする'))
+    fireEvent.click(btn)
+    expect(notifState.disablePush).toHaveBeenCalled()
+  })
+
+  it('通知OFF中は「ONに戻す」ボタンを表示し、押すと再購読する', async () => {
+    notifState.optedOut = true
+    const { getByText, queryByText } = render(
+      <MemoryRouter>
+        <MyPage />
+      </MemoryRouter>
+    )
+    const btn = await waitFor(() => getByText(/通知OFF — ONに戻す/))
+    expect(queryByText(/通知ON（プッシュ配信中）/)).toBeNull()
+    fireEvent.click(btn)
+    expect(notifState.enablePush).toHaveBeenCalled()
+  })
+
+  it('通知ブロック時は解除方法ボタンを表示し、押すと手順ダイアログを開く', async () => {
+    notifState.permission = 'denied'
+    const { getByText } = render(
+      <MemoryRouter>
+        <MyPage />
+      </MemoryRouter>
+    )
+    const btn = await waitFor(() => getByText(/通知がブロックされています（解除方法）/))
+    fireEvent.click(btn)
+    expect(dialogMocks.alert).toHaveBeenCalledWith(
+      expect.stringContaining('ブロックされています'),
+      expect.objectContaining({ title: '通知ブロックの解除方法' })
+    )
+  })
+
+  it('通知API非対応のブラウザでは「プッシュ通知を利用するには」の案内ボタンを表示する', async () => {
+    notifState.permission = 'denied'
+    notifState.supported = false
+    const { getByText } = render(
+      <MemoryRouter>
+        <MyPage />
+      </MemoryRouter>
+    )
+    const btn = await waitFor(() => getByText(/プッシュ通知を利用するには/))
+    fireEvent.click(btn)
+    expect(dialogMocks.alert).toHaveBeenCalledWith(
+      expect.stringContaining('対応していません'),
+      expect.objectContaining({ title: 'プッシュ通知を利用するには' })
+    )
   })
 
   it('期限切れの出品・買取があるとマイページに通知バナーを表示する', async () => {

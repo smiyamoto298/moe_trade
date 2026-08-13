@@ -15,6 +15,7 @@ import RenewTradeModal from '../components/RenewTradeModal'
 import type { Listing, BuyRequest, TradeChat, Server } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS } from '../utils/constants'
+import { buildPushGuide } from '../utils/pushGuide'
 
 type Tab = 'listings' | 'buying' | 'buy_requests' | 'selling'
 
@@ -24,7 +25,8 @@ export default function MyPage() {
   const { user, refresh } = useAuth()
   const {
     unreadChatIds, unreadListingIds, unreadBuyRequestIds,
-    markAsRead, markOutbidSeen, unreadOutbidChatIds, outbidChats, notifPermission, pushEnabled, requestNotifPermission,
+    markAsRead, markOutbidSeen, unreadOutbidChatIds, outbidChats,
+    notifPermission, notifSupported, pushEnabled, pushOptedOut, disablePush, enablePush, requestNotifPermission,
   } = useNotification()
   const { confirm, alert } = useDialog()
   const { resetAllTours, startTour } = useTour()
@@ -558,13 +560,35 @@ export default function MyPage() {
               🔔 ブラウザ通知を有効にする
             </button>
           )}
-          {notifPermission === 'granted' && (
-            <span className="text-xs text-emerald-400 flex items-center gap-1">
+          {notifPermission === 'granted' && pushOptedOut && (
+            <button
+              onClick={enablePush}
+              className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+            >
+              🔕 通知OFF — ONに戻す
+            </button>
+          )}
+          {notifPermission === 'granted' && !pushOptedOut && (
+            <span className="text-xs text-emerald-400 flex items-center gap-1.5">
               🔔 通知ON{pushEnabled ? '（プッシュ配信中）' : ''}
+              <button
+                onClick={disablePush}
+                className="text-gray-400 hover:text-gray-200 border border-surface-border hover:border-primary-500 bg-surface-card px-2 py-0.5 rounded transition-colors"
+              >
+                OFFにする
+              </button>
             </span>
           )}
           {notifPermission === 'denied' && (
-            <span className="text-xs text-gray-500">🔕 通知がブロックされています</span>
+            <button
+              onClick={() => {
+                const guide = buildPushGuide(notifSupported)
+                alert(guide.message, { title: guide.title, highlight: guide.highlight })
+              }}
+              className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+            >
+              {notifSupported ? '🔕 通知がブロックされています（解除方法）' : '🔔 プッシュ通知を利用するには'}
+            </button>
           )}
         </div>
       </div>

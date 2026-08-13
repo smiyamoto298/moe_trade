@@ -54,3 +54,21 @@ export async function subscribeWebPush(): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Web Push の購読を解除する（通知OFF）。
+ * サーバー側の購読行を削除してからブラウザの購読を解除する。
+ * 未対応・未購読の環境では何もしない。
+ */
+export async function unsubscribeWebPush(): Promise<void> {
+  if (!isWebPushSupported()) return
+  try {
+    const registration = await navigator.serviceWorker.getRegistration()
+    const subscription = await registration?.pushManager.getSubscription()
+    if (!subscription) return
+    await pushApi.unsubscribe(subscription.endpoint).catch(() => {})
+    await subscription.unsubscribe()
+  } catch {
+    /* 解除失敗は無視（オプトアウト中はフラグ側で自動再購読を抑制する） */
+  }
+}

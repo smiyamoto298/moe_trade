@@ -3,7 +3,7 @@ import client from '../api/client'
 import { useAuth } from './AuthContext'
 import { USE_MOCK } from '../api/mock'
 import { announcementsApi } from '../api/announcements'
-import { subscribeWebPush } from '../utils/webPush'
+import { subscribeWebPush, unsubscribeWebPush } from '../utils/webPush'
 import type { Announcement } from '../types'
 
 // /api/notifications/summary のレスポンス型
@@ -78,8 +78,18 @@ interface NotificationContextValue {
   markBoardThreadSeen: (threadId: number) => void
   // ブラウザ通知の許可状態
   notifPermission: NotificationPermission
+  // ブラウザが通知API（Notification）に対応しているか。
+  // 非対応（iPhone Safari 等）は notifPermission が 'denied' 固定になるため、
+  // 「ブロックされている」のか「非対応（ホーム画面追加で利用可）」なのかをこれで区別する
+  notifSupported: boolean
   // Web Push 購読済み（サイトを閉じていてもサーバープッシュが届く状態）か
   pushEnabled: boolean
+  // ユーザーが通知をOFFにしているか（サイト側の設定。ブラウザ許可とは独立）
+  pushOptedOut: boolean
+  // 通知をOFFにする（Web Push購読を解除し、ページ内通知も止める）
+  disablePush: () => Promise<void>
+  // OFFにした通知をONに戻す（再購読）
+  enablePush: () => Promise<void>
   // ブラウザ通知を有効化
   requestNotifPermission: () => Promise<void>
   // 全未読数
@@ -109,6 +119,7 @@ const CHAT_SEEN_KEY = 'notif_chat_seen'   // { [chatId]: lastSeenMessageAt }
 const BOARD_SEEN_KEY = 'notif_board_seen' // lastSeenPostAt(ISO)
 const BOARD_THREAD_SEEN_KEY = 'notif_board_thread_seen' // { [threadId]: lastSeenPostAt }
 const OUTBID_SEEN_KEY = 'notif_outbid_seen' // { [chatId]: lastSeenOutbidAt }
+const PUSH_OPT_OUT_KEY = 'push_opt_out'     // '1' = ユーザーが通知をOFFにした（再購読もページ内通知も抑制）
 
 function loadOutbidSeen(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(OUTBID_SEEN_KEY) ?? '{}') } catch { return {} }
@@ -162,14 +173,44 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     pushEnabledRef.current = ok
     setPushEnabled(ok)
   }
+  // 通知OFF（ユーザーのオプトアウト）。ブラウザ許可とは独立したサイト側の設定で、
+  // ON にするまで自動再購読・ページ内通知の両方を抑制する
+  const [pushOptedOut, setPushOptedOut] = useState(() => localStorage.getItem(PUSH_OPT_OUT_KEY) === '1')
+  const pushOptedOutRef = useRef(pushOptedOut)
+  const markPushOptedOut = (optedOut: boolean) => {
+    if (optedOut) localStorage.setItem(PUSH_OPT_OUT_KEY, '1')
+    else localStorage.removeItem(PUSH_OPT_OUT_KEY)
+    pushOptedOutRef.current = optedOut
+    setPushOptedOut(optedOut)
+  }
 
   // Web Push の自動再購読（通知許可済みのブラウザで、ログイン時に購読をサーバーへ最新化する）。
-  // 旧ブラウザ通知の時代に許可済みだったユーザーも、この自動購読で操作なしにプッシュ配信へ移行する
+  // 旧ブラウザ通知の時代に許可済みだったユーザーも、この自動購読で操作なしにプッシュ配信へ移行する。
+  // ユーザーが通知をOFFにしている間は再購読しない
   useEffect(() => {
     if (!user || USE_MOCK) return
+    if (localStorage.getItem(PUSH_OPT_OUT_KEY) === '1') return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
     subscribeWebPush().then(markPushEnabled).catch(() => {})
   }, [user])
+
+  // 通知をOFFにする：購読を解除し（サーバー行削除＋ブラウザ購読解除）、以後の再購読・ページ内通知を止める
+  const disablePush = async () => {
+    markPushOptedOut(true)
+    markPushEnabled(false)
+    await unsubscribeWebPush()
+  }
+
+  // OFFにした通知をONに戻す：オプトアウトを解除して再購読する（未許可なら許可リクエストから）
+  const enablePush = async () => {
+    markPushOptedOut(false)
+    if (typeof Notification === 'undefined') return
+    if (Notification.permission === 'granted') {
+      markPushEnabled(await subscribeWebPush())
+    } else {
+      await requestNotifPermission()
+    }
+  }
 
   // お知らせのポーリング（5秒間隔・ログイン有無に関わらず）
   useEffect(() => {
@@ -205,10 +246,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setExpiredCount(res.data.expired_count ?? 0)
         summaryRef.current = res.data.unread_chats
 
-        // ブラウザ通知（初回ポーリングは通知せずベースラインのみ記録）
+        // ブラウザ通知（初回ポーリングは通知せずベースラインのみ記録）。
+        // ユーザーが通知をOFFにしている間はページ内通知も出さない
         if (
           typeof Notification !== 'undefined' &&
           Notification.permission === 'granted' &&
+          !pushOptedOutRef.current &&
           initializedRef.current
         ) {
           // Web Push 購読済みならチャットの新着はサーバープッシュで届くため、ここでは通知しない
@@ -319,7 +362,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const result = await Notification.requestPermission()
     setNotifPermission(result)
     // 許可されたら Web Push も購読し、サイトを閉じていても通知が届くようにする
+    // （明示的な有効化操作なので、OFF設定が残っていれば解除する）
     if (result === 'granted') {
+      markPushOptedOut(false)
       markPushEnabled(await subscribeWebPush())
     }
   }
@@ -339,7 +384,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       unreadBoardThreadIds,
       markBoardThreadSeen,
       notifPermission,
+      notifSupported: typeof Notification !== 'undefined',
       pushEnabled,
+      pushOptedOut,
+      disablePush,
+      enablePush,
       requestNotifPermission,
       totalUnread: unreadChatIds.size + unreadOutbidChatIds.size,
       expiredCount,

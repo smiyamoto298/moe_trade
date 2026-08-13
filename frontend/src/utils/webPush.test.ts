@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isWebPushSupported, subscribeWebPush, urlBase64ToUint8Array } from './webPush'
+import { isWebPushSupported, subscribeWebPush, unsubscribeWebPush, urlBase64ToUint8Array } from './webPush'
 
 describe('urlBase64ToUint8Array', () => {
   it('base64url をバイト列へ変換できる', () => {
@@ -22,5 +22,11 @@ describe('subscribeWebPush', () => {
   it('Web Push 未対応環境（jsdom）では false を返す', async () => {
     expect(isWebPushSupported()).toBe(false)
     await expect(subscribeWebPush()).resolves.toBe(false)
+  })
+})
+
+describe('unsubscribeWebPush', () => {
+  it('Web Push 未対応環境（jsdom）ではエラーなく何もしない', async () => {
+    await expect(unsubscribeWebPush()).resolves.toBeUndefined()
   })
 })
