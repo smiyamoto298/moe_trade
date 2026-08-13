@@ -210,6 +210,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
   - 取引成立・見送り（owner 操作）→ 取引希望者
   - オークション入札 → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
   - オークション解決（即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
+  - **期限切れの前日**（期限まで24時間以内・バッチ `trades:notify-expiring` 毎時）→ 登録者へ期限更新を促す通知。送信済みは `expiry_notified_at` で管理し同じ期限に再送しない（期限の延長・再出品で `expires_at` が変わるとリセットされ、新しい期限の前日に再通知）。オークションは自動成立/取り下げ・延長不可のため対象外
 - **実装**: `minishlink/web-push`（VAPID）。鍵は env（`VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`・`config/webpush.php`）。**未設定なら送信は no-op**（テスト・鍵未配備の環境で安全）。DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗はログのみでリクエストを止めず、期限切れ購読（410/404）は自動削除する
 - **対応環境**: デスクトップ/Android の主要ブラウザ。iOS Safari はホーム画面追加（PWA）時のみ対応のため `manifest.webmanifest` を配布する。クリック時は既存タブをフォーカスして `/mypage` へ遷移（無ければ新規ウィンドウ）
 
@@ -888,6 +889,7 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 | is_dyed | BOOLEAN | 染色済み（染色液で色を変更済み。デフォルト false） |
 | status | ENUM('active','expired','cancelled','completed','deal_failed') | 出品状態 |
 | expires_at | TIMESTAMP | 出品期限（通常は作成・更新から7日後）。**オークションはユーザー指定の期限日**（最長30日。通常の自動取り下げは適用せず、この日時にバッチが自動成立/取り下げを判定） |
+| expiry_notified_at | TIMESTAMP NULL | 期限切れ前日の Web Push 通知（`trades:notify-expiring`）の送信済み時刻。`expires_at` 変更時にモデルの saving フックで null に戻し、新しい期限で再通知できるようにする |
 | bumped_at | TIMESTAMP NULL | 「新着扱い」時刻。期限切れの再出品で**値下げ**または**即決→交渉可**にしたとき、および編集で**値下げ**したとき `now()` を記録。新着順の並び替えと宣伝ツイートの対象選定は `COALESCE(bumped_at, created_at)` を基準にする（未設定の通常出品は `created_at` と同じ挙動） |
 | created_at / updated_at | TIMESTAMP | |
 
@@ -1003,6 +1005,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 | comment | TEXT | コメント |
 | status | ENUM('active','expired','cancelled','completed','deal_failed') | 状態 |
 | expires_at | TIMESTAMP | 期限（通常は作成から**1ヶ月**後）。**オークションはユーザー指定の期限日**（最長30日） |
+| expiry_notified_at | TIMESTAMP NULL | 期限切れ前日の Web Push 通知（`trades:notify-expiring`）の送信済み時刻。`expires_at` 変更時にモデルの saving フックで null に戻し、新しい期限で再通知できるようにする |
 | bumped_at | TIMESTAMP NULL | 「新着扱い」時刻。`listings.bumped_at` と同様、値下げ／即決→交渉可での再登録時、および編集で**値上げ**したときに記録し新着順・宣伝の基準に使う |
 | created_at / updated_at | TIMESTAMP | |
 
@@ -1455,6 +1458,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - 出品時に `expires_at = created_at + 7日` をセット
 - `/api/listings/:id/renew` で7日延長
 - 毎時バッチ処理で期限切れ出品・買取（即決/交渉可）を `expired` に変更（Artisanコマンド `listings:expire`。`routes/console.php` で `hourly()` 登録）
+- **期限切れ前日の Web Push 通知**: 毎時バッチ `trades:notify-expiring` が、期限まで24時間以内の active な出品・買取（即決/交渉可）の登録者へ期限更新を促すプッシュ通知を送る（§8 Web Push 参照。オークションは対象外）
 - **オークションは専用バッチ `auctions:resolve` を15分ごとに実行**（`routes/console.php` で `everyFifteenMinutes()` 登録）：期限日到来時に open 入札があれば最良入札（出品=最高／買取=最安）を自動成立（取引履歴を記録）、入札が無ければ `expired`（再出品はしない）。共通成立ロジックは `App\Support\Auction`。本番でコマンド直叩きの環境は cron 用ラッパーを15分ごとに登録（登録手順は非公開運用ドキュメント）
 - 本番は `listings:expire` の cron 用ラッパーを1日1回（例 4:00）登録（登録手順は非公開運用ドキュメント。ログは `storage/logs/cron.log` に出力）
 - **公開クエリは期限切れをバッチに依存せず除外する（多層防御）**: 出品・買取の一覧/件数/詳細/買取価格/サイトマップは `Listing::visible()` / `BuyRequest::visible()` スコープを使い、`active` でも `expires_at` が過去のものは表示・取引対象から外す。バッチ（cron）が遅延・未実行でも期限切れが一覧・詳細に出ない。`completed` は期限に関わらず表示対象に残す。取引希望（`createChat`）も `active` かつ期限内のみ許可する。
@@ -1464,7 +1468,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 定期バッチの稼働状況を admin が確認できるよう、各実行を `batch_runs` テーブルに1行記録する。
 
-- 記録は基底クラス `App\Console\Commands\BatchCommand` が担う。バッチコマンドは `handle()` ではなく `runBatch(): string`（実行結果の要約を返す）を実装する。`listings:expire`（`ExpireListings`）・`auctions:resolve`（`ResolveAuctions`）・`announcements:purge-expired`（`PurgeExpiredAnnouncements`）が継承する。
+- 記録は基底クラス `App\Console\Commands\BatchCommand` が担う。バッチコマンドは `handle()` ではなく `runBatch(): string`（実行結果の要約を返す）を実装する。`listings:expire`（`ExpireListings`）・`auctions:resolve`（`ResolveAuctions`）・`announcements:purge-expired`（`PurgeExpiredAnnouncements`）・`trades:notify-expiring`（`NotifyExpiringTrades`）が継承する。
 - 開始時に `status=running` の行を作り、正常終了で `success`・例外で `failed` に更新する。`summary` には `runBatch()` の戻り値（成功時）または例外メッセージ（失敗時）、`started_at`/`finished_at`/`duration_ms` も記録する。失敗時は `report()` でログ・通知に流し、コマンドは非0終了する。
 - cron 直叩き（運用ラッパースクリプト）でも `schedule:run` 経由でも同じように記録される。
 - 画面: `/admin/batch-runs`（ヘッダー管理メニュー「バッチ実行履歴」・admin限定）。新しい順に状態・コマンド・開始時刻・所要時間・結果を表で表示し、コマンド名で絞り込める（`GET /api/admin/batch-runs`）。
@@ -1651,6 +1655,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Unit/WebPushSenderTest.php` | Web Push 送信（VAPID未設定はno-op・購読なしは送信しない・期限切れ購読の自動削除・トランザクション中はコミット後送信） |
 | `tests/Feature/PushSubscriptionApiTest.php` | Web Push 購読API（401・登録・endpoint一致のユーザー付け替え・URL検証・本人のみ解除・公開鍵取得） |
 | `tests/Feature/WebPushNotificationTest.php` | 取引イベントの Web Push（新規取引希望・順番待ち除外・買取・新着メッセージ・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
+| `tests/Feature/NotifyExpiringTradesTest.php` | 期限切れ前日の Web Push バッチ（24時間以内の出品/買取に通知・二重送信なし・24時間超/期限超過/非active/オークションは対象外・期限延長でリセットされ新期限の前日に再通知） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |
 | `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
