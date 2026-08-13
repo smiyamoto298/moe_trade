@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { chatApi } from '../api/chat'
 import { useDialog } from '../contexts/DialogContext'
 import type { TradeChat, TradeMessage } from '../types'
 import { SERVER_COLORS } from '../utils/constants'
+
+// メッセージ履歴の日付セパレーター用ラベル（例: 2026年6月12日(金)）
+const formatDateLabel = (iso: string) =>
+  new Date(iso).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+
+// 日付が変わったかどうかはローカルタイムゾーンの暦日で比較する
+const isSameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString()
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   open:        { label: '● 交渉中',     color: 'text-emerald-400' },
@@ -452,8 +459,18 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
             const canEdit = mine && canSend && i === arr.length - 1
             const canDelete = mine && canSend && i > 0
             const isEditing = editingId === msg.id
+            // 先頭のメッセージと、前のメッセージから日付が変わった位置に日付セパレーターを表示する
+            const showDateSeparator = i === 0 || !isSameDay(arr[i - 1].created_at, msg.created_at)
             return (
-              <div key={msg.id} className={`flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
+              <Fragment key={msg.id}>
+              {showDateSeparator && (
+                <div className="flex items-center gap-3" role="separator">
+                  <div className="flex-1 border-t border-surface-border" />
+                  <span className="text-xs text-gray-500">{formatDateLabel(msg.created_at)}</span>
+                  <div className="flex-1 border-t border-surface-border" />
+                </div>
+              )}
+              <div className={`flex flex-col gap-0.5 ${mine ? 'items-end' : 'items-start'}`}>
                 <p className="text-xs text-gray-500">{msg.character_name}</p>
                 {isEditing ? (
                   <div className="w-full max-w-[75%] space-y-1">
@@ -506,6 +523,7 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
                   )}
                 </div>
               </div>
+              </Fragment>
             )
           })}
           <div ref={bottomRef} />

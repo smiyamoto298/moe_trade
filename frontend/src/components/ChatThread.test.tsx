@@ -206,6 +206,34 @@ describe('ChatThread メッセージ編集・削除', () => {
   })
 })
 
+// design.md「取引チャット」: メッセージの時刻表示だけでは日付が分からないため、
+// 履歴の先頭と日付が変わる位置に日付セパレーター（例: 2026年6月12日(金)）を表示する。
+describe('ChatThread 日付セパレーター', () => {
+  it('履歴の先頭と日付が変わる位置に日付を表示し、同日内では繰り返さない', () => {
+    const crossDayChat: TradeChat = {
+      ...chat,
+      messages: [
+        { id: 1, chat_id: 1, user_id: 2, character_name: 'テスト買い手', message: '取引希望です', created_at: '2026-06-12T10:00:00Z' },
+        { id: 2, chat_id: 1, user_id: 1, character_name: '出品者', message: 'よろしくお願いします', created_at: '2026-06-12T11:00:00Z' },
+        { id: 3, chat_id: 1, user_id: 2, character_name: 'テスト買い手', message: 'お待たせしました', created_at: '2026-06-14T10:00:00Z' },
+      ],
+    }
+    renderThread({ chat: crossDayChat })
+
+    // 先頭（6/12）と日付が変わった位置（6/14）に表示される
+    expect(screen.getByText(/2026年6月12日/)).toBeTruthy()
+    expect(screen.getByText(/2026年6月14日/)).toBeTruthy()
+    // 同日（6/12）の2通目の前には出さない → セパレーターは合計2つ
+    expect(screen.getAllByRole('separator').length).toBe(2)
+  })
+
+  it('日付ラベルには曜日を含む', () => {
+    renderThread()
+    // 2026-06-12 は金曜日
+    expect(screen.getByText(/2026年6月12日\(金\)/)).toBeTruthy()
+  })
+})
+
 // オークション（trade_type=auction）の入札・自動成立まわり
 describe('ChatThread オークション', () => {
   const auctionSource = { trade_type: 'auction', price: 1000, buyout_price: 5000 }
