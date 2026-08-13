@@ -98,10 +98,14 @@ class ChatController extends Controller
 
         $data = $request->validate(['message' => 'required|string|max:2000']);
 
+        $isFirstMessage = !$chat->messages()->exists();
+
         $msg = $chat->messages()->create([
             'user_id' => $request->user()->id,
             'message' => $data['message'],
         ]);
+
+        $this->pushNewMessage($chat, $request->user(), $data['message'], $isFirstMessage);
 
         return response()->json($msg->load('user:id,email'), 201);
     }
@@ -244,6 +248,13 @@ class ChatController extends Controller
             ]);
         });
 
+        // 相手側（取引希望者）へ Web Push で成立を知らせる
+        app(\App\Support\WebPushSender::class)->send(
+            $chat->buyer_id,
+            'MoE Trade — 取引成立',
+            "「{$chat->source()?->item?->name}」の取引が成立しました。受け渡しの調整をしてください。"
+        );
+
         return $this->respondWithSource($chat->fresh());
     }
 
@@ -367,6 +378,16 @@ class ChatController extends Controller
         }
 
         $chat->update(['status' => 'declined']);
+
+        // owner が見送った場合のみ、相手側（取引希望者）へ Web Push で知らせる
+        if ($chat->ownerId() === $user->id) {
+            app(\App\Support\WebPushSender::class)->send(
+                $chat->buyer_id,
+                'MoE Trade — 取引見送り',
+                "「{$chat->source()?->item?->name}」の取引希望は見送りとなりました。"
+            );
+        }
+
         return response()->json($chat->fresh());
     }
 
@@ -400,12 +421,18 @@ class ChatController extends Controller
             return $this->invalidBidResponse($source);
         }
 
-        DB::transaction(function () use ($chat, $source, $amount, $request) {
+        DB::transaction(function () use ($chat, $source, $amount, $request, $user) {
             $chat->update(['bid_price' => $amount, 'request_ip' => $request->ip()]);
             if (\App\Support\Auction::meetsBuyout($source, $amount)) {
-                \App\Support\Auction::conclude($source, $chat, null);
+                \App\Support\Auction::conclude($source, $chat, null, $user->id);
             } else {
                 \App\Support\Auction::refreshOutbid($source);
+                // owner へ Web Push（入札で現在価格が更新された）
+                app(\App\Support\WebPushSender::class)->send(
+                    $source->user_id,
+                    'MoE Trade — 入札がありました',
+                    "オークション「{$source->item?->name}」に入札がありました（現在価格 {$amount} {$source->currency}）。"
+                );
             }
         });
 
@@ -441,5 +468,42 @@ class ChatController extends Controller
     private function respondWithSource(TradeChat $chat)
     {
         return response()->json($this->loadSource($chat));
+    }
+
+    /**
+     * 新着メッセージの相手側へ Web Push を送る。
+     * 通知サマリーと同じ除外条件（open のオークション入札・owner から見えない順番待ち）を適用する。
+     */
+    private function pushNewMessage(TradeChat $chat, \App\Models\User $sender, string $message, bool $isFirstMessage = false): void
+    {
+        // open のオークション入札は価格更新通知（outbid）で扱うため対象外
+        if ($chat->isAuctionBid() && $chat->status === 'open') {
+            return;
+        }
+
+        $recipientId = $chat->ownerId() === $sender->id ? $chat->buyer_id : $chat->ownerId();
+
+        // 取引希望者（買い手）からの最初のメッセージは通知しない。
+        // フロントの取引希望フローは「チャット作成 → 直後に最初のメッセージ送信」の2段階のため、
+        // ここでも通知すると owner に「新しい取引希望」と二重に届いてしまう。
+        // 最初のメッセージは取引希望の一部として、チャット作成時の通知に代表させる。
+        if ($isFirstMessage && $sender->id === $chat->buyer_id && $recipientId === $chat->ownerId()) {
+            return;
+        }
+
+        // owner から見えない順番待ちチャットは owner へ通知しない
+        if ($recipientId === $chat->ownerId() && $chat->isWaiting()) {
+            return;
+        }
+
+        $name = $sender->characters->firstWhere('server', $chat->server)?->character_name
+            ?? $sender->characters->first()?->character_name
+            ?? "ユーザー#{$sender->id}";
+
+        app(\App\Support\WebPushSender::class)->send(
+            $recipientId,
+            'MoE Trade — 新着メッセージ',
+            "{$name}: " . \Illuminate\Support\Str::limit($message, 80)
+        );
     }
 }

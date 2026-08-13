@@ -48,6 +48,7 @@ class Listing extends Model
     protected $fillable = [
         'user_id', 'item_id', 'price', 'buyout_price', 'currency', 'quantity',
         'trade_type', 'comment', 'is_worn', 'is_dyed', 'status', 'expires_at', 'bumped_at',
+        'expiry_notified_at',
     ];
 
     protected function casts(): array
@@ -55,12 +56,24 @@ class Listing extends Model
         return [
             'expires_at' => 'datetime',
             'bumped_at' => 'datetime',
+            'expiry_notified_at' => 'datetime',
             'price' => 'integer',
             'buyout_price' => 'integer',
             'quantity' => 'integer',
             'is_worn' => 'boolean',
             'is_dyed' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // 期限が変わったら（期限更新・再出品・取引希望による自動延長）、期限切れ前日通知
+        // （trades:notify-expiring）を新しい期限で再送できるよう送信済みフラグをリセットする。
+        static::saving(function (self $listing) {
+            if ($listing->isDirty('expires_at') && !$listing->isDirty('expiry_notified_at')) {
+                $listing->expiry_notified_at = null;
+            }
+        });
     }
 
     /** オークション出品かどうか。 */

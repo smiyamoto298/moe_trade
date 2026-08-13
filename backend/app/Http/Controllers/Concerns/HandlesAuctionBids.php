@@ -61,9 +61,15 @@ trait HandlesAuctionBids
 
             // 即決価格に達したら即時成立。それ以外は他入札者を outbid（価格更新通知）。
             if (Auction::meetsBuyout($source, $amount)) {
-                Auction::conclude($source, $chat, null);
+                Auction::conclude($source, $chat, null, $user->id);
             } else {
                 Auction::refreshOutbid($source);
+                // owner へ Web Push（入札で現在価格が更新された）
+                app(\App\Support\WebPushSender::class)->send(
+                    $source->user_id,
+                    'MoE Trade — 入札がありました',
+                    "オークション「{$source->item?->name}」に入札がありました（現在価格 {$amount} {$source->currency}）。"
+                );
             }
             return $chat;
         });

@@ -723,6 +723,16 @@ class ListingController extends Controller
             return $chat;
         });
 
+        // 出品者へ Web Push（順番待ち＝2番目以降は owner から見えないため通知しない）
+        // ※ create 直後のモデルは DB デフォルトの status が未設定のため fresh() で判定する
+        if (!$chat->fresh()->isWaiting()) {
+            app(\App\Support\WebPushSender::class)->send(
+                $listing->user_id,
+                'MoE Trade — 新しい取引希望',
+                "「{$listing->item->name}」に新しい取引希望が届きました。"
+            );
+        }
+
         return response()->json($chat->load('messages.user:id,email'), 201);
     }
 }

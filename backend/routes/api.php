@@ -281,6 +281,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // 通知サマリー（5秒ポーリング用）
     Route::get('notifications/summary', [\App\Http\Controllers\NotificationController::class, 'summary']);
 
+    // Web Push 購読（個人情報を持たない通知チャネル。エンドポイントと暗号化鍵のみ保存）
+    Route::get('push/public-key',      [\App\Http\Controllers\PushSubscriptionController::class, 'publicKey']);
+    Route::post('push/subscriptions',  [\App\Http\Controllers\PushSubscriptionController::class, 'store']);
+    Route::delete('push/subscriptions',[\App\Http\Controllers\PushSubscriptionController::class, 'destroy']);
+
     // チャット
     Route::get('chats/unread-count',   [ChatController::class, 'unreadCount']);
     Route::get('chats/{id}',           [ChatController::class, 'show']);

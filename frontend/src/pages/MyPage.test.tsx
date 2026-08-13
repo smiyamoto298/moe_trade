@@ -69,6 +69,7 @@ vi.mock('../contexts/NotificationContext', () => ({
     markOutbidSeen: vi.fn(),
     markAsRead: vi.fn(),
     notifPermission: 'granted',
+    pushEnabled: true,
     requestNotifPermission: vi.fn(),
   }),
 }))
@@ -108,6 +109,17 @@ describe('MyPage', () => {
       const grid = container.querySelector('.grid.items-start')
       expect(grid).not.toBeNull()
       expect(grid!.className).toContain('lg:grid-cols-[minmax(0,1fr)_420px]')
+    })
+  })
+
+  it('通知許可済みで Web Push 購読済みなら「プッシュ配信中」を表示する', async () => {
+    const { getByText } = render(
+      <MemoryRouter>
+        <MyPage />
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      expect(getByText(/通知ON（プッシュ配信中）/)).toBeTruthy()
     })
   })
 

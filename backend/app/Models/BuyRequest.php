@@ -49,6 +49,7 @@ class BuyRequest extends Model
     protected $fillable = [
         'user_id', 'item_id', 'price', 'buyout_price', 'currency', 'quantity',
         'trade_type', 'comment', 'status', 'expires_at', 'bumped_at',
+        'expiry_notified_at',
     ];
 
     protected function casts(): array
@@ -56,10 +57,22 @@ class BuyRequest extends Model
         return [
             'expires_at' => 'datetime',
             'bumped_at' => 'datetime',
+            'expiry_notified_at' => 'datetime',
             'price' => 'integer',
             'buyout_price' => 'integer',
             'quantity' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // 期限が変わったら（期限更新・再登録・販売希望による自動延長）、期限切れ前日通知
+        // （trades:notify-expiring）を新しい期限で再送できるよう送信済みフラグをリセットする。
+        static::saving(function (self $buyRequest) {
+            if ($buyRequest->isDirty('expires_at') && !$buyRequest->isDirty('expiry_notified_at')) {
+                $buyRequest->expiry_notified_at = null;
+            }
+        });
     }
 
     /** オークション買取かどうか。 */

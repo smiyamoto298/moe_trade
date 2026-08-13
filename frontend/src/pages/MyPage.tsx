@@ -24,7 +24,7 @@ export default function MyPage() {
   const { user, refresh } = useAuth()
   const {
     unreadChatIds, unreadListingIds, unreadBuyRequestIds,
-    markAsRead, markOutbidSeen, unreadOutbidChatIds, outbidChats, notifPermission, requestNotifPermission,
+    markAsRead, markOutbidSeen, unreadOutbidChatIds, outbidChats, notifPermission, pushEnabled, requestNotifPermission,
   } = useNotification()
   const { confirm, alert } = useDialog()
   const { resetAllTours, startTour } = useTour()
@@ -559,7 +559,9 @@ export default function MyPage() {
             </button>
           )}
           {notifPermission === 'granted' && (
-            <span className="text-xs text-emerald-400 flex items-center gap-1">🔔 通知ON</span>
+            <span className="text-xs text-emerald-400 flex items-center gap-1">
+              🔔 通知ON{pushEnabled ? '（プッシュ配信中）' : ''}
+            </span>
           )}
           {notifPermission === 'denied' && (
             <span className="text-xs text-gray-500">🔕 通知がブロックされています</span>

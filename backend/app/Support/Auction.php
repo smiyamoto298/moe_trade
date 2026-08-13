@@ -93,11 +93,13 @@ class Auction
      * オークションを落札成立させる（ChatController@deal と同じ取引履歴ロジック）。
      * 落札チャットを deal、源を completed、取引履歴を記録し、他の open 入札を declined にする。
      *
-     * @param  string|null  $ownerIp  owner 側の操作IP（バッチ自動成立では null）
+     * @param  string|null  $ownerIp      owner 側の操作IP（バッチ自動成立では null）
+     * @param  int|null     $actorUserId  この成立を引き起こした操作ユーザー（即決入札者など）。
+     *                                    本人には Web Push を送らない。バッチ自動成立では null。
      */
-    public static function conclude(Model $source, TradeChat $winningChat, ?string $ownerIp = null): void
+    public static function conclude(Model $source, TradeChat $winningChat, ?string $ownerIp = null, ?int $actorUserId = null): void
     {
-        DB::transaction(function () use ($source, $winningChat, $ownerIp) {
+        DB::transaction(function () use ($source, $winningChat, $ownerIp, $actorUserId) {
             $winningChat->update(['status' => 'deal']);
             $source->update(['status' => 'completed']);
 
@@ -137,10 +139,41 @@ class Auction
             ]);
 
             // 落札者以外の open 入札は不成立（declined）にする。
+            $loserIds = $source->chats()
+                ->where('status', 'open')
+                ->where('id', '!=', $winningChat->id)
+                ->pluck('buyer_id')
+                ->unique();
             $source->chats()
                 ->where('status', 'open')
                 ->where('id', '!=', $winningChat->id)
                 ->update(['status' => 'declined']);
+
+            // 関係者へ Web Push（送信はコミット後。操作した本人には送らない）
+            $push = app(WebPushSender::class);
+            $itemName = $source->item?->name;
+            $priceText = "{$dealPrice} {$source->currency}";
+            if ($winningChat->buyer_id !== $actorUserId) {
+                $push->send(
+                    $winningChat->buyer_id,
+                    'MoE Trade — 落札しました',
+                    "オークション「{$itemName}」を {$priceText} で落札しました。受け渡しの調整をしてください。"
+                );
+            }
+            if ($source->user_id !== $actorUserId) {
+                $push->send(
+                    $source->user_id,
+                    'MoE Trade — オークション成立',
+                    "オークション「{$itemName}」が {$priceText} で成立しました。受け渡しの調整をしてください。"
+                );
+            }
+            foreach ($loserIds as $loserId) {
+                $push->send(
+                    $loserId,
+                    'MoE Trade — 落札ならず',
+                    "オークション「{$itemName}」は他のユーザーが落札しました。"
+                );
+            }
         });
     }
 
@@ -161,6 +194,12 @@ class Auction
             self::conclude($source, $best, null);
         } else {
             $source->update(['status' => 'expired']);
+            // 入札なし終了を owner へ Web Push で知らせる
+            app(WebPushSender::class)->send(
+                $source->user_id,
+                'MoE Trade — オークション終了',
+                "オークション「{$source->item?->name}」は入札がないまま終了しました。"
+            );
         }
     }
 
@@ -186,11 +225,30 @@ class Auction
         if (!$best) {
             return;
         }
+        // 今回新たに抜かれた入札者（すでに outbid 中のユーザーへは再送しない）
+        $newlyOutbidIds = $source->chats()
+            ->where('status', 'open')
+            ->whereNotNull('bid_price')
+            ->where('id', '!=', $best->id)
+            ->whereNull('outbid_at')
+            ->pluck('buyer_id')
+            ->unique();
         $source->chats()
             ->where('status', 'open')
             ->whereNotNull('bid_price')
             ->where('id', '!=', $best->id)
             ->update(['outbid_at' => now()]);
         $source->chats()->whereKey($best->id)->update(['outbid_at' => null]);
+
+        // 抜かれた入札者へ Web Push（価格更新通知。送信はコミット後）
+        $push = app(WebPushSender::class);
+        $current = (int) $best->bid_price;
+        foreach ($newlyOutbidIds as $userId) {
+            $push->send(
+                $userId,
+                'MoE Trade — 価格更新',
+                "オークション「{$source->item?->name}」であなたの入札より有利な入札がありました（現在価格 {$current} {$source->currency}）。"
+            );
+        }
     }
 }

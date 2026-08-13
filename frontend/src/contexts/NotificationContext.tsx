@@ -3,6 +3,7 @@ import client from '../api/client'
 import { useAuth } from './AuthContext'
 import { USE_MOCK } from '../api/mock'
 import { announcementsApi } from '../api/announcements'
+import { subscribeWebPush } from '../utils/webPush'
 import type { Announcement } from '../types'
 
 // /api/notifications/summary のレスポンス型
@@ -77,6 +78,8 @@ interface NotificationContextValue {
   markBoardThreadSeen: (threadId: number) => void
   // ブラウザ通知の許可状態
   notifPermission: NotificationPermission
+  // Web Push 購読済み（サイトを閉じていてもサーバープッシュが届く状態）か
+  pushEnabled: boolean
   // ブラウザ通知を有効化
   requestNotifPermission: () => Promise<void>
   // 全未読数
@@ -150,6 +153,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // 初回ポーリングではブラウザ通知しない（リロードのたびに既存未読を再通知しないため）
   const initializedRef = useRef(false)
   const summaryRef = useRef<UnreadChat[]>([])
+  // Web Push 購読済みかどうか。購読済みならチャットの新着はサーバープッシュ（Service Worker）
+  // 側で通知されるため、ポーリング由来のページ内 Notification は出さない（二重通知の防止）。
+  // ref はポーリングのクロージャから最新値を参照するため（state は UI 表示用）。
+  const pushEnabledRef = useRef(false)
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const markPushEnabled = (ok: boolean) => {
+    pushEnabledRef.current = ok
+    setPushEnabled(ok)
+  }
+
+  // Web Push の自動再購読（通知許可済みのブラウザで、ログイン時に購読をサーバーへ最新化する）。
+  // 旧ブラウザ通知の時代に許可済みだったユーザーも、この自動購読で操作なしにプッシュ配信へ移行する
+  useEffect(() => {
+    if (!user || USE_MOCK) return
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    subscribeWebPush().then(markPushEnabled).catch(() => {})
+  }, [user])
 
   // お知らせのポーリング（5秒間隔・ログイン有無に関わらず）
   useEffect(() => {
@@ -191,14 +211,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           Notification.permission === 'granted' &&
           initializedRef.current
         ) {
-          for (const c of chats) {
-            const prevAt = prevUnreadRef.current.get(c.chat_id)
-            // 新しく未読になったチャット、または既存未読への追加メッセージ
-            if (!prevAt || prevAt < c.last_message_at) {
-              new Notification('MoE Trade — 新着メッセージ', {
-                body: `${c.last_sender}: ${c.last_message}`,
-                icon: '/favicon.svg',
-              })
+          // Web Push 購読済みならチャットの新着はサーバープッシュで届くため、ここでは通知しない
+          if (!pushEnabledRef.current) {
+            for (const c of chats) {
+              const prevAt = prevUnreadRef.current.get(c.chat_id)
+              // 新しく未読になったチャット、または既存未読への追加メッセージ
+              if (!prevAt || prevAt < c.last_message_at) {
+                new Notification('MoE Trade — 新着メッセージ', {
+                  body: `${c.last_sender}: ${c.last_message}`,
+                  icon: '/favicon.svg',
+                })
+              }
             }
           }
           // 掲示板の新着（前回ポーリングより増えたときのみ）
@@ -295,6 +318,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (typeof Notification === 'undefined') return
     const result = await Notification.requestPermission()
     setNotifPermission(result)
+    // 許可されたら Web Push も購読し、サイトを閉じていても通知が届くようにする
+    if (result === 'granted') {
+      markPushEnabled(await subscribeWebPush())
+    }
   }
 
   return (
@@ -312,6 +339,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       unreadBoardThreadIds,
       markBoardThreadSeen,
       notifPermission,
+      pushEnabled,
       requestNotifPermission,
       totalUnread: unreadChatIds.size + unreadOutbidChatIds.size,
       expiredCount,
