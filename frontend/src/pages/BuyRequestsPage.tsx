@@ -1,10 +1,14 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useEffect, useState, useCallback } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import client from '../api/client'
 import { buyRequestsApi } from '../api/buyRequests'
 import { useAuth } from '../contexts/AuthContext'
 import { usePageMeta, SITE_BRAND } from '../hooks/usePageMeta'
-import BuyRequestCard from '../components/BuyRequestCard'
+import TradeRequestPanel from '../components/TradeRequestPanel'
+import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
+import OfficialDbLink from '../components/OfficialDbLink'
 import type { BuyRequest, Paginated } from '../types'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel } from '../utils/constants'
 
 /**
  * 貼り付けテキストからアイテム名だけを抽出する。
@@ -41,6 +45,20 @@ export default function BuyRequestsPage() {
     `${SITE_BRAND}のアイテム買取（買いたい）一覧。買取中のアイテムを検索して取引チャットで売却できます。`
   )
   const { user } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // 売却申し出時に買取が取り下げ／成立していた場合のエラー（詳細ページ等からのリダイレクト）
+  const [tradeError, setTradeError] = useState<string | null>(
+    (location.state as { tradeError?: string } | null)?.tradeError ?? null
+  )
+
+  // 通知メッセージは一度表示したら履歴から消す（リロードや戻る操作で再表示しない）
+  useEffect(() => {
+    if ((location.state as { tradeError?: string } | null)?.tradeError) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [itemName, setItemName] = useState('')
   const [pasteText, setPasteText] = useState('')
@@ -53,6 +71,13 @@ export default function BuyRequestsPage() {
 
   const [data, setData] = useState<Paginated<BuyRequest> | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // 行下に展開する取引希望パネルの対象
+  const [tradeTarget, setTradeTarget] = useState<BuyRequest | null>(null)
+  // 相場情報ポップアップの対象アイテム（PCで「相場情報」を押したとき）
+  const [analyticsItem, setAnalyticsItem] = useState<{ id: number; name: string } | null>(null)
+  // 既に売却を申し出済みの buy_request_id セット（この画面での申し出も含む）
+  const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set())
 
   const fetchList = useCallback(() => {
     setLoading(true)
@@ -68,6 +93,17 @@ export default function BuyRequestsPage() {
   }, [appliedName, appliedNames, sort, page])
 
   useEffect(() => { fetchList() }, [fetchList])
+
+  // ログイン済みの場合、自分が売却を申し出済みの買取IDを取得（買取への取引希望 = selling-offers）
+  useEffect(() => {
+    if (!user) return
+    client.get<{ buy_request_id: number }[]>('/mypage/selling-offers')
+      .then((r) => {
+        const chats = Array.isArray(r.data) ? r.data : []
+        setRequestedIds(new Set<number>(chats.map((c) => c.buy_request_id)))
+      })
+      .catch(() => {})
+  }, [user])
 
   const applyFilters = () => {
     setAppliedName(itemName.trim())
@@ -86,8 +122,42 @@ export default function BuyRequestsPage() {
 
   const hasFilter = appliedName !== '' || appliedNames.length > 0
 
+  // 操作列の末尾リンク：スマホでは「詳細 →」（買取詳細ページへ）、
+  // PCでは「相場情報」ボタンを表示し、押すと相場ポップアップを開く（出品一覧と同じ構成）。
+  const detailOrMarket = (b: BuyRequest) => (
+    <>
+      <Link
+        to={`/buy-requests/${b.id}`}
+        className="listing-narrow-only text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
+      >
+        詳細 →
+      </Link>
+      <button
+        type="button"
+        onClick={() => setAnalyticsItem({ id: b.item.id, name: b.item.name })}
+        className="listing-wide-only items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors"
+      >
+        相場情報
+      </button>
+    </>
+  )
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6">
+    <div className="max-w-5xl mx-auto px-4 py-6">
+      {/* 売却申し出が無効になった場合のエラーバナー */}
+      {tradeError && (
+        <div className="mb-4 bg-red-900/40 border border-red-600/50 rounded-lg px-4 py-3 text-sm text-red-300 flex items-start justify-between gap-3">
+          <span>{tradeError}</span>
+          <button
+            onClick={() => setTradeError(null)}
+            className="text-red-400 hover:text-red-200 shrink-0"
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3 mb-1">
         <h1 className="text-xl font-bold text-white">買取一覧</h1>
         {user && (
@@ -191,20 +261,158 @@ export default function BuyRequestsPage() {
         </select>
       </div>
 
-      {/* 一覧 */}
-      {loading ? (
-        <div className="text-center py-16 text-gray-500">読み込み中...</div>
-      ) : !data || data.data.length === 0 ? (
-        <div className="text-center py-16 bg-surface-card border border-surface-border rounded-lg">
-          <p className="text-gray-500 text-sm">該当する買取はありません。</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {data.data.map((b) => (
-            <BuyRequestCard key={b.id} buyRequest={b} />
-          ))}
-        </div>
-      )}
+      {/* 一覧（出品一覧と同じテーブルレイアウト。買取は装備性能・確認ステータスは表示しない） */}
+      <div className="listing-table-container bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-surface-border">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">アイテム</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">取引</th>
+              <th className="text-right px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">価格</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-surface-border">
+            {loading ? (
+              <tr><td colSpan={4} className="text-center py-16 text-gray-500">読み込み中...</td></tr>
+            ) : !data || data.data.length === 0 ? (
+              <tr><td colSpan={4} className="text-center py-16 text-gray-500">該当する買取はありません。</td></tr>
+            ) : (
+              data.data.map((b) => {
+                const daysLeft = Math.ceil((new Date(b.expires_at).getTime() - Date.now()) / 86400000)
+                const isOpen = tradeTarget?.id === b.id
+                const isDone = requestedIds.has(b.id)
+                const isMine = user?.id === b.user_id
+                const isCompleted = b.status === 'completed'
+                return (
+                  <React.Fragment key={b.id}>
+                  <tr className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'}`}>
+                    {/* アイテム名・種別 */}
+                    <td className="px-4 py-3">
+                      <p className="text-xs text-gray-400">{b.item.category.name}</p>
+                      <p className="text-white font-medium">{b.item.name}</p>
+                      {b.item.official_url && (
+                        <div className="mt-1">
+                          <OfficialDbLink url={b.item.official_url} />
+                        </div>
+                      )}
+                    </td>
+
+                    {/* 取引方法・サーバー */}
+                    <td className="listing-col-wide px-4 py-3 min-w-[8.5rem]">
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        <span className={`px-2 py-0.5 rounded whitespace-nowrap ${b.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
+                          {b.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[b.trade_type]}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {b.servers.map((s) => (
+                          <div key={s.server} className="flex items-center gap-1.5">
+                            <span title={s.server} className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[s.server]}`}>
+                              {s.server[0]}
+                            </span>
+                            {s.character?.character_name && (
+                              <span className="text-xs text-gray-300 whitespace-nowrap">{s.character.character_name}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+
+                    {/* 買取希望価格・期限 */}
+                    <td className="px-3 py-3 text-right">
+                      {b.trade_type === 'auction' ? (
+                        <>
+                          <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
+                          <p className="text-base font-bold text-amber-300 whitespace-nowrap">{(b.current_price ?? b.price).toLocaleString()} {b.currency}</p>
+                          <p className="text-[10px] text-gray-500 whitespace-nowrap">入札 {b.bid_count ?? 0}件{b.buyout_price != null && ` ・即決 ${b.buyout_price.toLocaleString()}`}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[10px] text-emerald-400/80 leading-none">買取希望</p>
+                          <p className="text-base font-bold text-emerald-400 whitespace-nowrap">{b.price.toLocaleString()} {b.currency}</p>
+                        </>
+                      )}
+                      <p className={`text-xs mt-0.5 whitespace-nowrap ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+                        {remainingLabel(b.expires_at, b.trade_type === 'auction')}
+                      </p>
+                    </td>
+
+                    {/* 操作 */}
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {isMine || isCompleted ? (
+                        <div className="flex flex-col gap-1 items-end">
+                          {isCompleted && <span className="text-xs text-primary-500">✓ 取引完了</span>}
+                          {detailOrMarket(b)}
+                        </div>
+                      ) : isDone ? (
+                        <div className="flex flex-col gap-1 items-end">
+                          <span className="text-xs text-primary-500">✓ 申出済み</span>
+                          {detailOrMarket(b)}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1 items-end">
+                          {user && !!user.email_verified_at && (
+                            <button
+                              onClick={() => setTradeTarget(isOpen ? null : b)}
+                              className={`inline-flex items-center justify-center w-20 text-xs whitespace-nowrap px-2.5 py-1 rounded border transition-colors ${
+                                isOpen
+                                  ? 'border-gray-500 text-gray-400 hover:text-white'
+                                  : 'border-primary-500/60 bg-primary-500/10 text-primary-400 hover:bg-primary-500/20'
+                              }`}
+                            >
+                              {isOpen ? 'キャンセル' : '取引'}
+                            </button>
+                          )}
+                          {detailOrMarket(b)}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+
+                  {/* 買取コメント行（コメントがある場合のみ、アイテム行の直下に表示） */}
+                  {b.comment && (
+                    <tr className={`!border-t-0 ${isOpen ? 'bg-primary-500/5' : ''}`}>
+                      <td colSpan={4} className="px-4 pb-3 pt-0">
+                        <p className="text-xs text-gray-300 bg-surface rounded px-3 py-2 whitespace-pre-wrap break-words">
+                          <span className="text-gray-500 mr-1.5 select-none">💬</span>
+                          {b.comment}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* 売却申し出パネル（行を展開） */}
+                  {isOpen && (
+                    <tr key={`panel-${b.id}`}>
+                      <td colSpan={4} className="px-4 pb-4">
+                        <TradeRequestPanel
+                          source={b}
+                          kind="buy_request"
+                          onComplete={() => {
+                            setRequestedIds((prev) => new Set([...prev, b.id]))
+                            setTradeTarget(null)
+                          }}
+                          onCancel={() => setTradeTarget(null)}
+                          onUnavailable={() => {
+                            setTradeTarget(null)
+                            setTradeError('この買取は取り下げ、または取引成立済みのため取引できませんでした。')
+                            // 一覧を再取得して無効になった買取を除外する
+                            fetchList()
+                            // 上部のエラーバナーが見えるようスクロール
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {/* ページネーション */}
       {data && data.last_page > 1 && (
@@ -225,6 +433,15 @@ export default function BuyRequestsPage() {
             次へ
           </button>
         </div>
+      )}
+
+      {/* 相場情報ポップアップ（PCの「相場情報」ボタン用） */}
+      {analyticsItem && (
+        <PriceAnalyticsModal
+          itemId={analyticsItem.id}
+          itemName={analyticsItem.name}
+          onClose={() => setAnalyticsItem(null)}
+        />
       )}
     </div>
   )
