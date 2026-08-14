@@ -164,8 +164,8 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - キャラクター管理（追加・変更・削除）
 - ブラウザ通知の有効化（許可すると同時に Web Push も購読し、サイトを閉じていても通知が届く。§8 参照）
   - **通知ON中は「OFFにする」ボタン**で通知を停止できる（Web Push 購読解除＋ページ内通知も抑制。localStorage `push_opt_out`。OFF中は「🔕 通知OFF — ONに戻す」ボタンで再購読）
-  - **通知がブロック（denied）されているときは「解除方法」ボタン**で、プラットフォーム別（Android Chrome / iPhoneホーム画面アプリ / PC）のブロック解除手順をダイアログ表示する（`frontend/src/utils/pushGuide.ts`）。PC向け手順には **Arc の補足**（アドレスバークリックで鍵表示・コピー可能な `arc://settings/content/notifications`）を併記する（Arc は UA が Chrome と同一で判別できないため文面併記）
-  - **通知API非対応のブラウザ（iPhone/iPad の Safari・Arc 等）では「プッシュ通知を利用するには」ボタン**で、**Safari でサイトを開き直してから**ホーム画面に追加（PWA）→有効化する手順を案内する（コピー用のサイトURLを code ブロックで添付。Arc/Chrome 等の非Safariブラウザからは PWA 追加ができないため。従来は非対応でも「ブロックされています」と誤表示していた。`notifSupported` で区別）
+  - **通知がブロック（denied）されているときは「解除方法」ボタン**で、プラットフォーム別（Android Chrome / iPhoneホーム画面アプリ / PC）のブロック解除手順をダイアログ表示する（`frontend/src/utils/pushGuide.ts`）
+  - **通知API非対応のブラウザ（iPhone/iPad の Safari 等）では「プッシュ通知を利用するには」ボタン**で、ホーム画面に追加（PWA）してから有効化する手順を案内する（従来は非対応でも「ブロックされています」と誤表示していた。`notifSupported` で区別）
 - **期限切れ通知**: 自分の出品・買取に期限切れ（`expired`）がある場合、ページ上部に通知バナー（「期限切れの取引があります 出品N件・買取M件」＋該当タブへの誘導ボタン）を表示し、出品中／買取中タブにも「期限切れN」バッジを出す。再出品・再登録を促す。件数は `/mypage/listings`・`/mypage/buy-requests` の戻り（全ステータス）から算出し、期限切れセクションと一致する
 - 一覧＋チャットの2カラムグリッドは `lg:grid-cols-[minmax(0,1fr)_420px]`（`1fr` だと nowrap な長文プレビューの固有最小幅で左カラムが広がり、チャットパネルがページ外へはみ出す）
 
@@ -208,7 +208,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 
 - **購読フロー**: マイページ「🔔 ブラウザ通知を有効にする」→ Notification 許可と同時に Service Worker（`frontend/public/sw.js`）を登録し `PushManager.subscribe`（VAPID 公開鍵は `GET /api/push/public-key`）→ 購読情報を `POST /api/push/subscriptions` で保存。許可済みブラウザではログイン時に自動で再購読・最新化する（`NotificationContext`）。endpoint はブラウザ単位で一意のため、同一ブラウザで別ユーザーがログインし直すと購読の user_id を付け替える
 - **通知OFF（オプトアウト）**: マイページの「OFFにする」でサーバーの購読行削除（`DELETE /api/push/subscriptions`）＋ブラウザ購読解除を行い、localStorage `push_opt_out='1'` を立てる。OFF中は自動再購読とページ内通知（ポーリング由来の Notification）も抑制する。「ONに戻す」/「🔔 ブラウザ通知を有効にする」でフラグを外して再購読する。ブラウザ側の解除だけが失敗しても、次回送信時に期限切れ（410）として自動削除される
-- **ブロック解除・非対応の動線**: 許可が denied のときは「解除方法」ボタンでプラットフォーム別の解除手順（Android Chrome のサイト設定 / iPhoneホーム画面アプリの設定アプリ / PC の鍵アイコン＋Arc の補足）を共通ダイアログで案内。通知API非対応（iPhone/iPad の Safari・Arc 等）は denied と区別し（`notifSupported`）、**Safari で開き直してから**ホーム画面追加（PWA）する手順とコピー用サイトURLを案内する（`frontend/src/utils/pushGuide.ts` の `buildPushGuide`。ダイアログの `code` オプションでURLをコピー可能に表示）。デスクトップ版 Arc は Chromium ベースで Web Push 対応（購読は通常フロー）、iOS の Arc は WebKit＋PWA追加不可のため非対応
+- **ブロック解除・非対応の動線**: 許可が denied のときは「解除方法」ボタンでプラットフォーム別の解除手順（Android Chrome のサイト設定 / iPhoneホーム画面アプリの設定アプリ / PC の鍵アイコン）を共通ダイアログで案内。通知API非対応（iPhone/iPad Safari）は denied と区別し（`notifSupported`）、ホーム画面追加（PWA）の手順を案内する（`frontend/src/utils/pushGuide.ts` の `buildPushGuide`）
 - **送信イベント**（`App\Support\WebPushSender`。宛先はユーザーIDのみ・操作した本人には送らない）:
   - 新しい取引希望／販売希望 → 出品者・買取登録者（順番待ち＝2番目以降は owner から見えないため通知しない）
   - 新着チャットメッセージ → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）。**取引希望者（買い手）からの最初のメッセージは通知しない**：フロントの取引希望フローは「チャット作成→直後に最初のメッセージ送信」の2段階のため、両方通知すると owner に「新しい取引希望」と二重に届く。最初のメッセージは取引希望の一部としてチャット作成時の通知に代表させ、2通目以降を通知する
