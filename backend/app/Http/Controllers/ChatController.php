@@ -503,7 +503,8 @@ class ChatController extends Controller
         app(\App\Support\WebPushSender::class)->send(
             $recipientId,
             'MoE Trade — 新着メッセージ',
-            "{$name}: " . \Illuminate\Support\Str::limit($message, 80)
+            "{$name}: " . \Illuminate\Support\Str::limit($message, 80),
+            "/mypage?chat={$chat->id}"
         );
     }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { listingsApi } from '../api/listings'
 import { buyRequestsApi } from '../api/buyRequests'
 import client from '../api/client'
@@ -32,6 +32,7 @@ export default function MyPage() {
   const { resetAllTours, startTour } = useTour()
 
   const [tab, setTab] = useState<Tab>('listings')
+  const [searchParams, setSearchParams] = useSearchParams()
   const [editingChars, setEditingChars] = useState(false)
   const [charDraft, setCharDraft] = useState<Record<string, string>>({})
   const [charSaving, setCharSaving] = useState(false)
@@ -274,6 +275,48 @@ export default function MyPage() {
   }
 
   const switchTab = (t: Tab) => { setTab(t); setActiveChat(null); setActiveSource(null) }
+
+  // Push通知のディープリンク（/mypage?chat=ID）: 一覧の読み込み完了後に、
+  // 該当チャットが属するタブへ切り替えてそのチャットを開く。
+  // クエリは一度処理したら消す（リロード・タブ切り替えで再オープンさせない）。
+  useEffect(() => {
+    if (loading || chatsLoading) return
+    const raw = searchParams.get('chat')
+    if (raw == null) return
+    const clearParam = () => setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('chat')
+      return next
+    }, { replace: true })
+
+    const chatId = Number(raw)
+    const open = (t: Tab, chat: TradeChat, source?: SourceRecord) => {
+      setTab(t)
+      openChat(chat, source)
+      clearParam()
+    }
+
+    if (Number.isInteger(chatId) && chatId > 0) {
+      const bought = buyingChats.find((c) => c.id === chatId)
+      if (bought) return open('buying', bought, (bought as any).listing ?? undefined)
+
+      for (const [listingId, chats] of Object.entries(sellingChats)) {
+        const c = chats.find((x) => x.id === chatId)
+        if (c) return open('listings', c, listings.find((l) => l.id === Number(listingId)))
+      }
+
+      const offered = sellingOffers.find((c) => c.id === chatId)
+      if (offered) return open('selling', offered, (offered as any).buy_request ?? undefined)
+
+      for (const [brId, chats] of Object.entries(buyRequestChats)) {
+        const c = chats.find((x) => x.id === chatId)
+        if (c) return open('buy_requests', c, buyRequests.find((b) => b.id === Number(brId)))
+      }
+    }
+    // 見つからない（削除済み・他アカウント等）場合もクエリだけ消して通常表示にする
+    clearParam()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, chatsLoading, searchParams])
 
   const myUserId = USE_MOCK ? MOCK_MY_USER_ID : user?.id ?? null
 

@@ -211,13 +211,13 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - **ブロック解除・非対応の動線**: 許可が denied のときは「解除方法」ボタンでプラットフォーム別の解除手順（Android Chrome のサイト設定 / iPhoneホーム画面アプリの設定アプリ / PC の鍵アイコン）を共通ダイアログで案内。通知API非対応（iPhone/iPad Safari）は denied と区別し（`notifSupported`）、ホーム画面追加（PWA）の手順を案内する（`frontend/src/utils/pushGuide.ts` の `buildPushGuide`）
 - **送信イベント**（`App\Support\WebPushSender`。宛先はユーザーIDのみ・操作した本人には送らない）:
   - 新しい取引希望／販売希望 → 出品者・買取登録者（順番待ち＝2番目以降は owner から見えないため通知しない）
-  - 新着チャットメッセージ → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）。**取引希望者（買い手）からの最初のメッセージは通知しない**：フロントの取引希望フローは「チャット作成→直後に最初のメッセージ送信」の2段階のため、両方通知すると owner に「新しい取引希望」と二重に届く。最初のメッセージは取引希望の一部としてチャット作成時の通知に代表させ、2通目以降を通知する
+  - 新着チャットメッセージ → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）。**通知の URL は `/mypage?chat=<chat_id>`**：クリックするとマイページが読み込み完了後に該当チャットの属するタブ（出品/取引希望/買取/売却）へ切り替えてそのチャットを開く（クエリは一度処理したら消す。該当チャットが見つからない場合は通常表示）。**取引希望者（買い手）からの最初のメッセージは通知しない**：フロントの取引希望フローは「チャット作成→直後に最初のメッセージ送信」の2段階のため、両方通知すると owner に「新しい取引希望」と二重に届く。最初のメッセージは取引希望の一部としてチャット作成時の通知に代表させ、2通目以降を通知する
   - 取引成立・見送り（owner 操作）→ 取引希望者
   - オークション入札 → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
   - オークション解決（即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
   - **期限切れの前日**（期限まで24時間以内・バッチ `trades:notify-expiring` 毎時）→ 登録者へ期限更新を促す通知。送信済みは `expiry_notified_at` で管理し同じ期限に再送しない（期限の延長・再出品で `expires_at` が変わるとリセットされ、新しい期限の前日に再通知）。オークションは自動成立/取り下げ・延長不可のため対象外
 - **実装**: `minishlink/web-push`（VAPID）。鍵は env（`VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`・`config/webpush.php`）。**未設定なら送信は no-op**（テスト・鍵未配備の環境で安全）。DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗はログのみでリクエストを止めず、期限切れ購読（410/404）は自動削除する
-- **対応環境**: デスクトップ/Android の主要ブラウザ。iOS Safari はホーム画面追加（PWA）時のみ対応のため `manifest.webmanifest` を配布する。クリック時は既存タブをフォーカスして `/mypage` へ遷移（無ければ新規ウィンドウ）
+- **対応環境**: デスクトップ/Android の主要ブラウザ。iOS Safari はホーム画面追加（PWA）時のみ対応のため `manifest.webmanifest` を配布する。クリック時は既存タブをフォーカスして通知ペイロードの `url` へ遷移（既定 `/mypage`・新着メッセージは `/mypage?chat=<chat_id>`。無ければ新規ウィンドウ）
 
 ### 9. お問い合わせ（掲示板）
 - 表示名は「お問い合わせ」（旧称: 運営掲示板。URL `/board`・APIパス・テーブル名 `board_*` は旧称のまま変更しない）
@@ -1659,7 +1659,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/NotificationApiTest.php` | 通知サマリー（未読チャット・掲示板新着・対象者判定） |
 | `tests/Unit/WebPushSenderTest.php` | Web Push 送信（VAPID未設定はno-op・購読なしは送信しない・期限切れ購読の自動削除・トランザクション中はコミット後送信） |
 | `tests/Feature/PushSubscriptionApiTest.php` | Web Push 購読API（401・登録・endpoint一致のユーザー付け替え・URL検証・本人のみ解除・公開鍵取得） |
-| `tests/Feature/WebPushNotificationTest.php` | 取引イベントの Web Push（新規取引希望・順番待ち除外・買取・新着メッセージ・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
+| `tests/Feature/WebPushNotificationTest.php` | 取引イベントの Web Push（新規取引希望・順番待ち除外・買取・新着メッセージ（URL は `/mypage?chat=<chat_id>`）・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
 | `tests/Feature/NotifyExpiringTradesTest.php` | 期限切れ前日の Web Push バッチ（24時間以内の出品/買取に通知・二重送信なし・24時間超/期限超過/非active/オークションは対象外・期限延長でリセットされ新期限の前日に再通知） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |

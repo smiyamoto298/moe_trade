@@ -115,10 +115,12 @@ class WebPushNotificationTest extends TestCase
             ->postJson("/api/chats/{$chatId}/messages", ['message' => 'こんにちは'])
             ->assertStatus(201);
 
+        // クリックで該当チャットを開けるよう、URL は /mypage?chat=<chat_id> を渡す
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title, $body) => $uid === $buyer->id
+            ->withArgs(fn ($uid, $title, $body, $url = '/mypage') => $uid === $buyer->id
                 && $title === 'MoE Trade — 新着メッセージ'
-                && str_contains($body, 'こんにちは'))
+                && str_contains($body, 'こんにちは')
+                && $url === "/mypage?chat={$chatId}")
             ->once();
     }
 
@@ -147,9 +149,10 @@ class WebPushNotificationTest extends TestCase
             ->postJson("/api/chats/{$chatId}/messages", ['message' => '追加の質問です'])
             ->assertStatus(201);
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title, $body) => $uid === $seller->id
+            ->withArgs(fn ($uid, $title, $body, $url = '/mypage') => $uid === $seller->id
                 && $title === 'MoE Trade — 新着メッセージ'
-                && str_contains($body, '追加の質問です'))
+                && str_contains($body, '追加の質問です')
+                && $url === "/mypage?chat={$chatId}")
             ->once();
     }
 

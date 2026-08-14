@@ -14,6 +14,7 @@ const mockData = vi.hoisted(() => ({
   buyRequests: [] as any[],
   buyingChats: [] as any[],
   sellingOffers: [] as any[],
+  sellingChats: {} as Record<number, any[]>,
 }))
 
 vi.mock('../api/client', () => ({
@@ -25,7 +26,10 @@ vi.mock('../api/client', () => ({
       if (url === '/mypage/buy-requests') {
         return Promise.resolve({ data: { data: mockData.buyRequests } })
       }
-      if (url === '/mypage/selling-chats' || url === '/mypage/buy-request-chats') {
+      if (url === '/mypage/selling-chats') {
+        return Promise.resolve({ data: mockData.sellingChats })
+      }
+      if (url === '/mypage/buy-request-chats') {
         return Promise.resolve({ data: {} })
       }
       if (url === '/mypage/chats') {
@@ -50,7 +54,7 @@ vi.mock('../api/mock', () => ({
   MOCK_MY_USER_ID: 99,
   MOCK_MY_LISTING_IDS: [],
 }))
-vi.mock('../components/ChatThread', () => ({ default: () => <div /> }))
+vi.mock('../components/ChatThread', () => ({ default: ({ chat }: any) => <div data-testid="chat-thread">chat-{chat.id}</div> }))
 vi.mock('../components/EditTradeModal', () => ({ default: () => <div /> }))
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -110,6 +114,7 @@ describe('MyPage', () => {
     mockData.buyRequests = []
     mockData.buyingChats = []
     mockData.sellingOffers = []
+    mockData.sellingChats = {}
     notifState.permission = 'granted'
     notifState.supported = true
     notifState.optedOut = false
@@ -259,6 +264,84 @@ describe('MyPage', () => {
       expect(getByText('テスト剣')).toBeTruthy()
       expect(getByText(/12,345 AC/)).toBeTruthy()
     })
+  })
+
+  // design.md §8 Web Push: 新着メッセージ通知のクリックは /mypage?chat=<chat_id> に遷移し、
+  // マイページは読み込み完了後に該当チャットのタブへ切り替えてそのチャットを開く
+  it('?chat=ID で取引希望チャットをタブ切り替えして開く（Push通知のディープリンク）', async () => {
+    mockData.buyingChats = [{
+      id: 42,
+      listing_id: 5,
+      buyer_id: 10,
+      server: 'P',
+      status: 'open',
+      updated_at: new Date().toISOString(),
+      messages: [],
+      listing: {
+        id: 5,
+        price: 100,
+        currency: 'AC',
+        item: { id: 5, name: 'テスト剣', category: { name: '武器' } },
+        servers: [],
+      },
+    }]
+
+    const { getByTestId, getAllByText } = render(
+      <MemoryRouter initialEntries={['/mypage?chat=42']}>
+        <MyPage />
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      // チャットパネルが対象チャットで開き、取引希望タブに切り替わっている
+      // （「テスト剣」は取引希望タブの一覧行とチャットパネルのヘッダーの2箇所に出る）
+      expect(getByTestId('chat-thread').textContent).toBe('chat-42')
+      expect(getAllByText('テスト剣').length).toBeGreaterThan(0)
+    })
+  })
+
+  it('?chat=ID で自分の出品への取引希望チャット（出品タブ側）も開く', async () => {
+    mockData.listings = [{
+      id: 5,
+      status: 'active',
+      price: 1000,
+      currency: 'AC',
+      trade_type: 'fixed',
+      expires_at: new Date(Date.now() + 86400000 * 3).toISOString(),
+      item: { id: 5, name: '出品中の盾', category: { name: '防具' } },
+      servers: [],
+    }]
+    mockData.sellingChats = {
+      5: [{
+        id: 7,
+        listing_id: 5,
+        buyer_id: 20,
+        server: 'P',
+        status: 'open',
+        updated_at: new Date().toISOString(),
+        messages: [],
+      }],
+    }
+
+    const { getByTestId } = render(
+      <MemoryRouter initialEntries={['/mypage?chat=7']}>
+        <MyPage />
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      expect(getByTestId('chat-thread').textContent).toBe('chat-7')
+    })
+  })
+
+  it('?chat=ID が存在しないチャットならチャットは開かず通常表示にする', async () => {
+    const { queryByTestId, queryByText } = render(
+      <MemoryRouter initialEntries={['/mypage?chat=999']}>
+        <MyPage />
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      expect(queryByText('出品中のアイテムはありません')).toBeTruthy()
+    })
+    expect(queryByTestId('chat-thread')).toBeNull()
   })
 
   it('期限切れが無ければ通知バナーを表示しない', async () => {
