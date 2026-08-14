@@ -14,7 +14,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: PHP 8.3 セットアップ
         uses: shivammathur/setup-php@v2
@@ -24,7 +24,7 @@ jobs:
           coverage: none
 
       - name: Composer キャッシュ
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: backend/vendor
           key: composer-${{ hashFiles('backend/composer.lock') }}
@@ -43,10 +43,10 @@ jobs:
         working-directory: frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Node 22 セットアップ
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
