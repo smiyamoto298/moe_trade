@@ -8,7 +8,7 @@ import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import OfficialDbLink from '../components/OfficialDbLink'
 import type { BuyRequest, Paginated } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel, deadlineTooltip } from '../utils/constants'
 
 /**
  * 貼り付けテキストからアイテム名だけを抽出する。
@@ -333,7 +333,10 @@ export default function BuyRequestsPage() {
                           <p className="text-base font-bold text-emerald-400 whitespace-nowrap">{b.price.toLocaleString()} {b.currency}</p>
                         </>
                       )}
-                      <p className={`text-xs mt-0.5 whitespace-nowrap ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+                      <p
+                        title={deadlineTooltip(b.expires_at, b.trade_type === 'auction')}
+                        className={`text-xs mt-0.5 whitespace-nowrap ${b.trade_type === 'auction' ? 'cursor-help' : ''} ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}
+                      >
                         {remainingLabel(b.expires_at, b.trade_type === 'auction')}
                       </p>
                     </td>

@@ -30,6 +30,24 @@ export function remainingLabel(expiresAt: string, isAuction: boolean): string {
 }
 
 /**
+ * 一覧の残り期限ラベルにカーソルを当てたときに出す締切日時（`title` 属性用）。
+ * オークションは締切時刻そのものが重要なため「締切: YYYY/M/D HH:mm」（閲覧者のローカルタイム）を返す。
+ * 非オークション（期限は更新で延びる）や不正な日時は undefined を返し、ツールチップを出さない。
+ */
+export function deadlineTooltip(expiresAt: string, isAuction: boolean): string | undefined {
+  if (!isAuction) return undefined
+  const d = new Date(expiresAt)
+  if (Number.isNaN(d.getTime())) return undefined
+  return `締切: ${d.toLocaleString('ja-JP', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
+}
+
+/**
  * オークションの期限日の初期値（1週間後の12:00・"YYYY-MM-DDTHH:mm"）。
  * 1時間以上先・15分単位の有効な値で、フォーム選択時の出発点にする。
  */

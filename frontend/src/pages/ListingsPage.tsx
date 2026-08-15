@@ -13,7 +13,7 @@ import Spinner from '../components/Spinner'
 import type { Listing, Item, ItemType, ItemCategory, ItemHashtag, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
 import { itemTypeOf } from '../utils/itemType'
-import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, remainingLabel } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, remainingLabel, deadlineTooltip } from '../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell, TechniquePieceNames, techniqueMembersOf } from '../components/equipmentCells'
 import InlineHashtags from '../components/InlineHashtags'
 import OfficialDbLink from '../components/OfficialDbLink'
@@ -1207,7 +1207,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           ) : (
                             <p className="text-base font-bold text-primary-500 whitespace-nowrap">{l.price} {l.currency}</p>
                           )}
-                          <p className={`text-xs mt-0.5 whitespace-nowrap ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+                          <p
+                            title={deadlineTooltip(l.expires_at, l.trade_type === 'auction')}
+                            className={`text-xs mt-0.5 whitespace-nowrap ${l.trade_type === 'auction' ? 'cursor-help' : ''} ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}
+                          >
                             {remainingLabel(l.expires_at, l.trade_type === 'auction')}
                           </p>
                         </td>

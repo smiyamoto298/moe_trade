@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Listing } from '../types'
-import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, remainingLabel } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SERVER_COLORS, BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, remainingLabel, deadlineTooltip } from '../utils/constants'
 import UnverifiedBadge from './UnverifiedBadge'
 
 interface Props {
@@ -121,7 +121,10 @@ export default function ListingCard({ listing }: Props) {
               <p className="text-xs text-gray-400">{listing.currency}</p>
             </div>
           )}
-          <p className={`text-xs mt-2 whitespace-nowrap ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+          <p
+            title={deadlineTooltip(listing.expires_at, listing.trade_type === 'auction')}
+            className={`text-xs mt-2 whitespace-nowrap ${listing.trade_type === 'auction' ? 'cursor-help' : ''} ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}
+          >
             {remainingLabel(listing.expires_at, listing.trade_type === 'auction')}
           </p>
         </div>

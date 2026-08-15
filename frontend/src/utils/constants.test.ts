@@ -18,6 +18,7 @@ import {
   NO_WARAGE_EFFECT_NOTE,
   snapToQuarterHour,
   remainingLabel,
+  deadlineTooltip,
   defaultAuctionDeadline,
 } from './constants'
 
@@ -43,6 +44,21 @@ describe('remainingLabel（一覧の残り期限表示）', () => {
     expect(remainingLabel(iso(45 * M + 30 * 1000), true)).toBe('残り45分')
     expect(remainingLabel(iso(30 * 1000), true)).toBe('残り1分未満')
     expect(remainingLabel(iso(-60 * 1000), true)).toBe('締切')
+  })
+})
+
+describe('deadlineTooltip（残り期限にカーソルを当てたときの締切日時）', () => {
+  it('オークションはローカルタイムの「締切: YYYY/M/D HH:mm」を返す', () => {
+    const d = new Date(2026, 7, 20, 12, 30) // ローカルタイムの 2026/8/20 12:30
+    expect(deadlineTooltip(d.toISOString(), true)).toBe('締切: 2026/8/20 12:30')
+  })
+
+  it('非オークションはツールチップを出さない', () => {
+    expect(deadlineTooltip(new Date().toISOString(), false)).toBeUndefined()
+  })
+
+  it('不正な日時はツールチップを出さない', () => {
+    expect(deadlineTooltip('not-a-date', true)).toBeUndefined()
   })
 })
 
