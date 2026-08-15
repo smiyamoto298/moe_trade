@@ -263,7 +263,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 確認済みアイテムは「相場登録」アイコンから他サイト相場を手動登録（前述「価格データ解析」）
 - **アイテム削除（admin）**: 出品・買取・取引履歴と紐づく場合は禁止せず、件数入りの**確認モーダル**を表示。承諾すると関連する出品・買取・取引チャット・取引履歴ごと削除する（確認は `window.confirm` ではなく状態駆動のモーダルで実装。タブ非アクティブ時のダイアログ抑制を回避）。`buy_requests` は `item_id` を RESTRICT 参照するため、`Listing` と同様にアイテム本体より先に明示削除する（紐づく `trade_chats` は cascade、`trade_history.buy_request_id` は nullOnDelete）。確認レスポンスは `buy_request_count` も返す
 - **admin限定**: ユーザー管理（権限変更・利用停止・解除）
-- **利用状況解析（editor / admin）**: `/admin/analytics`（ヘッダー管理メニュー「利用状況解析」・editor / admin 共通で表示）で出品数・買取数・取引成立数（**出品由来＝出品成立／買取由来＝買取成立の内訳別**）・**日ごとのユニークアクセスユーザー数**を日別に集計表示する。期間は 7日／30日（既定）／90日／1年 から選択。期間合計のサマリーカード（登録・出品・買取・成立・出品成立・買取成立・**アクセス**＝期間内に1回でもアクセスしたユニークユーザー数（人表記・日次の単純合算ではない）・**取引ユーザー**＝期間内の成立取引に売り手・買い手として関わったユニークユーザー数）と日別推移の折れ線グラフ（recharts・7系列。**登録＝出品＋買取、成立＝出品成立＋買取成立の合算系列**と**アクセス**を含む）で表示する。**既定表示は「登録」「成立」「アクセス」の3系列のみ**。線種は役割で区別する（**合算・アクセス＝太い実線、登録の内訳（出品・買取）＝通常の実線、成立の内訳（出品成立・買取成立）＝破線**）。グラフは**系列ごとのチェックボックス**（系列色付き）で表示・非表示を切り替えられ、**「すべて」チェック**で一括切替できる（全チェック時に押すと全非表示、部分チェック時に押すと全表示。全系列を非表示にするとグラフの代わりに案内文を表示）。ツールチップ・サマリーカードの単位は件数系＝「件」、アクセス＝「人」。出品数・買取数は**作成ベース**（後に取り下げ・期限切れ・成立になったものも含む）、取引成立数は `trade_history` の**相場対象（`is_valid = true`）のみ**（宣伝ポストと同じ流儀）で、買取由来は `buy_request_id` の有無で判別する。アクセスは `user_daily_accesses`（`RecordDailyAccess` ミドルウェアが認証済みリクエストを `(user_id, JST日付)` 単位で記録）から集計する。日付は JST（Asia/Tokyo）の日単位で丸める（DBはUTC保存のため、DB方言に依存しないようPHP側でJST日付に変換して集計。アクセスは JST 日付で保存済みのため変換不要）
+- **利用状況解析（editor / admin）**: `/admin/analytics`（ヘッダー管理メニュー「利用状況解析」・editor / admin 共通で表示）で出品数・買取数・取引成立数（**出品由来＝出品成立／買取由来＝買取成立の内訳別**）・**日ごとのユニークアクセスユーザー数**を日別に集計表示する。期間は 7日／30日（既定）／90日／1年 から選択。期間合計のサマリーカード（登録・出品・買取・成立・出品成立・買取成立・**アクセス**＝期間内に1回でもアクセスしたユニークユーザー数（人表記・日次の単純合算ではない）・**取引ユーザー**＝期間内の成立取引に売り手・買い手として関わったユニークユーザー数）と日別推移の折れ線グラフ（recharts・7系列。**登録＝出品＋買取、成立＝出品成立＋買取成立の合算系列**と**アクセス**を含む）で表示する。**既定表示は「登録」「成立」「アクセス」の3系列のみ**。線種は役割で区別する（**合算・アクセス＝太い実線、登録の内訳（出品・買取）＝通常の実線、成立の内訳（出品成立・買取成立）＝破線**）。グラフは**系列ごとのチェックボックス**（系列色付き）で表示・非表示を切り替えられ、**「すべて」チェック**で一括切替できる（全チェック時に押すと全非表示、部分チェック時に押すと全表示。全系列を非表示にするとグラフの代わりに案内文を表示）。ツールチップ・サマリーカードの単位は件数系＝「件」、アクセス＝「人」。出品数・買取数は**作成ベース**（後に取り下げ・期限切れ・成立になったものも含む）、取引成立数は `trade_history` の**相場対象（`is_valid = true`）のみ**（宣伝ポストと同じ流儀）で、買取由来は `buy_request_id` の有無で判別する。アクセスは `user_daily_accesses`（`RecordDailyAccess` ミドルウェアが認証済みリクエストを `(user_id, JST日付)` 単位で記録）から集計する。日付は JST（Asia/Tokyo）の日単位で丸める（DBはUTC保存のため、DB方言に依存しないようPHP側でJST日付に変換して集計。アクセスは JST 日付で保存済みのため変換不要）。日別推移の下に**時間帯分布の棒グラフ**（recharts `BarChart`）を並べ、**期間内のデータを日付を無視して時刻（JST 0〜23時）でまとめた分布**を表示する（日付が違っても同じ時刻なら同一時間としてカウント）。**系列のチェックボックスは日別推移と共用**し、時刻を持たない**アクセスは時間帯分布に含まない**（`user_daily_accesses` は JST 日付しか記録していないため。UI にその旨を注記）。時間帯分布に出せる系列が全て非表示のときは折れ線と同じ案内文を表示する
 
 ### 10-B. SNS宣伝（宣伝ポスト・admin限定）
 X（旧Twitter）への宣伝用に、対象期間の
@@ -464,7 +464,7 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 │   ├── /admin/announcements  # お知らせ管理（admin限定）
 │   ├── /admin/promo-tweets   # 宣伝ポスト（X向け文面生成・admin限定）
 │   ├── /admin/batch-runs     # バッチ実行履歴（定期バッチの稼働状況・admin限定）
-│   ├── /admin/analytics      # 利用状況解析（出品数・買取数・取引成立数・アクセスユーザー数の日次集計・editor/admin）
+│   ├── /admin/analytics      # 利用状況解析（出品数・買取数・取引成立数・アクセスユーザー数の日次集計＋時間帯分布・editor/admin）
 │   ├── /admin/bonus-value-labels # 項目名候補マスタ管理（付加効果/追加効果タブ切替・editor/admin）
 │   ├── /admin/binder-labels  # レシピのバインダー候補マスタ管理（editor/admin）
 │   └── /admin/excluded-items # アイテム種別管理（共通の種別割当・ユーザー個別設定の共通化・サーバ登録対象外・admin限定）
@@ -1398,7 +1398,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 ### 利用状況解析（editor / admin）
 ルートは `role:editor` ミドルウェア（editor と admin がアクセス可能）。
-- `GET /api/admin/analytics/usage` — 利用状況の日次集計。`days` クエリ（1〜365・既定30）で期間を指定。JST日付単位で出品数（`listings.created_at`）・買取数（`buy_requests.created_at`）・取引成立数（`trade_history.traded_at`・`is_valid=true` のみ。`buy_request_id` の有無で出品由来 `listing_trades` ／買取由来 `buy_request_trades` に分割、`trades` は合計）・日次ユニークアクセスユーザー数 `active_users`（`user_daily_accesses`）を集計し、登録の合算 `registrations`（= listings + buy_requests）も含めて `{ days, from, to, totals: { listings, buy_requests, registrations, listing_trades, buy_request_trades, trades, trade_users, active_users }, daily: [{ date, listings, buy_requests, registrations, listing_trades, buy_request_trades, trades, active_users }] }`（期間内全日ゼロ埋め・昇順）を返す。`trade_users` は期間内の有効な成立取引に `seller_id` / `buyer_id` として関わったユニークユーザー数（`buyer_id` が null の旧データは売り手のみ数える）。`totals.active_users` は期間内に1回でもアクセスしたユニークユーザー数（日次の単純合算ではない）
+- `GET /api/admin/analytics/usage` — 利用状況の日次集計。`days` クエリ（1〜365・既定30）で期間を指定。JST日付単位で出品数（`listings.created_at`）・買取数（`buy_requests.created_at`）・取引成立数（`trade_history.traded_at`・`is_valid=true` のみ。`buy_request_id` の有無で出品由来 `listing_trades` ／買取由来 `buy_request_trades` に分割、`trades` は合計）・日次ユニークアクセスユーザー数 `active_users`（`user_daily_accesses`）を集計し、登録の合算 `registrations`（= listings + buy_requests）も含めて `{ days, from, to, totals: { listings, buy_requests, registrations, listing_trades, buy_request_trades, trades, trade_users, active_users }, daily: [{ date, listings, buy_requests, registrations, listing_trades, buy_request_trades, trades, active_users }] }`（期間内全日ゼロ埋め・昇順）を返す。`trade_users` は期間内の有効な成立取引に `seller_id` / `buyer_id` として関わったユニークユーザー数（`buyer_id` が null の旧データは売り手のみ数える）。`totals.active_users` は期間内に1回でもアクセスしたユニークユーザー数（日次の単純合算ではない）。さらに `hourly: [{ hour, listings, buy_requests, registrations, listing_trades, buy_request_trades, trades }]` として **期間内のデータを日付を無視して JST の時刻（0〜23時）で束ねた分布**を返す（0〜23時すべてゼロ埋め・昇順。日付が違っても同じ時刻なら同一時間として合算する。時間帯分布の各系列の合計は `totals` と一致する）。`active_users` は `user_daily_accesses` が JST 日付しか持たないため `hourly` には含まれない
 - アクセスの記録は `RecordDailyAccess` ミドルウェア（api グループに追加）が行う。認証済み（sanctum で解決できる）リクエストごとに `(user_id, JST日付)` を `user_daily_accesses` へ `insertOrIgnore` する（同日2回目以降はユニーク制約で no-op・競合安全）
 
 ---
@@ -1666,7 +1666,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
 | `tests/Feature/AnnouncementApiTest.php` | お知らせ管理API（`link_new_tab` の作成・更新・デフォルト false = 同じウィンドウ・`target_type` の作成/正規化/バリデーション・公開一覧の対象ユーザー絞り込み all/staff/specific・`specific` の既読化＝本人を対象から外し0人で削除/対象外・all/staff・未ログインは拒否） |
 | `tests/Feature/BatchRunTest.php` | バッチ実行履歴（`BatchCommand` の success/failed 記録・実行履歴API の権限/新しい順/コマンド絞り込み） |
-| `tests/Feature/AdminAnalyticsApiTest.php` | 利用状況解析API（権限401/403（一般）/editor許可・日次集計・登録の合算 `registrations`・JST日付境界・期間外除外・`is_valid=false` 除外・出品由来/買取由来の分割・取引ユニークユーザー数・日次ユニークアクセス `active_users`（期間ユニーク合計・ゼロ埋め）・アクセス記録ミドルウェア（JST日付記録・同日重複なし・未認証は記録しない）・`days` バリデーション・既定30日） |
+| `tests/Feature/AdminAnalyticsApiTest.php` | 利用状況解析API（権限401/403（一般）/editor許可・日次集計・登録の合算 `registrations`・JST日付境界・期間外除外・`is_valid=false` 除外・出品由来/買取由来の分割・取引ユニークユーザー数・日次ユニークアクセス `active_users`（期間ユニーク合計・ゼロ埋め）・アクセス記録ミドルウェア（JST日付記録・同日重複なし・未認証は記録しない）・時間帯分布 `hourly`（日付をまたいだ同一時刻の合算・JST時刻変換・0〜23時ゼロ埋め・期間合計との一致）・`days` バリデーション・既定30日） |
 
 > 既知の未カバー領域（今後追加推奨）: `GET /api/listings/:id` の公開制限(404)、アイテム削除の確認モーダル(409)/`force`連鎖削除、`items/:id/merge`、アセット種別の絞り込み、パスワード再設定の期限切れ・スロットル(429)。
 
@@ -1706,7 +1706,7 @@ docker compose exec php vendor/bin/phpunit
 | `src/components/ItemDetailModal.test.tsx` | アイテム詳細モーダル（`GET /api/items/:id` で基本情報・確認中バッジ・ハッシュタグ・相場を表示・相場取得失敗時も詳細は続行・取得失敗時のエラー表示・「詳細ページを開く」は新タブ・✕/オーバーレイで閉じる・itemId 変更で再取得） |
 | `src/pages/OwnedItemsPage.test.tsx` | アイテムボックス（自動再紐づけ・表示切替/種別タブ・重複確認・種別変更・カスタム種別・公式DBリンク・貼り付けアコーディオン・買取ありフィルタ・紐づけ済み行のアイテム名クリックで詳細モーダル表示・レスポンシブ表示（lg未満のカード型リストに全操作が揃う/アカウント・種別切替のドロップダウン化と絞り込み/編集の保存/空一覧の案内/lg以上はテーブル）） |
 | `src/hooks/useMediaQuery.test.ts` | メディアクエリ購読フック `useMediaQuery`（matchMedia 非対応環境の fallback・一致状態の返却と change イベント追従・アンマウント時の購読解除） |
-| `src/pages/admin/AdminAnalyticsPage.test.tsx` | 利用状況解析ページ（初期表示は「登録」「成立」「アクセス」3系列のみ・サマリーカード（アクセスは「人」表記）・系列チェックボックスの表示/非表示切替・「すべて」の一括切替と全非表示時の案内文） |
+| `src/pages/admin/AdminAnalyticsPage.test.tsx` | 利用状況解析ページ（初期表示は「登録」「成立」「アクセス」3系列のみ・サマリーカード（アクセスは「人」表記）・系列チェックボックスの表示/非表示切替・「すべて」の一括切替と全非表示時の案内文・時間帯分布の棒グラフ（チェックボックス共用・アクセスは含まない）） |
 
 実行方法:
 ```bash

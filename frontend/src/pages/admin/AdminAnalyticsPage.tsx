@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { adminAnalyticsApi } from '../../api/adminAnalytics'
 import type { UsageResponse } from '../../api/adminAnalytics'
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis,
+  ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis,
   Tooltip, CartesianGrid, Legend,
 } from 'recharts'
 
@@ -61,11 +61,17 @@ const DEFAULT_VISIBLE: Record<SeriesKey, boolean> = {
   active_users: true,
 }
 
+// 時間帯分布に出せない系列。アクセスは日付単位でしか記録していないため時刻が無い
+const HOURLESS_KEYS: readonly SeriesKey[] = ['active_users']
+
 // 「YYYY-MM-DD」を「M/D」に短縮（X軸ラベル用）
 const fmtDate = (iso: string): string => {
   const [, m, d] = iso.split('-')
   return `${+m}/${+d}`
 }
+
+// 時（0〜23）を「0時」形式に（X軸ラベル用）
+const fmtHour = (h: number): string => `${h}時`
 
 export default function AdminAnalyticsPage() {
   const [days, setDays] = useState<number>(30)
@@ -77,6 +83,8 @@ export default function AdminAnalyticsPage() {
 
   const allVisible = SERIES.every(({ key }) => visible[key])
   const shownSeries = SERIES.filter(({ key }) => visible[key])
+  // 時間帯分布は時刻を持つ系列だけ（チェックボックスは日別推移と共用）
+  const shownHourlySeries = shownSeries.filter(({ key }) => !HOURLESS_KEYS.includes(key))
 
   useEffect(() => {
     setLoading(true)
@@ -107,7 +115,7 @@ export default function AdminAnalyticsPage() {
         </div>
       </div>
       <p className="text-sm text-gray-400 mb-5">
-        出品・買取の登録件数（取り下げ・期限切れ分も含む）、取引成立件数（出品由来・買取由来別、相場対象のみ）、アクセスユーザー数（ログイン中に利用した人数・日ごとの重複なし）を日別に集計します。「登録」は出品＋買取、「成立」は出品成立＋買取成立の合算です。日付は日本時間です。
+        出品・買取の登録件数（取り下げ・期限切れ分も含む）、取引成立件数（出品由来・買取由来別、相場対象のみ）、アクセスユーザー数（ログイン中に利用した人数・日ごとの重複なし）を日別に集計します。「登録」は出品＋買取、「成立」は出品成立＋買取成立の合算です。日付は日本時間です。日別推移に加えて、期間内のデータを時刻でまとめた時間帯分布も表示します。
       </p>
 
       {loading ? (
@@ -197,6 +205,38 @@ export default function AdminAnalyticsPage() {
                   />
                 ))}
               </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* 時間帯分布（日付が違っても同じ時刻なら同一時間としてカウント。系列の選択は日別推移と共用） */}
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-8 mb-3">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              時間帯分布（{fmtDate(data.from)}〜{fmtDate(data.to)} の合計）
+            </h2>
+            <p className="text-xs text-gray-500">
+              日付が違っても同じ時刻は同一時間として集計します（日本時間）。アクセスは日単位の記録のため含みません。
+            </p>
+          </div>
+          {shownHourlySeries.length === 0 ? (
+            <p className="text-sm text-gray-500 py-10 text-center">表示する系列が選択されていません。</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={data.hourly} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" vertical={false} />
+                <XAxis dataKey="hour" tickFormatter={fmtHour} tick={{ fill: '#9ca3af', fontSize: 11 }} interval={1} />
+                <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} width={40} allowDecimals={false} />
+                <Tooltip
+                  cursor={{ fill: 'rgba(255,255,255,0.06)' }}
+                  contentStyle={{ backgroundColor: '#242740', border: '1px solid #353858', borderRadius: '6px' }}
+                  labelStyle={{ color: '#d1d5db', marginBottom: 4 }}
+                  labelFormatter={(v: number) => `${v}時台`}
+                  formatter={(v: number, name: string) => `${v} ${UNIT_BY_LABEL[name] ?? '件'}`}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
+                {shownHourlySeries.map(({ key, label, color }) => (
+                  <Bar key={key} dataKey={key} fill={color} name={label} />
+                ))}
+              </BarChart>
             </ResponsiveContainer>
           )}
         </>

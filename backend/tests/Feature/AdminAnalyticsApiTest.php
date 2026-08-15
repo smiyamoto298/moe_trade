@@ -313,6 +313,79 @@ class AdminAnalyticsApiTest extends TestCase
         $this->assertSame(0, UserDailyAccess::count());
     }
 
+    public function test_時間帯分布は日付が違っても同じ時刻を合算する(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        // UTC 01:00 = JST 10時。8/4・8/5 と別の日だが同じ 10 時台にまとまる
+        $this->makeListingAt('2026-08-04 01:00:00');
+        $this->makeListingAt('2026-08-05 01:00:00');
+        // UTC 01:59 も JST 10時台（分は切り捨てて時だけで束ねる）
+        $this->makeListingAt('2026-08-05 01:59:00');
+        // UTC 02:00 = JST 11時
+        $this->makeListingAt('2026-08-05 02:00:00');
+        // JST 10時の買取1件・成立1件（登録・成立の合算も時間帯で計算される）
+        $this->makeBuyRequestAt('2026-08-05 01:30:00');
+        $this->makeTradeAt('2026-08-05 01:30:00');
+        $this->makeBuyRequestTradeAt('2026-08-05 01:30:00');
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+
+        $res->assertOk()->assertJsonCount(24, 'hourly');
+
+        $hourly = collect($res->json('hourly'))->keyBy('hour');
+        $this->assertSame(3, $hourly[10]['listings']);
+        $this->assertSame(1, $hourly[10]['buy_requests']);
+        $this->assertSame(4, $hourly[10]['registrations']);
+        $this->assertSame(1, $hourly[10]['listing_trades']);
+        $this->assertSame(1, $hourly[10]['buy_request_trades']);
+        $this->assertSame(2, $hourly[10]['trades']);
+        $this->assertSame(1, $hourly[11]['listings']);
+        // 該当のない時間はゼロ埋めされる（0〜23時すべてを返す）
+        $this->assertSame(0, $hourly[0]['listings']);
+        $this->assertSame(0, $hourly[23]['registrations']);
+        $this->assertSame(range(0, 23), collect($res->json('hourly'))->pluck('hour')->all());
+    }
+
+    public function test_時間帯分布はJSTの時刻で集計され期間外は含まれない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        // UTC 15:00 = JST 翌日 0時（日付だけでなく時もJSTに変換される）
+        $this->makeListingAt('2026-08-05 15:00:00');
+        // UTC 14:59 = JST 23時
+        $this->makeListingAt('2026-08-05 14:59:00');
+        // 期間外（UTC 7/29 15:00 = JST 7/30 0時。期間 7/31〜8/6 の前日）は時間帯分布にも含まれない
+        $this->makeListingAt('2026-07-29 15:00:00');
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+
+        $hourly = collect($res->json('hourly'))->keyBy('hour');
+        $this->assertSame(1, $hourly[0]['listings']);
+        $this->assertSame(1, $hourly[23]['listings']);
+        $this->assertSame(2, collect($res->json('hourly'))->sum('listings'));
+    }
+
+    public function test_時間帯分布の合計は期間合計と一致する(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        $this->makeListingAt('2026-08-04 20:00:00');
+        $this->makeListingAt('2026-08-05 05:00:00');
+        $this->makeBuyRequestAt('2026-08-05 23:00:00');
+        $this->makeTradeAt('2026-08-05 09:00:00');
+        $this->makeBuyRequestTradeAt('2026-08-05 16:00:00');
+        // 相場対象外は日別と同様に時間帯分布からも除外される
+        $this->makeTradeAt('2026-08-05 10:00:00', isValid: false);
+
+        $res     = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+        $hourly  = collect($res->json('hourly'));
+
+        foreach (['listings', 'buy_requests', 'registrations', 'listing_trades', 'buy_request_trades', 'trades'] as $key) {
+            $this->assertSame($res->json("totals.$key"), $hourly->sum($key), "時間帯分布の $key 合計が期間合計と一致しない");
+        }
+    }
+
     public function test_daysの指定が不正なら422(): void
     {
         $admin = $this->makeUserWithRole('admin');

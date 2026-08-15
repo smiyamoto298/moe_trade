@@ -17,6 +17,19 @@ export interface UsageDaily {
   active_users: number
 }
 
+// 期間内のデータを日付を無視して JST の時刻（0〜23時）で束ねた分布。
+// アクセス（active_users）は日付単位でしか記録していないため含まれない。
+export interface UsageHourly {
+  // JST の時（0〜23）
+  hour: number
+  listings: number
+  buy_requests: number
+  registrations: number
+  listing_trades: number
+  buy_request_trades: number
+  trades: number
+}
+
 export interface UsageResponse {
   days: number
   from: string
@@ -36,6 +49,8 @@ export interface UsageResponse {
   }
   // 期間内の全日（ゼロ埋め済み・昇順）
   daily: UsageDaily[]
+  // 24時間の分布（0〜23時の全時間ゼロ埋め済み・昇順）
+  hourly: UsageHourly[]
 }
 
 export const adminAnalyticsApi = {
