@@ -329,7 +329,7 @@ class PromoTweetApiTest extends TestCase
             ->assertJsonPath('trade_count', 1);
 
         $all = implode("\n", array_column($res->json('tweets'), 'text'));
-        $this->assertStringContainsString('📢MoE Trade（6/10〜6/12）', $all);
+        $this->assertStringContainsString('MoE Trade（6/10〜6/12）📢', $all);
         $this->assertStringContainsString('【期間中の取引成立数】1件', $all);
         $this->assertStringContainsString('売)過去の剣 3,000AC', $all);
         $this->assertStringContainsString('売)本日の盾 800AC', $all);

@@ -244,13 +244,39 @@ class PromoTweetComposerTest extends TestCase
         );
 
         $text = $tweets[0];
-        $this->assertStringContainsString('📢MoE Trade（6/8〜6/12）', $text);
+        $this->assertStringContainsString('MoE Trade（6/8〜6/12）📢', $text);
         $this->assertStringContainsString('【期間中の取引成立数】7件', $text);
         $this->assertStringContainsString('【現在の登録数】出品42件:買取17件', $text);
         $this->assertStringContainsString('【新規の取引】', $text);
         $this->assertStringContainsString('売)剛力の剣 12,000AC', $text);
         $this->assertStringContainsString('買)守りの盾 500AC', $text);
         $this->assertStringNotContainsString('本日', $text);
+    }
+
+    public function test_文面は改行や絵文字で始まらない(): void
+    {
+        // Xの投稿画面は本文の先頭がサロゲートペアの絵文字だと空行を1行差し込むため、
+        // 見出しの📢は行頭に置かない（分割された2通目以降も同様に確認する）
+        $listings = [];
+        for ($i = 1; $i <= 25; $i++) {
+            $listings[] = $this->item("テストアイテム{$i}号", 123456);
+        }
+
+        $tweets = (new PromoTweetComposer())->compose('6/12', $listings, [], [], [], 0, 0, 0, self::URL);
+
+        $this->assertGreaterThan(1, count($tweets));
+        foreach ($tweets as $i => $tweet) {
+            $first = mb_substr($tweet, 0, 1, 'UTF-8');
+            $this->assertNotSame("\n", $first, "先頭が改行: {$i}通目");
+            $this->assertLessThan(
+                0x10000,
+                mb_ord($first, 'UTF-8'),
+                "先頭がサロゲートペアの絵文字: {$i}通目"
+            );
+        }
+
+        // 見出しの📢自体は残っている（行頭ではなく日付の後ろ）
+        $this->assertStringContainsString('MoE Trade（6/12）📢', $tweets[0]);
     }
 
     public function test_極端に長いアイテム名は切り詰められ制限を超えない(): void

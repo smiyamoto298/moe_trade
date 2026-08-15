@@ -86,7 +86,10 @@ class PromoTweetComposer
         };
 
         $tweets  = [];
-        $current = ["📢MoE Trade（{$dateLabel}）"];
+        // 見出しの絵文字は「行頭に置かない」。Xの投稿画面（Web Intent）は本文の先頭が
+        // サロゲートペアの絵文字だと、その前に空行を1行差し込んでしまうため
+        // （📢が無い2通目以降では起きない）。先頭はASCIIから始める。
+        $current = ["MoE Trade（{$dateLabel}）📢"];
         // 取引成立数は期間（累計）モードのみ掲載する（単日モードには出さない）
         if ($cumulative) {
             $current[] = self::SECTION_TRADES_RANGE . "{$tradeCount}件";
