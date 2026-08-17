@@ -27,6 +27,7 @@ import { useAuth } from './contexts/AuthContext'
 import type { UserRole } from './types'
 
 // 管理画面は利用者が限られるため遅延読み込みにして、初回バンドルから外す
+const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'))
 const AdminItemsPage = lazy(() => import('./pages/admin/AdminItemsPage'))
 const AdminItemEditPage = lazy(() => import('./pages/admin/AdminItemEditPage'))
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
@@ -96,6 +97,11 @@ export default function App() {
           <Route
             path="/mypage/items"
             element={<PrivateRoute><OwnedItemsPage /></PrivateRoute>}
+          />
+          {/* 通知設定（種別 × チャネルの ON/OFF・メール通知の宛先。ログイン必須） */}
+          <Route
+            path="/mypage/notifications"
+            element={<PrivateRoute><NotificationSettingsPage /></PrivateRoute>}
           />
           {/* お問い合わせ掲示板（ログイン必須） */}
           <Route

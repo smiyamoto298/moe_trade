@@ -34,4 +34,16 @@ describe('PrivacyPolicyPage', () => {
       screen.getByText(/HMAC-SHA256による不可逆のブラインドインデックス方式/)
     ).toBeInTheDocument()
   })
+
+  // メール通知は宛先の復元が必要でハッシュでは実現できないため、
+  // 「希望者のみ・暗号化保存・いつでも削除可」であることを公表事項に含める
+  it('通知先メールアドレスの取り扱い（希望者のみ暗号化保存・削除可）を明記する', () => {
+    render(<PrivacyPolicyPage />)
+    expect(
+      screen.getByText(/メール通知の利用を希望された場合のみ.*暗号化したうえで保存/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/通知先メールアドレスの暗号化保存/)
+    ).toBeInTheDocument()
+  })
 })

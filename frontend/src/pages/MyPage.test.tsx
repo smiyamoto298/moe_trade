@@ -93,9 +93,6 @@ const dialogMocks = vi.hoisted(() => ({ confirm: vi.fn(), alert: vi.fn() }))
 vi.mock('../contexts/DialogContext', () => ({
   useDialog: () => dialogMocks,
 }))
-vi.mock('../tours/TourContext', () => ({
-  useTour: () => ({ resetAllTours: vi.fn(), startTour: vi.fn() }),
-}))
 
 const expiredItem = (id: number, status = 'expired') => ({
   id,
@@ -136,70 +133,21 @@ describe('MyPage', () => {
     })
   })
 
-  it('通知許可済みで Web Push 購読済みなら「プッシュ配信中」を表示する', async () => {
-    const { getByText } = render(
-      <MemoryRouter>
-        <MyPage />
-      </MemoryRouter>
-    )
-    await waitFor(() => {
-      expect(getByText(/通知ON（プッシュ配信中）/)).toBeTruthy()
-    })
-  })
-
-  it('通知ON中は「OFFにする」ボタンを表示し、押すと購読を解除する', async () => {
-    const { getByText } = render(
-      <MemoryRouter>
-        <MyPage />
-      </MemoryRouter>
-    )
-    const btn = await waitFor(() => getByText('OFFにする'))
-    fireEvent.click(btn)
-    expect(notifState.disablePush).toHaveBeenCalled()
-  })
-
-  it('通知OFF中は「ONに戻す」ボタンを表示し、押すと再購読する', async () => {
-    notifState.optedOut = true
+  // 通知の許可・ON/OFF の操作は通知設定画面（/mypage/notifications）へ集約したため、
+  // マイページのヘッダー行には「通知設定」リンクだけを置く。
+  // 通知の状態表示・ON/OFF の挙動は NotificationSettingsPage.test.tsx でカバーする。
+  it('ヘッダー行は通知設定リンクのみで、通知ON/OFF・アイテムボックス・操作案内リセットは置かない', async () => {
     const { getByText, queryByText } = render(
       <MemoryRouter>
         <MyPage />
       </MemoryRouter>
     )
-    const btn = await waitFor(() => getByText(/通知OFF — ONに戻す/))
+    await waitFor(() => expect(getByText(/通知設定/)).toBeTruthy())
     expect(queryByText(/通知ON（プッシュ配信中）/)).toBeNull()
-    fireEvent.click(btn)
-    expect(notifState.enablePush).toHaveBeenCalled()
-  })
-
-  it('通知ブロック時は解除方法ボタンを表示し、押すと手順ダイアログを開く', async () => {
-    notifState.permission = 'denied'
-    const { getByText } = render(
-      <MemoryRouter>
-        <MyPage />
-      </MemoryRouter>
-    )
-    const btn = await waitFor(() => getByText(/通知がブロックされています（解除方法）/))
-    fireEvent.click(btn)
-    expect(dialogMocks.alert).toHaveBeenCalledWith(
-      expect.stringContaining('ブロックされています'),
-      expect.objectContaining({ title: '通知ブロックの解除方法' })
-    )
-  })
-
-  it('通知API非対応のブラウザでは「プッシュ通知を利用するには」の案内ボタンを表示する', async () => {
-    notifState.permission = 'denied'
-    notifState.supported = false
-    const { getByText } = render(
-      <MemoryRouter>
-        <MyPage />
-      </MemoryRouter>
-    )
-    const btn = await waitFor(() => getByText(/プッシュ通知を利用するには/))
-    fireEvent.click(btn)
-    expect(dialogMocks.alert).toHaveBeenCalledWith(
-      expect.stringContaining('対応していません'),
-      expect.objectContaining({ title: 'プッシュ通知を利用するには' })
-    )
+    expect(queryByText('OFFにする')).toBeNull()
+    expect(queryByText(/通知OFF — ONに戻す/)).toBeNull()
+    expect(queryByText(/アイテムボックス/)).toBeNull()
+    expect(queryByText(/操作案内をリセット/)).toBeNull()
   })
 
   it('期限切れの出品・買取があるとマイページに通知バナーを表示する', async () => {

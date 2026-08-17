@@ -149,27 +149,30 @@ class Auction
                 ->where('id', '!=', $winningChat->id)
                 ->update(['status' => 'declined']);
 
-            // 関係者へ Web Push（送信はコミット後。操作した本人には送らない）
-            $push = app(WebPushSender::class);
+            // 関係者へ通知（送信はコミット後。操作した本人には送らない）
+            $notifier = app(Notifier::class);
             $itemName = $source->item?->name;
             $priceText = "{$dealPrice} {$source->currency}";
             if ($winningChat->buyer_id !== $actorUserId) {
-                $push->send(
+                $notifier->send(
                     $winningChat->buyer_id,
+                    NotificationCategory::AUCTION,
                     'MoE Trade — 落札しました',
                     "オークション「{$itemName}」を {$priceText} で落札しました。受け渡しの調整をしてください。"
                 );
             }
             if ($source->user_id !== $actorUserId) {
-                $push->send(
+                $notifier->send(
                     $source->user_id,
+                    NotificationCategory::AUCTION,
                     'MoE Trade — オークション成立',
                     "オークション「{$itemName}」が {$priceText} で成立しました。受け渡しの調整をしてください。"
                 );
             }
             foreach ($loserIds as $loserId) {
-                $push->send(
+                $notifier->send(
                     $loserId,
+                    NotificationCategory::AUCTION,
                     'MoE Trade — 落札ならず',
                     "オークション「{$itemName}」は他のユーザーが落札しました。"
                 );
@@ -194,9 +197,10 @@ class Auction
             self::conclude($source, $best, null);
         } else {
             $source->update(['status' => 'expired']);
-            // 入札なし終了を owner へ Web Push で知らせる
-            app(WebPushSender::class)->send(
+            // 入札なし終了を owner へ知らせる
+            app(Notifier::class)->send(
                 $source->user_id,
+                NotificationCategory::AUCTION,
                 'MoE Trade — オークション終了',
                 "オークション「{$source->item?->name}」は入札がないまま終了しました。"
             );
@@ -240,12 +244,13 @@ class Auction
             ->update(['outbid_at' => now()]);
         $source->chats()->whereKey($best->id)->update(['outbid_at' => null]);
 
-        // 抜かれた入札者へ Web Push（価格更新通知。送信はコミット後）
-        $push = app(WebPushSender::class);
+        // 抜かれた入札者へ通知（価格更新通知。送信はコミット後）
+        $notifier = app(Notifier::class);
         $current = (int) $best->bid_price;
         foreach ($newlyOutbidIds as $userId) {
-            $push->send(
+            $notifier->send(
                 $userId,
+                NotificationCategory::AUCTION,
                 'MoE Trade — 価格更新',
                 "オークション「{$source->item?->name}」であなたの入札より有利な入札がありました（現在価格 {$current} {$source->currency}）。"
             );

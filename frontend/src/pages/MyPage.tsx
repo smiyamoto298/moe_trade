@@ -8,14 +8,12 @@ import { mockChats, MOCK_MY_USER_ID, MOCK_MY_LISTING_IDS, USE_MOCK } from '../ap
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { useDialog } from '../contexts/DialogContext'
-import { useTour } from '../tours/TourContext'
 import ChatThread from '../components/ChatThread'
 import EditTradeModal from '../components/EditTradeModal'
 import RenewTradeModal from '../components/RenewTradeModal'
 import type { Listing, BuyRequest, TradeChat, Server } from '../types'
 import { SERVERS } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS } from '../utils/constants'
-import { buildPushGuide } from '../utils/pushGuide'
 
 type Tab = 'listings' | 'buying' | 'buy_requests' | 'selling'
 
@@ -26,10 +24,8 @@ export default function MyPage() {
   const {
     unreadChatIds, unreadListingIds, unreadBuyRequestIds,
     markAsRead, markOutbidSeen, unreadOutbidChatIds, outbidChats,
-    notifPermission, notifSupported, pushEnabled, pushOptedOut, disablePush, enablePush, requestNotifPermission,
   } = useNotification()
   const { confirm, alert } = useDialog()
-  const { resetAllTours, startTour } = useTour()
 
   const [tab, setTab] = useState<Tab>('listings')
   const [searchParams, setSearchParams] = useSearchParams()
@@ -578,61 +574,13 @@ export default function MyPage() {
         <h1 className="text-xl font-bold text-white">マイページ</h1>
 
         <div className="flex items-center gap-2">
+          {/* ブラウザ通知の許可・ON/OFF は通知設定画面（/mypage/notifications）に集約している */}
           <Link
-            to="/mypage/items"
+            to="/mypage/notifications"
             className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
           >
-            📦 アイテムボックス
+            ⚙️ 通知設定
           </Link>
-          <button
-            onClick={async () => {
-              const ok = await confirm('各ページの操作案内（初回ポップアップ）をもう一度表示するようにします。よろしいですか？')
-              if (!ok) return
-              resetAllTours()
-              startTour('mypage')
-            }}
-            className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
-          >
-            ❔ 操作案内をリセット
-          </button>
-          {notifPermission === 'default' && (
-            <button
-              onClick={requestNotifPermission}
-              className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
-            >
-              🔔 ブラウザ通知を有効にする
-            </button>
-          )}
-          {notifPermission === 'granted' && pushOptedOut && (
-            <button
-              onClick={enablePush}
-              className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
-            >
-              🔕 通知OFF — ONに戻す
-            </button>
-          )}
-          {notifPermission === 'granted' && !pushOptedOut && (
-            <span className="text-xs text-emerald-400 flex items-center gap-1.5">
-              🔔 通知ON{pushEnabled ? '（プッシュ配信中）' : ''}
-              <button
-                onClick={disablePush}
-                className="text-gray-400 hover:text-gray-200 border border-surface-border hover:border-primary-500 bg-surface-card px-2 py-0.5 rounded transition-colors"
-              >
-                OFFにする
-              </button>
-            </span>
-          )}
-          {notifPermission === 'denied' && (
-            <button
-              onClick={() => {
-                const guide = buildPushGuide(notifSupported)
-                alert(guide.message, { title: guide.title, highlight: guide.highlight })
-              }}
-              className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
-            >
-              {notifSupported ? '🔕 通知がブロックされています（解除方法）' : '🔔 プッシュ通知を利用するには'}
-            </button>
-          )}
         </div>
       </div>
 

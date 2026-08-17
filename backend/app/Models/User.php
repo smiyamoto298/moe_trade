@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\EmailHasher;
+use App\Support\NotificationCategory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -29,11 +31,34 @@ class User extends Authenticatable implements MustVerifyEmail
         'register_ip',
         'is_suspended',
         'inventory_storage_mode',
+        'push_notify_trade',
+        'push_notify_auction',
+        'push_notify_expiry',
+        'email_notify_trade',
+        'email_notify_auction',
+        'email_notify_expiry',
+    ];
+
+    /**
+     * 通知設定の既定値。
+     *
+     * DB側の default だけだと、作成直後のモデルインスタンス（INSERT の戻り）には
+     * 値が入らず null（=OFF扱い）に見えてしまうため、モデル側でも既定を持たせる。
+     */
+    protected $attributes = [
+        'push_notify_trade'   => true,
+        'push_notify_auction' => true,
+        'push_notify_expiry'  => true,
+        'email_notify_trade'   => true,
+        'email_notify_auction' => true,
+        'email_notify_expiry'  => true,
     ];
 
     protected $hidden = [
         // email はハッシュ値なので外部に出さない（誤って平文と誤解されるのを防ぐ）
         'email',
+        // 通知先メールは復号可能な個人情報。本人向けの通知設定APIだけが明示的に返す
+        'notification_email',
         'password',
         'remember_token',
     ];
@@ -44,6 +69,16 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_suspended' => 'boolean',
+            // 通知先メールは復号できる必要がある（送信に使うため）。平文では持たず、
+            // APP_KEY による暗号化で保存する
+            'notification_email' => 'encrypted',
+            'notification_email_verified_at' => 'datetime',
+            'push_notify_trade' => 'boolean',
+            'push_notify_auction' => 'boolean',
+            'push_notify_expiry' => 'boolean',
+            'email_notify_trade' => 'boolean',
+            'email_notify_auction' => 'boolean',
+            'email_notify_expiry' => 'boolean',
         ];
     }
 
@@ -101,5 +136,54 @@ class User extends Authenticatable implements MustVerifyEmail
     public function routeNotificationForMail($notification = null)
     {
         return $this->plainEmail;
+    }
+
+    /**
+     * 通知先メールアドレスが、ログイン用アドレス（users.email のハッシュ）と同一か。
+     *
+     * 同一なら確認メールを別途送らない（アカウントのメール認証で本人確認が済むため）。
+     */
+    public function notificationEmailIsLoginEmail(): bool
+    {
+        $email = $this->notification_email;
+
+        return $email !== null && hash_equals($this->email, EmailHasher::hash($email));
+    }
+
+    /**
+     * 通知先メールアドレスが確認済みで、実際にメール通知を送ってよい状態か。
+     *
+     * - 別アドレスを指定した場合: 確認メールのリンクを踏むと notification_email_verified_at が入る
+     * - ログイン用アドレスと同一の場合: 確認メールは送らず、アカウントのメール認証
+     *   （email_verified_at）をもって確認済みとみなす
+     *
+     * 未確認のアドレスへは一切送らない（第三者のアドレスを登録しての嫌がらせ送信対策）。
+     */
+    public function hasVerifiedNotificationEmail(): bool
+    {
+        if ($this->notification_email === null) {
+            return false;
+        }
+
+        if ($this->notification_email_verified_at !== null) {
+            return true;
+        }
+
+        return $this->email_verified_at !== null && $this->notificationEmailIsLoginEmail();
+    }
+
+    /** 指定種別の Web Push を受け取る設定か。 */
+    public function wantsPush(string $category): bool
+    {
+        return NotificationCategory::isValid($category)
+            && (bool) $this->{'push_notify_' . $category};
+    }
+
+    /** 指定種別のメール通知を受け取る設定か（宛先が確認済みであることも条件）。 */
+    public function wantsEmail(string $category): bool
+    {
+        return NotificationCategory::isValid($category)
+            && (bool) $this->{'email_notify_' . $category}
+            && $this->hasVerifiedNotificationEmail();
     }
 }

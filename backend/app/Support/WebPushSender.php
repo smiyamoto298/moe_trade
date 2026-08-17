@@ -37,11 +37,17 @@ class WebPushSender
         }
 
         DB::afterCommit(function () use ($userId, $title, $body, $url) {
-            $this->deliver($userId, $title, $body, $url);
+            $this->sendNow($userId, $title, $body, $url);
         });
     }
 
-    protected function deliver(int $userId, string $title, string $body, string $url): void
+    /**
+     * コミット待ちをせず即座に送信する。
+     *
+     * 送信可否（種別ごとの ON/OFF 判定）を済ませた App\Support\Notifier が、
+     * 自身の afterCommit の中から呼ぶ。単体で使う場合は send() を使うこと。
+     */
+    public function sendNow(int $userId, string $title, string $body, string $url = '/mypage'): void
     {
         $subscriptions = PushSubscription::where('user_id', $userId)->get();
         if ($subscriptions->isEmpty()) {

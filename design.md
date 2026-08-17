@@ -20,7 +20,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 
 ### 1. ユーザー認証
 - メールアドレス＋パスワードでの新規登録・ログイン
-- **メールアドレスは平文をDBに保存しない**。HMAC-SHA256のブラインドインデックスのみ保存（後述「メールアドレス保護」）
+- **メールアドレスは平文をDBに保存しない**。HMAC-SHA256のブラインドインデックスのみ保存（後述「メールアドレス保護」）。**例外はメール通知の宛先のみ**で、これは希望したユーザーの分だけ暗号化して別カラムに保持する（§8・後述「メールアドレス保護」）
 - 新規登録画面表示時に利用規約モーダルを表示し、同意必須（同意するまで登録不可）。同意は利用規約とプライバシーポリシーの両方を対象とする
 - 登録時にサーバーごとのキャラクター名を設定可能（任意）
 - パスワードリセット（メール送信）
@@ -162,10 +162,8 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 取引希望タブ：自分が取引希望を出した一覧。各チャット行にはアイテム名に続けて出品の取引金額（`listing.price` ＋通貨）を表示する（販売希望タブの買取金額表示と同様）
 - 販売希望タブ：自分が売却を申し出た買取の一覧。各チャット行にアイテム名と買取金額（`buy_request.price` ＋通貨）を表示する
 - キャラクター管理（追加・変更・削除）
-- ブラウザ通知の有効化（許可すると同時に Web Push も購読し、サイトを閉じていても通知が届く。§8 参照）
-  - **通知ON中は「OFFにする」ボタン**で通知を停止できる（Web Push 購読解除＋ページ内通知も抑制。localStorage `push_opt_out`。OFF中は「🔕 通知OFF — ONに戻す」ボタンで再購読）
-  - **通知がブロック（denied）されているときは「解除方法」ボタン**で、プラットフォーム別（Android Chrome / iPhoneホーム画面アプリ / PC）のブロック解除手順をダイアログ表示する（`frontend/src/utils/pushGuide.ts`）
-  - **通知API非対応のブラウザ（iPhone/iPad の Safari 等）では「プッシュ通知を利用するには」ボタン**で、ホーム画面に追加（PWA）してから有効化する手順を案内する（従来は非対応でも「ブロックされています」と誤表示していた。`notifSupported` で区別）
+- **ヘッダー行のボタンは「⚙️ 通知設定」のみ**（`/mypage/notifications` へ遷移）。**ブラウザ通知の許可・ON/OFF・ブロック解除案内はすべて通知設定画面に集約**し、マイページ側には状態表示も操作も置かない（旧「🔔 ブラウザ通知を有効にする」「🔔 通知ON／OFFにする」「🔕 通知OFF — ONに戻す」「🔕 通知がブロックされています（解除方法）」は §8 の通知設定画面へ移設）
+- **「📦 アイテムボックス」「❔ 操作案内をリセット」ボタンはマイページに置かない**。アイテムボックスへの導線はヘッダーの「マイページ」ドロップダウン（PC・モバイルとも）にあり、操作案内は各ページ右下の「?」ボタンからいつでも再生できるためリセット機能自体が不要（後述「操作案内ツアー」）
 - **期限切れ通知**: 自分の出品・買取に期限切れ（`expired`）がある場合、ページ上部に通知バナー（「期限切れの取引があります 出品N件・買取M件」＋該当タブへの誘導ボタン）を表示し、出品中／買取中タブにも「期限切れN」バッジを出す。再出品・再登録を促す。件数は `/mypage/listings`・`/mypage/buy-requests` の戻り（全ステータス）から算出し、期限切れセクションと一致する
 - 一覧＋チャットの2カラムグリッドは `lg:grid-cols-[minmax(0,1fr)_420px]`（`1fr` だと nowrap な長文プレビューの固有最小幅で左カラムが広がり、チャットパネルがページ外へはみ出す）
 
@@ -203,19 +201,46 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - ブラウザ通知（Notification API）: 新着メッセージ・掲示板新着で発火（Web Push 購読済みのブラウザでは、チャット新着のページ内通知はサーバープッシュと二重になるため抑制する）
 - 旧 `GET /api/chats/unread-count` は互換のため残置（フロントはsummaryを使用）
 
+#### 通知チャネルと通知設定（Web Push / メール）
+サイトを閉じていても取引イベントを届けるチャネルは **Web Push** と **メール** の2つ。どちらも配信口は `App\Support\Notifier` に一本化されており、各コントローラ・バッチは `Notifier::send($userId, $category, $title, $body, $url)` だけを呼ぶ（宛先の指定はユーザーIDのみで、呼び出し側は個人情報を扱わない）。Notifier が宛先ユーザーの設定を見て、有効なチャネルにだけ配信する。
+
+- **通知の種別（`App\Support\NotificationCategory`）**: `trade`（取引）/ `auction`（オークション）/ `expiry`（期限切れ）の3種。種別 × チャネルの計6通りを users の `push_notify_*` / `email_notify_*` 列で個別に ON/OFF できる。**既定は全て ON**（従来の Web Push の挙動を維持。メールは宛先未設定・未確認なら送らないので既定 ON でも勝手には届かない）
+  - `trade`: 新しい取引希望／販売希望・新着チャットメッセージ・取引成立・見送り
+  - `auction`: 入札あり・価格更新（outbid）・落札／落選・オークション成立／不成立
+  - `expiry`: 期限切れ前日のリマインド
+- **配信の共通仕様**: DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗は警告ログのみでリクエスト処理を止めない。種別が未知の場合は配信せず警告ログのみ
+- **通知設定画面（`/mypage/notifications`・ログイン必須）**: マイページの「⚙️ 通知設定」から遷移。種別 × チャネルのトグル（変更即保存・失敗時は元に戻す）と、メール通知の宛先設定をまとめて行う。チャネル自体が無効な状態（ブラウザ通知が未許可／ブロック／OFF、通知先メールが未設定／未確認）のときは「ONにしても届かない」旨と復旧動線を表示する
+  - **「ブラウザ通知（このブラウザ）」の行**（種別トグルの直下）で、このブラウザへの配信可否を操作する。上の種別トグルが「何を受け取るか」の設定なのに対し、こちらは「このブラウザに配信するか」。**マイページから移設したもので、以下は従来と同じ挙動**
+    - 未許可（`default`）→「🔔 ブラウザ通知を有効にする」（許可と同時に Web Push を購読）
+    - ON（`granted` かつオプトアウトなし）→「🔔 ON（プッシュ配信中）」表示＋「OFFにする」（Web Push 購読解除＋ページ内通知も抑制。localStorage `push_opt_out`）
+    - OFF中 →「ONに戻す」で再購読
+    - ブロック（`denied`）→「解除方法」でプラットフォーム別（Android Chrome / iPhoneホーム画面アプリ / PC）の解除手順をダイアログ表示（`frontend/src/utils/pushGuide.ts`）。通知API非対応（iPhone/iPad Safari）は `notifSupported` で区別し「利用するには」でホーム画面追加（PWA）の手順を案内する
+
+##### メール通知の宛先（`notification_email`）
+本サイトは原則としてメールアドレスを復元できない形（HMAC ブラインドインデックス）でしか保存しないが、**メールを送るには宛先の復元が必要**なため、メール通知を希望したユーザーの分だけ `users.notification_email` に**暗号化して**保存する（Laravel の `encrypted` キャスト。`APP_KEY` が無ければ復号できない。平文では保存しない）。ユーザーはいつでも削除できる。
+
+- **新規登録時のオプション**: 登録フォームの「メールで通知を受け取る」チェック（既定 OFF）。ON のとき `POST /api/auth/register` に `email_notification: true` を送り、登録アドレスを通知先としても保存する。OFF なら従来どおりハッシュのみ
+- **アドレスの確認（なりすまし・嫌がらせ送信の防止）**: 未確認のアドレスへは**一切通知を送らない**
+  - **ログイン用アドレスと同一の場合**（ハッシュ一致）は確認メールを送らず、**アカウントのメール認証（`email_verified_at`）をもって確認済みとみなす**（`User::hasVerifiedNotificationEmail()`）。登録時オプションはこの経路
+  - **別のアドレスを指定した場合**は `App\Notifications\VerifyNotificationEmail` の確認メールを送り、60分有効の署名付きURL（`GET /api/notification-email/verify/{id}/{hash}`。hash は送信時アドレスの sha1）を開くまで未確認のまま。確認後 `notification_email_verified_at` を記録し、フロントの `/mypage/notifications?notification_email_verified=1` へリダイレクトする
+  - アドレスを変更すると確認済みは解除され、再度確認が必要になる（変更前の確認を引き継がせない）。hash が変わるため古い確認リンクも自動的に無効になる
+  - 確認メールの大量送信を防ぐため、宛先変更 API は `throttle:5,1`
+- **メール本文**（`App\Notifications\TradeEventMail`）: Web Push と同じタイトル・本文に、遷移先（`config('app.frontend_url')` + `url`）へのボタンと通知設定画面への案内を添える。件名・本文にはサイト上の公開情報しか含めない
+- **送信方式**: キューワーカーを常設していないため同期送信（既存の認証メール・パスワード再設定メールと同じ）。失敗はログのみ
+
 #### Web Push（サイトを閉じていても届くプッシュ通知）
-「取引を登録したままサイトを確認しないユーザー」に取引イベントを届けるための通知チャネル。**メールアドレス等の個人情報は保持しない方針のまま通知を実現する**（保存するのはブラウザが発行する匿名の購読情報＝プッシュサービスのエンドポイントURLと暗号化鍵のみ。ユーザーはブラウザ設定からいつでも失効できる）。
+「取引を登録したままサイトを確認しないユーザー」に取引イベントを届けるための通知チャネル。**ブラウザが発行する匿名の購読情報（プッシュサービスのエンドポイントURLと暗号化鍵）だけを保存し、個人情報は扱わない**。ユーザーはブラウザ設定からいつでも失効できる。
 
 - **購読フロー**: マイページ「🔔 ブラウザ通知を有効にする」→ Notification 許可と同時に Service Worker（`frontend/public/sw.js`）を登録し `PushManager.subscribe`（VAPID 公開鍵は `GET /api/push/public-key`）→ 購読情報を `POST /api/push/subscriptions` で保存。許可済みブラウザではログイン時に自動で再購読・最新化する（`NotificationContext`）。endpoint はブラウザ単位で一意のため、同一ブラウザで別ユーザーがログインし直すと購読の user_id を付け替える
 - **通知OFF（オプトアウト）**: マイページの「OFFにする」でサーバーの購読行削除（`DELETE /api/push/subscriptions`）＋ブラウザ購読解除を行い、localStorage `push_opt_out='1'` を立てる。OFF中は自動再購読とページ内通知（ポーリング由来の Notification）も抑制する。「ONに戻す」/「🔔 ブラウザ通知を有効にする」でフラグを外して再購読する。ブラウザ側の解除だけが失敗しても、次回送信時に期限切れ（410）として自動削除される
 - **ブロック解除・非対応の動線**: 許可が denied のときは「解除方法」ボタンでプラットフォーム別の解除手順（Android Chrome のサイト設定 / iPhoneホーム画面アプリの設定アプリ / PC の鍵アイコン）を共通ダイアログで案内。通知API非対応（iPhone/iPad Safari）は denied と区別し（`notifSupported`）、ホーム画面追加（PWA）の手順を案内する（`frontend/src/utils/pushGuide.ts` の `buildPushGuide`）
-- **送信イベント**（`App\Support\WebPushSender`。宛先はユーザーIDのみ・操作した本人には送らない）:
-  - 新しい取引希望／販売希望 → 出品者・買取登録者（順番待ち＝2番目以降は owner から見えないため通知しない）
-  - 新着チャットメッセージ → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）。**通知の URL は `/mypage?chat=<chat_id>`**：クリックするとマイページが読み込み完了後に該当チャットの属するタブ（出品/取引希望/買取/売却）へ切り替えてそのチャットを開く（クエリは一度処理したら消す。該当チャットが見つからない場合は通常表示）。**取引希望者（買い手）からの最初のメッセージは通知しない**：フロントの取引希望フローは「チャット作成→直後に最初のメッセージ送信」の2段階のため、両方通知すると owner に「新しい取引希望」と二重に届く。最初のメッセージは取引希望の一部としてチャット作成時の通知に代表させ、2通目以降を通知する
-  - 取引成立・見送り（owner 操作）→ 取引希望者
-  - オークション入札 → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
-  - オークション解決（即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
-  - **期限切れの前日**（期限まで24時間以内・バッチ `trades:notify-expiring` 毎時）→ 登録者へ期限更新を促す通知。送信済みは `expiry_notified_at` で管理し同じ期限に再送しない（期限の延長・再出品で `expires_at` が変わるとリセットされ、新しい期限の前日に再通知）。オークションは自動成立/取り下げ・延長不可のため対象外
+- **送信イベント**（`App\Support\Notifier` 経由。カッコ内は通知種別。宛先はユーザーIDのみ・操作した本人には送らない。**Web Push とメールで共通**）:
+  - 新しい取引希望／販売希望（`trade`） → 出品者・買取登録者（順番待ち＝2番目以降は owner から見えないため通知しない）
+  - 新着チャットメッセージ（`trade`） → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）。**通知の URL は `/mypage?chat=<chat_id>`**：クリックするとマイページが読み込み完了後に該当チャットの属するタブ（出品/取引希望/買取/売却）へ切り替えてそのチャットを開く（クエリは一度処理したら消す。該当チャットが見つからない場合は通常表示）。**取引希望者（買い手）からの最初のメッセージは通知しない**：フロントの取引希望フローは「チャット作成→直後に最初のメッセージ送信」の2段階のため、両方通知すると owner に「新しい取引希望」と二重に届く。最初のメッセージは取引希望の一部としてチャット作成時の通知に代表させ、2通目以降を通知する
+  - 取引成立・見送り（`trade`。owner 操作）→ 取引希望者
+  - オークション入札（`auction`） → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
+  - オークション解決（`auction`。即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
+  - **期限切れの前日**（`expiry`。期限まで24時間以内・バッチ `trades:notify-expiring` 毎時）→ 登録者へ期限更新を促す通知。送信済みは `expiry_notified_at` で管理し同じ期限に再送しない（期限の延長・再出品で `expires_at` が変わるとリセットされ、新しい期限の前日に再通知）。オークションは自動成立/取り下げ・延長不可のため対象外
 - **実装**: `minishlink/web-push`（VAPID）。鍵は env（`VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`・`config/webpush.php`）。**未設定なら送信は no-op**（テスト・鍵未配備の環境で安全）。DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗はログのみでリクエストを止めず、期限切れ購読（410/404）は自動削除する
 - **対応環境**: デスクトップ/Android の主要ブラウザ。iOS Safari はホーム画面追加（PWA）時のみ対応のため `manifest.webmanifest` を配布する。クリック時は既存タブをフォーカスして通知ペイロードの `url` へ遷移（既定 `/mypage`・新着メッセージは `/mypage?chat=<chat_id>`。無ければ新規ウィンドウ）
 
@@ -423,7 +448,8 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 ### 操作案内ツアー（初回ガイド）
 - 主要ページ（出品一覧 / 新規出品 / 出品詳細 / マイページ / アイテムボックス / 新規登録）で、対象要素をスポットライトしながら順に説明する吹き出しツアーを表示する
 - 実装: 案内文・対象・順番は `frontend/src/tours/content.ts` に集約（`data-tour` 属性で対象指定）。表示制御は `tours/TourContext.tsx`、描画は `components/TourOverlay.tsx`
-- 初回自動表示: ページ初訪問時に自動開始し、既読は `localStorage`（`moe_tour_seen:<pageId>:v<version>`）で管理。内容更新時は `version` を上げると全員に再表示される。マイページから既読リセット可
+- 初回自動表示: ページ初訪問時に自動開始し、既読は `localStorage`（`moe_tour_seen:<pageId>:v<version>`）で管理。内容更新時は `version` を上げると全員に再表示される
+- **再表示は画面右下の「?」ボタン（`components/HelpButton.tsx`）**: ツアーのあるページに常設し、押すとそのページのツアーを既読状態に関係なく再生する。ツアーが無いページ・再生中は非表示。**既読フラグを消す「操作案内をリセット」機能は持たない**（「?」でいつでも見返せるため不要。マイページのリセットボタンと `TourContext.resetAllTours` は廃止済み）
 - **表示されていない要素のステップは自動スキップ**:
   - 対象セレクタの要素が DOM に存在しない場合は描画待ち（900ms）の後にスキップ
   - DOM に存在しても CSS で非表示の場合（スマホ幅・コンテナクエリで隠れる列、`display:none` / `visibility:hidden` / ゼロサイズ）は即スキップ
@@ -448,12 +474,13 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 ├── /buy-requests/new         # 買取登録フォーム（登録完了後は元居た画面へ戻る。直リンク等で戻り先が無ければ /mypage）
 ├── /items                    # アイテム一覧・検索（公開・クロール可。装備品/テクニック/アセット/その他タブ。閲覧は全員、操作は権限別）
 ├── /items/:id                # アイテム恒久ページ（相場・出品/買取への導線・SEOの正規ランディング先。ログイン中はハッシュタグをテキスト入力で編集可能）
-├── /auth/register            # 新規登録（キャラクター名設定含む）
+├── /auth/register            # 新規登録（キャラクター名設定・メール通知の利用オプション含む）
 ├── /auth/login               # ログイン
 │   ├── /auth/forgot-password # パスワード再設定申請
 │   └── /auth/reset-password  # パスワード再設定
 ├── /mypage                   # マイページ
-│   └── /mypage/items         # アイテムボックス（公式の所持アイテム一覧を貼り付け・台帳管理・要ログイン）
+│   ├── /mypage/items         # アイテムボックス（公式の所持アイテム一覧を貼り付け・台帳管理・要ログイン）
+│   └── /mypage/notifications # 通知設定（種別 × Web Push/メールの ON/OFF・通知先メールの設定・要ログイン）
 ├── /board                    # お問い合わせ（スレッド一覧・要ログイン）
 │   └── /board/:id            # スレッド詳細（投稿チャット）
 ├── /terms                    # 利用規約（公開ページ・本文は登録時モーダルと共通）
@@ -745,6 +772,10 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 |---|---|---|
 | id | BIGINT PK | |
 | email | VARCHAR(255) UNIQUE | **HMAC-SHA256のブラインドインデックス**（平文は保存しない・後述） |
+| notification_email | TEXT NULL | メール通知の宛先。**暗号化して保存**（`encrypted` キャスト。送信には復号が必要なためハッシュではない）。メール通知を希望したユーザーのみ。NULL なら メール通知は届かない |
+| notification_email_verified_at | TIMESTAMP NULL | 通知先メールの確認完了時刻。ログイン用と同一アドレスの場合は確認メールを送らないため NULL のままで、`email_verified_at` をもって確認済みとみなす（§8 参照） |
+| push_notify_trade / push_notify_auction / push_notify_expiry | BOOLEAN | 種別ごとの Web Push の ON/OFF（デフォルト true） |
+| email_notify_trade / email_notify_auction / email_notify_expiry | BOOLEAN | 種別ごとのメール通知の ON/OFF（デフォルト true。宛先が未設定・未確認なら送らない） |
 | password | VARCHAR(255) | ハッシュ済み |
 | role | ENUM('user','editor','admin') | 権限 |
 | register_ip | VARCHAR(45) | 登録時IPアドレス（IPv6対応） |
@@ -1231,7 +1262,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `GET /listings/{id}` / `GET /buy-requests/{id}` — 出品/買取詳細ページ（数値IDのみ・認証不要）。`ListingPageController` / `BuyRequestPageController` が SPA シェルに固有メタ（title/description/OGP・canonical=アイテム恒久ページ `/items/{item_id}`）を注入して返す。詳細APIと同じ `visible(['active','completed'])` 以外（取り下げ・期限切れ・不存在）は 404＋シェル（ソフト404対策。詳細は「共通UX仕様 > SEO」参照）
 
 ### 認証
-- `POST /api/auth/register` — `characters[]` パラメータで初期キャラクター登録可
+- `POST /api/auth/register` — `characters[]` パラメータで初期キャラクター登録可。`email_notification: true` を送るとメール通知を利用する扱いになり、登録アドレスを通知先（暗号化保存）としても保持する（§8 参照。既定は保持しない）
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
 - `GET  /api/auth/me`
@@ -1282,10 +1313,15 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `POST /api/listings/:id/chats` — 取引希望チャット作成（server・preferred_time を含む）。**オークションでは入札**（`server`・`bid_price`・任意 `note`）。条件を満たさない入札は 400。即決価格到達で即時成立。既存 open 入札があればより有利な額に更新
 
 ### 通知
-- `GET /api/notifications/summary` — 通知サマリー（5秒ポーリング用）。`unread_chats[]`（最後の発言が相手のチャット一覧。オークション入札は除く）・`outbid_chats[]`（オークションで自分の入札がより有利な入札に抜かれたもの。`chat_id` / `source_type` / `item_name` / `your_bid` / `current_price` / `outbid_at`。既読はクライアントの localStorage で `outbid_at` をもとに管理）・`board`（掲示板の関係する最新投稿）・`board_threads[]`・`unverified_items`（editor/admin のみ。`equipment` / `technique` / `total`）・`unorganized_label_count`（editor/admin のみ。未整理の付加効果ラベル件数）・`excluded_suggestion_count`（admin のみ。ユーザー個別除外の昇格候補件数）・`expired_count`（自分の期限切れ出品＋買取の件数。バッチ未確定の期限超過＝active かつ expires_at 過去も含む。ヘッダー「マイ取引」に通知バッジを出す）を返す
+- `GET /api/notifications/summary` — 通知サマリー（5秒ポーリング用）。`unread_chats[]`（最後の発言が相手のチャット一覧。オークション入札は除く）・`outbid_chats[]`（オークションで自分の入札がより有利な入札に抜かれたもの。`chat_id` / `source_type` / `item_name` / `your_bid` / `current_price` / `outbid_at`。既読はクライアントの localStorage で `outbid_at` をもとに管理）・`board`（掲示板の関係する最新投稿）・`board_threads[]`・`unverified_items`（editor/admin のみ。`equipment` / `technique` / `total`）・`unorganized_label_count`（editor/admin のみ。未整理の付加効果ラベル件数）・`excluded_suggestion_count`（admin のみ。ユーザー個別除外の昇格候補件数。カスタム種別への割当は共通化の対象外のため数えない）・`expired_count`（自分の期限切れ出品＋買取の件数。バッチ未確定の期限超過＝active かつ expires_at 過去も含む。ヘッダー「マイ取引」に通知バッジを出す）を返す
 - `GET    /api/push/public-key` — Web Push 購読用の VAPID 公開鍵（未設定なら null = Push 無効）
 - `POST   /api/push/subscriptions` — Web Push 購読の登録（`endpoint`・`keys.p256dh`・`keys.auth`・任意 `content_encoding`）。endpoint 一致で upsert し、ログイン中ユーザーへ付け替える
 - `DELETE /api/push/subscriptions` — Web Push 購読の解除（本人の endpoint のみ削除）
+- `GET    /api/notification-settings` — 通知設定の取得（本人のみ）。`notification_email` / `notification_email_verified` / `notification_email_status`（`none` / `verified` / `pending_confirmation` / `pending_account_verification`）/ `is_login_email` / `push`・`email`（それぞれ `trade`・`auction`・`expiry` の真偽値）
+- `PUT    /api/notification-settings` — 種別 × チャネルの ON/OFF を更新（`push.*`・`email.*` を全て必須で受け取る）
+- `PUT    /api/notification-settings/email` — 通知先メールの設定・変更（`email`）。ログイン用と別アドレスなら確認メールを送る。`throttle:5,1`
+- `DELETE /api/notification-settings/email` — 通知先メールの削除（メール通知は届かなくなる）
+- `GET    /api/notification-email/verify/{id}/{hash}` — 通知先メールの確認（60分有効の署名付きURL・認証不要）。成功で `/mypage/notifications?notification_email_verified=1` へリダイレクト
 
 ### チャット
 - `GET  /api/chats/unread-count` — 未読チャット数（旧。フロントは notifications/summary を使用）
@@ -1443,6 +1479,8 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 平文メールアドレスをDBに一切保存せず、`users.email` には **HMAC-SHA256 の決定的ハッシュ**のみを格納する（漏洩時の個人情報保護）。
 
+**唯一の例外がメール通知の宛先**（`users.notification_email`）。メールを送るには宛先の復元が必要でハッシュでは実現できないため、**メール通知を希望したユーザーの分だけ**、平文ではなく `APP_KEY` による暗号化（Laravel の `encrypted` キャスト）で保持する。オプトイン（登録時のチェック or 通知設定画面での設定）が前提で、いつでも削除できる。詳細は §8「メール通知の宛先」。
+
 ### 仕組み
 - ハッシュ生成: `App\Support\EmailHasher::hash()`。小文字化＋trim で正規化してから `hash_hmac('sha256', email, key)` を計算
 - 秘密鍵（ペッパー）: `.env` の `EMAIL_HASH_KEY`。未設定時は `APP_KEY` にフォールバック。**一度決めたら変更不可**（変更すると全ユーザーがログイン不能になる）
@@ -1534,9 +1572,9 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 ### 公表している事項（ページの章構成）
 1. 基本方針（個人情報保護法・関係法令の遵守）
-2. 取得する情報と取得方法 — メールアドレス（平文非保存・ブラインドインデックスのみ）、パスワード（ハッシュ）、キャラクター名・サーバー、投稿内容、アクセスログ（IP等）
-3. 利用目的 — 認証・本人確認／メール認証・パスワード再設定等の連絡／取引仲介の提供／不正利用防止／サービス改善・問い合わせ対応。目的外利用は本人同意を得る
-4. 安全管理措置 — HTTPS、メールの HMAC-SHA256 ブラインドインデックス（平文非保存）、パスワードハッシュ、管理機能のアクセス制限、チャットの当事者限定閲覧
+2. 取得する情報と取得方法 — メールアドレス（平文非保存・ブラインドインデックスのみ。**メール通知を希望した場合のみ**、宛先として暗号化保存し、通知設定画面からいつでも削除可）、パスワード（ハッシュ）、キャラクター名・サーバー、投稿内容、アクセスログ（IP等）
+3. 利用目的 — 認証・本人確認／メール認証・パスワード再設定等の連絡／**希望者への取引イベントのメール通知**／取引仲介の提供／不正利用防止／サービス改善・問い合わせ対応。目的外利用は本人同意を得る
+4. 安全管理措置 — HTTPS、メールの HMAC-SHA256 ブラインドインデックス（平文非保存）、通知先メールの暗号化保存、パスワードハッシュ、管理機能のアクセス制限、チャットの当事者限定閲覧
 5. 第三者提供 — 本人同意・法令に基づく場合等を除き提供しない。他ユーザーに表示されるのはキャラクター名（未登録は「ユーザー#ID」）のみ
 6. 委託 — ホスティング・メール送信基盤の利用と委託先の監督
 7. Cookie・ローカルストレージ — 認証トークン等を localStorage に保存。外部のアクセス解析・広告配信は不使用
@@ -1650,7 +1688,7 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Unit/EmailHasherTest.php` | メールハッシュの決定性・正規化・不可逆性 |
 | `tests/Unit/ProdDataMaskerTest.php` | 本番データ取込のマスキング（IPの決定的変換・キャラ名/アカウント名の判別可能置換・ログイン情報置換・対象外テーブル不変） |
 | `tests/Feature/PullProdDataTest.php` | 本番取込API/コマンドの権限（401/403）・本番DB未設定時の失敗記録 |
-| `tests/Feature/AuthTest.php` | 登録（ハッシュ保存・重複・正規化）／ログイン／me／再送／ログアウト |
+| `tests/Feature/AuthTest.php` | 登録（ハッシュ保存・重複・正規化・メール通知オプションの有無で通知先メールを保持/非保持）／ログイン／me／再送／ログアウト |
 | `tests/Feature/PasswordResetTest.php` | 再設定メール送信・アカウント列挙対策・トークン検証・既存トークン失効 |
 | `tests/Feature/ItemApiTest.php` | アイテムCRUD・unverified編集権限・verify(editor)・削除(admin)・スキル必要値・装備セット・統合 |
 | `tests/Feature/UnifyEquipmentSetSpecialConditionsMigrationTest.php` | 装備セット特殊条件の全部位共通化移行（一部部位のみの条件を全部位へ・部位順を保った和集合・テクニック部位除外・条件なしセットとセット外アイテムは不変） |
@@ -1661,8 +1699,10 @@ docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
 | `tests/Feature/NotificationApiTest.php` | 通知サマリー（未読チャット・掲示板新着・対象者判定） |
 | `tests/Unit/WebPushSenderTest.php` | Web Push 送信（VAPID未設定はno-op・購読なしは送信しない・期限切れ購読の自動削除・トランザクション中はコミット後送信） |
 | `tests/Feature/PushSubscriptionApiTest.php` | Web Push 購読API（401・登録・endpoint一致のユーザー付け替え・URL検証・本人のみ解除・公開鍵取得） |
-| `tests/Feature/WebPushNotificationTest.php` | 取引イベントの Web Push（新規取引希望・順番待ち除外・買取・新着メッセージ（URL は `/mypage?chat=<chat_id>`）・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
-| `tests/Feature/NotifyExpiringTradesTest.php` | 期限切れ前日の Web Push バッチ（24時間以内の出品/買取に通知・二重送信なし・24時間超/期限超過/非active/オークションは対象外・期限延長でリセットされ新期限の前日に再通知） |
+| `tests/Unit/NotifierTest.php` | 通知の振り分け（種別 × チャネルの ON/OFF・通知先メール未設定/未確認は送らない・宛先nullや不明ユーザー・未知の種別・コミット後配信とロールバック時の抑止・メール送信失敗でも止まらない） |
+| `tests/Feature/NotificationSettingsTest.php` | 通知設定API（401・既定は全ON・種別×チャネルの更新とバリデーション・別アドレスは確認メール／ログイン用と同一なら確認不要・アカウント未認証は未確認扱い・署名付き確認リンク（無署名403・古いリンクは無効）・変更で確認解除・削除・平文非保存・他人の設定は見えない） |
+| `tests/Feature/NotificationDispatchTest.php` | 取引イベントの通知配信と種別（新規取引希望・順番待ち除外・買取・新着メッセージ（URL は `/mypage?chat=<chat_id>`）・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
+| `tests/Feature/NotifyExpiringTradesTest.php` | 期限切れ前日の通知バッチ（24時間以内の出品/買取に通知・二重送信なし・24時間超/期限超過/非active/オークションは対象外・期限延長でリセットされ新期限の前日に再通知） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |
 | `tests/Feature/PurgeExpiredAnnouncementsTest.php` | お知らせ日次削除バッチ（`announcements:purge-expired`・期限切れのみ削除・無期限/期限内は残す） |
@@ -1695,7 +1735,8 @@ docker compose exec php vendor/bin/phpunit
 | `src/utils/constants.test.ts` | マスタ定数の design.md 整合（マスタリ構成スキルが SKILL_GROUPS と完全一致・特殊条件15種・追加効果キー18種＋セレクト表示順・追加効果入力欄の3列構成 `STAT_INPUT_COLUMNS`・アセット選択肢）・追加効果/付加効果数値の符号付き表示 `formatSignedValue`（負数以外は + 付き） |
 | `src/utils/inventory.test.ts` | アイテムボックスの行の実効種別判定 `effectiveTypeId`（ユーザー割当＞共通割当＞取引可能＞未設定・登録アイテム紐づけ行でも割当が優先・null は既定種別へ解決・名前正規化） |
 | `src/utils/inventoryStore.test.ts` | 表示種別タブ／サーバ登録対象外名／貼り付け領域の開閉状態（既定は閉じる・開閉の往復）の永続化、DBモードの分割保存（対象外行をサーバーへ送らずローカルへ・読込時マージ・local切替でクリア） |
-| `src/pages/RegisterPage.test.tsx` | 利用規約同意フロー（モーダル自動表示・同意までボタン無効・同意しない→トップ遷移・パスワード不一致・登録成功/失敗） |
+| `src/pages/RegisterPage.test.tsx` | 利用規約同意フロー（モーダル自動表示・同意までボタン無効・同意しない→トップ遷移・パスワード不一致・登録成功/失敗）・メール通知オプション（既定 OFF・ON で `email_notification: true`） |
+| `src/pages/NotificationSettingsPage.test.tsx` | 通知設定画面（種別×チャネルのトグル表示・変更即保存・保存失敗で元に戻す・宛先未設定の案内・別アドレスは確認メール案内・確認済み表示と削除）＋**マイページから移設したブラウザ通知の操作**（ON時の配信中表示と「OFFにする」・OFF中の「ONに戻す」・未許可の許可要求・ブロック/非対応の案内ダイアログ） |
 | `src/pages/ListingsPage.test.tsx` | 出品一覧のタブ・絞り込み（装備品/テクニック/アセットの `item_type` と列見出し切替、アイテム名・種別＋装備セットを含める・追加効果＋数値範囲・サーバー・取引方法・価格帯・削れあり・取引完了・ソート、必要スキル＋`skill_match`/マスタリ込み、アセットの設置個所/特殊機能/ストレージ、未ログイン時の「+ 出品する」「取引」非表示） |
 | `src/components/TermsModal.test.tsx` | 規約モーダル（第1〜7条表示・プライバシーポリシーへのリンク・同意/非同意コールバック） |
 | `src/pages/PrivacyPolicyPage.test.tsx` | プライバシーポリシーページ（個人情報保護法の公表事項・全10章の表示・メール平文非保存の明記） |

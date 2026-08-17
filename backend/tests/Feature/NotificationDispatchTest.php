@@ -5,16 +5,18 @@ namespace Tests\Feature;
 use App\Models\BuyRequest;
 use App\Models\Listing;
 use App\Models\TradeChat;
-use App\Support\WebPushSender;
+use App\Support\NotificationCategory;
+use App\Support\Notifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
 /**
- * 取引イベントで Web Push 送信（WebPushSender::send）が正しい宛先・内容で
- * 呼ばれることを検証する。実際のプッシュ送信はスパイで差し替える。
+ * 取引イベントの通知配信（Notifier::send）が、正しい宛先・種別・内容で
+ * 呼ばれることを検証する。実際の Push/メール送信はスパイで差し替える。
+ * 種別ごとの ON/OFF 判定とチャネル振り分けは NotifierTest で検証する。
  */
-class WebPushNotificationTest extends TestCase
+class NotificationDispatchTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -23,7 +25,7 @@ class WebPushNotificationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->push = $this->spy(WebPushSender::class);
+        $this->push = $this->spy(Notifier::class);
     }
 
     /** オークション出品を作成する。 */
@@ -54,7 +56,9 @@ class WebPushNotificationTest extends TestCase
             ->assertStatus(201);
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $seller->id && $title === 'MoE Trade — 新しい取引希望')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $seller->id
+                && $cat === NotificationCategory::TRADE
+                && $title === 'MoE Trade — 新しい取引希望')
             ->once();
     }
 
@@ -72,7 +76,7 @@ class WebPushNotificationTest extends TestCase
             ->assertStatus(201);
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $title === 'MoE Trade — 新しい取引希望')
+            ->withArgs(fn ($uid, $cat, $title) => $title === 'MoE Trade — 新しい取引希望')
             ->once();
     }
 
@@ -96,7 +100,7 @@ class WebPushNotificationTest extends TestCase
             ->assertStatus(201);
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $owner->id && $title === 'MoE Trade — 新しい取引希望')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $owner->id && $title === 'MoE Trade — 新しい取引希望')
             ->once();
     }
 
@@ -117,7 +121,7 @@ class WebPushNotificationTest extends TestCase
 
         // クリックで該当チャットを開けるよう、URL は /mypage?chat=<chat_id> を渡す
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title, $body, $url = '/mypage') => $uid === $buyer->id
+            ->withArgs(fn ($uid, $cat, $title, $body, $url = '/mypage') => $uid === $buyer->id
                 && $title === 'MoE Trade — 新着メッセージ'
                 && str_contains($body, 'こんにちは')
                 && $url === "/mypage?chat={$chatId}")
@@ -140,16 +144,16 @@ class WebPushNotificationTest extends TestCase
 
         // 「新しい取引希望」1通のみ。「新着メッセージ」は送らない（二重通知の防止）
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $seller->id && $title === 'MoE Trade — 新しい取引希望')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $seller->id && $title === 'MoE Trade — 新しい取引希望')
             ->once();
-        $this->push->shouldNotHaveReceived('send', fn ($uid, $title) => $title === 'MoE Trade — 新着メッセージ');
+        $this->push->shouldNotHaveReceived('send', fn ($uid, $cat, $title) => $title === 'MoE Trade — 新着メッセージ');
 
         // 2通目以降のメッセージは通常どおり通知される
         $this->actingAs($buyer, 'sanctum')
             ->postJson("/api/chats/{$chatId}/messages", ['message' => '追加の質問です'])
             ->assertStatus(201);
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title, $body, $url = '/mypage') => $uid === $seller->id
+            ->withArgs(fn ($uid, $cat, $title, $body, $url = '/mypage') => $uid === $seller->id
                 && $title === 'MoE Trade — 新着メッセージ'
                 && str_contains($body, '追加の質問です')
                 && $url === "/mypage?chat={$chatId}")
@@ -173,7 +177,7 @@ class WebPushNotificationTest extends TestCase
             ->postJson("/api/chats/{$chat2Id}/messages", ['message' => '追記です'])
             ->assertStatus(201);
 
-        $this->push->shouldNotHaveReceived('send', fn ($uid, $title) => $title === 'MoE Trade — 新着メッセージ');
+        $this->push->shouldNotHaveReceived('send', fn ($uid, $cat, $title) => $title === 'MoE Trade — 新着メッセージ');
     }
 
     public function test_取引成立で取引希望者に通知される(): void
@@ -191,7 +195,7 @@ class WebPushNotificationTest extends TestCase
             ->assertOk();
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $buyer->id && $title === 'MoE Trade — 取引成立')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $buyer->id && $title === 'MoE Trade — 取引成立')
             ->once();
     }
 
@@ -216,9 +220,9 @@ class WebPushNotificationTest extends TestCase
         $this->actingAs($buyer2, 'sanctum')->postJson("/api/chats/{$chat2Id}/decline")->assertOk();
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $buyer1->id && $title === 'MoE Trade — 取引見送り')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $buyer1->id && $title === 'MoE Trade — 取引見送り')
             ->once();
-        $this->push->shouldNotHaveReceived('send', fn ($uid, $title) => $uid === $buyer2->id && $title === 'MoE Trade — 取引見送り');
+        $this->push->shouldNotHaveReceived('send', fn ($uid, $cat, $title) => $uid === $buyer2->id && $title === 'MoE Trade — 取引見送り');
     }
 
     public function test_入札で出品者に通知され_抜かれた入札者に価格更新が通知される(): void
@@ -236,10 +240,13 @@ class WebPushNotificationTest extends TestCase
             ->assertStatus(201);
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $owner->id && $title === 'MoE Trade — 入札がありました')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $owner->id
+                && $cat === NotificationCategory::AUCTION
+                && $title === 'MoE Trade — 入札がありました')
             ->twice();
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title, $body) => $uid === $bidder1->id
+            ->withArgs(fn ($uid, $cat, $title, $body) => $uid === $bidder1->id
+                && $cat === NotificationCategory::AUCTION
                 && $title === 'MoE Trade — 価格更新'
                 && str_contains($body, '1500'))
             ->once();
@@ -257,9 +264,9 @@ class WebPushNotificationTest extends TestCase
 
         // owner には成立通知、即決した本人には落札通知を送らない
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $owner->id && $title === 'MoE Trade — オークション成立')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $owner->id && $title === 'MoE Trade — オークション成立')
             ->once();
-        $this->push->shouldNotHaveReceived('send', fn ($uid, $title) => $uid === $bidder->id && $title === 'MoE Trade — 落札しました');
+        $this->push->shouldNotHaveReceived('send', fn ($uid, $cat, $title) => $uid === $bidder->id && $title === 'MoE Trade — 落札しました');
     }
 
     public function test_バッチ解決で落札者_出品者_落選者に通知される(): void
@@ -275,13 +282,13 @@ class WebPushNotificationTest extends TestCase
         $this->artisan('auctions:resolve')->assertSuccessful();
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $winner->id && $title === 'MoE Trade — 落札しました')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $winner->id && $title === 'MoE Trade — 落札しました')
             ->once();
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $owner->id && $title === 'MoE Trade — オークション成立')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $owner->id && $title === 'MoE Trade — オークション成立')
             ->once();
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $loser->id && $title === 'MoE Trade — 落札ならず')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $loser->id && $title === 'MoE Trade — 落札ならず')
             ->once();
     }
 
@@ -293,7 +300,7 @@ class WebPushNotificationTest extends TestCase
         $this->artisan('auctions:resolve')->assertSuccessful();
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title) => $uid === $owner->id && $title === 'MoE Trade — オークション終了')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $owner->id && $title === 'MoE Trade — オークション終了')
             ->once();
     }
 }

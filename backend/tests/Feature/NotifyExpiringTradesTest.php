@@ -3,13 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\BuyRequest;
-use App\Support\WebPushSender;
+use App\Support\NotificationCategory;
+use App\Support\Notifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
 /**
- * 期限切れ前日（24時間以内）の Web Push 通知バッチ（trades:notify-expiring）。
+ * 期限切れ前日（24時間以内）の通知バッチ（trades:notify-expiring）。
  */
 class NotifyExpiringTradesTest extends TestCase
 {
@@ -20,7 +21,7 @@ class NotifyExpiringTradesTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->push = $this->spy(WebPushSender::class);
+        $this->push = $this->spy(Notifier::class);
     }
 
     private function makeBuyRequest(array $attributes = []): BuyRequest
@@ -46,7 +47,8 @@ class NotifyExpiringTradesTest extends TestCase
         $this->artisan('trades:notify-expiring')->assertSuccessful();
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title, $body) => $uid === $seller->id
+            ->withArgs(fn ($uid, $cat, $title, $body) => $uid === $seller->id
+                && $cat === NotificationCategory::EXPIRY
                 && $title === 'MoE Trade — まもなく期限切れ'
                 && str_contains($body, 'テストの剣'))
             ->once();
@@ -94,7 +96,7 @@ class NotifyExpiringTradesTest extends TestCase
         $this->artisan('trades:notify-expiring')->assertSuccessful();
 
         $this->push->shouldHaveReceived('send')
-            ->withArgs(fn ($uid, $title, $body) => $uid === $owner->id && str_contains($body, '買取'))
+            ->withArgs(fn ($uid, $cat, $title, $body) => $uid === $owner->id && str_contains($body, '買取'))
             ->once();
     }
 

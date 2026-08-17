@@ -45,6 +45,11 @@ Route::get('email/verify/{id}/{hash}', function (Request $request, $id, $hash) {
     return redirect(rtrim(config('app.frontend_url'), '/') . '/auth/login?verified=1');
 })->name('verification.verify');
 
+// 通知先メールアドレスの確認（署名付きURL。ログイン用と別のアドレスを指定した場合のみ発行）
+Route::get('notification-email/verify/{id}/{hash}', [\App\Http\Controllers\NotificationSettingsController::class, 'verifyEmail'])
+    ->middleware('signed')
+    ->name('notification-email.verify');
+
 Route::get('announcements',      [AnnouncementController::class, 'index']);
 Route::get('categories',         [CategoryController::class, 'index']);
 Route::get('bonus-effect-types', fn() => response()->json(\App\Models\BonusEffectType::orderBy('category')->orderBy('label')->get()));
@@ -285,6 +290,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('push/public-key',      [\App\Http\Controllers\PushSubscriptionController::class, 'publicKey']);
     Route::post('push/subscriptions',  [\App\Http\Controllers\PushSubscriptionController::class, 'store']);
     Route::delete('push/subscriptions',[\App\Http\Controllers\PushSubscriptionController::class, 'destroy']);
+
+    // 通知設定（種別 × チャネルの ON/OFF・メール通知の宛先）
+    Route::get('notification-settings',  [\App\Http\Controllers\NotificationSettingsController::class, 'show']);
+    Route::put('notification-settings',  [\App\Http\Controllers\NotificationSettingsController::class, 'update']);
+    // 確認メールの大量送信を防ぐため、宛先の変更だけレート制限をかける
+    Route::put('notification-settings/email',    [\App\Http\Controllers\NotificationSettingsController::class, 'updateEmail'])
+        ->middleware('throttle:5,1');
+    Route::delete('notification-settings/email', [\App\Http\Controllers\NotificationSettingsController::class, 'destroyEmail']);
 
     // チャット
     Route::get('chats/unread-count',   [ChatController::class, 'unreadCount']);

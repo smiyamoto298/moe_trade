@@ -249,8 +249,9 @@ class ChatController extends Controller
         });
 
         // 相手側（取引希望者）へ Web Push で成立を知らせる
-        app(\App\Support\WebPushSender::class)->send(
+        app(\App\Support\Notifier::class)->send(
             $chat->buyer_id,
+            \App\Support\NotificationCategory::TRADE,
             'MoE Trade — 取引成立',
             "「{$chat->source()?->item?->name}」の取引が成立しました。受け渡しの調整をしてください。"
         );
@@ -381,8 +382,9 @@ class ChatController extends Controller
 
         // owner が見送った場合のみ、相手側（取引希望者）へ Web Push で知らせる
         if ($chat->ownerId() === $user->id) {
-            app(\App\Support\WebPushSender::class)->send(
+            app(\App\Support\Notifier::class)->send(
                 $chat->buyer_id,
+                \App\Support\NotificationCategory::TRADE,
                 'MoE Trade — 取引見送り',
                 "「{$chat->source()?->item?->name}」の取引希望は見送りとなりました。"
             );
@@ -428,8 +430,9 @@ class ChatController extends Controller
             } else {
                 \App\Support\Auction::refreshOutbid($source);
                 // owner へ Web Push（入札で現在価格が更新された）
-                app(\App\Support\WebPushSender::class)->send(
+                app(\App\Support\Notifier::class)->send(
                     $source->user_id,
+                    \App\Support\NotificationCategory::AUCTION,
                     'MoE Trade — 入札がありました',
                     "オークション「{$source->item?->name}」に入札がありました（現在価格 {$amount} {$source->currency}）。"
                 );
@@ -500,8 +503,9 @@ class ChatController extends Controller
             ?? $sender->characters->first()?->character_name
             ?? "ユーザー#{$sender->id}";
 
-        app(\App\Support\WebPushSender::class)->send(
+        app(\App\Support\Notifier::class)->send(
             $recipientId,
+            \App\Support\NotificationCategory::TRADE,
             'MoE Trade — 新着メッセージ',
             "{$name}: " . \Illuminate\Support\Str::limit($message, 80),
             "/mypage?chat={$chat->id}"

@@ -446,8 +446,9 @@ class BuyRequestController extends Controller
         // 買取登録者へ Web Push（順番待ち＝2番目以降は owner から見えないため通知しない）
         // ※ create 直後のモデルは DB デフォルトの status が未設定のため fresh() で判定する
         if (!$chat->fresh()->isWaiting()) {
-            app(\App\Support\WebPushSender::class)->send(
+            app(\App\Support\Notifier::class)->send(
                 $buyRequest->user_id,
+                \App\Support\NotificationCategory::TRADE,
                 'MoE Trade — 新しい取引希望',
                 "「{$buyRequest->item->name}」に新しい販売希望が届きました。"
             );

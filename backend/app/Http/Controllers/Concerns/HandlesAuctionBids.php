@@ -65,8 +65,9 @@ trait HandlesAuctionBids
             } else {
                 Auction::refreshOutbid($source);
                 // owner へ Web Push（入札で現在価格が更新された）
-                app(\App\Support\WebPushSender::class)->send(
+                app(\App\Support\Notifier::class)->send(
                     $source->user_id,
+                    \App\Support\NotificationCategory::AUCTION,
                     'MoE Trade — 入札がありました',
                     "オークション「{$source->item?->name}」に入札がありました（現在価格 {$amount} {$source->currency}）。"
                 );

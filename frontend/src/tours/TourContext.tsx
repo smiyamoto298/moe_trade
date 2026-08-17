@@ -49,8 +49,6 @@ type TourContextValue = {
   startTour: (pageId: string) => boolean
   startCurrentPageTour: () => boolean
   hasTourForCurrentPath: boolean
-  // 既読リセット（マイページのボタンなどから利用）
-  resetAllTours: () => void
 }
 
 const TourContext = createContext<TourContextValue | null>(null)
@@ -109,19 +107,6 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setIndex((i) => Math.max(0, i - 1))
   }, [])
 
-  const resetAllTours = useCallback(() => {
-    try {
-      const keys: string[] = []
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i)
-        if (k && k.startsWith(SEEN_PREFIX)) keys.push(k)
-      }
-      keys.forEach((k) => localStorage.removeItem(k))
-    } catch {
-      /* noop */
-    }
-  }, [])
-
   // ページ遷移時の初回自動表示
   const autoStartedRef = useRef<string | null>(null)
   useEffect(() => {
@@ -155,7 +140,6 @@ export function TourProvider({ children }: { children: ReactNode }) {
     startTour,
     startCurrentPageTour,
     hasTourForCurrentPath,
-    resetAllTours,
   }
 
   return <TourContext.Provider value={value}>{children}</TourContext.Provider>

@@ -44,6 +44,49 @@ class AuthTest extends TestCase
         Notification::assertSentTo($user, VerifyEmailJapanese::class);
     }
 
+    public function test_メール通知を希望しなければ通知先メールは保存されない(): void
+    {
+        Notification::fake();
+
+        $this->postJson('/api/auth/register', [
+            'email'                 => 'taro@example.com',
+            'password'              => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertStatus(201);
+
+        $user = User::where('email', EmailHasher::hash('taro@example.com'))->first();
+        $this->assertNull($user->notification_email);
+        $this->assertFalse($user->hasVerifiedNotificationEmail());
+    }
+
+    public function test_メール通知を希望すると登録アドレスが通知先として保存される(): void
+    {
+        Notification::fake();
+
+        $this->postJson('/api/auth/register', [
+            'email'                 => 'taro@example.com',
+            'password'              => 'password123',
+            'password_confirmation' => 'password123',
+            'email_notification'    => true,
+        ])->assertStatus(201);
+
+        $user = User::where('email', EmailHasher::hash('taro@example.com'))->first();
+
+        // 送信に使えるよう復号可能な形で保存されるが、平文のままではない
+        $this->assertSame('taro@example.com', $user->notification_email);
+        $raw = \DB::table('users')->where('id', $user->id)->value('notification_email');
+        $this->assertStringNotContainsString('taro@example.com', (string) $raw);
+
+        // ログイン用と同一アドレスなので、通知先の確認メールは別途送らない
+        Notification::assertSentTo($user, VerifyEmailJapanese::class);
+        Notification::assertNotSentTo($user, \App\Notifications\VerifyNotificationEmail::class);
+
+        // アカウントのメール認証が済むまでは通知を送らない
+        $this->assertFalse($user->hasVerifiedNotificationEmail());
+        $user->markEmailAsVerified();
+        $this->assertTrue($user->fresh()->hasVerifiedNotificationEmail());
+    }
+
     public function test_同じメールアドレスでは二重登録できない(): void
     {
         Notification::fake();

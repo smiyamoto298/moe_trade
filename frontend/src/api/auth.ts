@@ -7,6 +7,8 @@ export const authApi = {
     password: string
     password_confirmation: string
     characters?: { server: string; character_name: string; is_default?: boolean }[]
+    // true なら登録アドレスを通知先メールとしても保存する（メール通知を利用する）
+    email_notification?: boolean
   }) => client.post<{ user: User; token: string }>('/auth/register', data),
 
   login: (data: { email: string; password: string }) =>

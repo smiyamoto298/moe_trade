@@ -22,6 +22,8 @@ class AuthController extends Controller
         $data = $request->validate([
             'email'             => 'required|email',
             'password'          => ['required', 'confirmed', Password::min(8)],
+            // メール通知を使うか（true なら登録アドレスを復号可能な形でも保存する）
+            'email_notification' => 'nullable|boolean',
             'characters'        => 'nullable|array',
             'characters.*.server'         => 'required|in:Emerald,Diamond,Pearl',
             'characters.*.character_name' => 'required|string|max:100',
@@ -47,6 +49,15 @@ class AuthController extends Controller
 
         // 認証メールの送信に使う平文を一時保持（DBには保存されない）。
         $user->plainEmail = $data['email'];
+
+        // メール通知を希望した場合のみ、登録アドレスを通知先として保存する
+        // （users.email のハッシュは復号できず送信に使えないため。保存は暗号化列）。
+        // ログイン用と同一アドレスなので確認メールは送らず、アカウントのメール認証を
+        // もって確認済みとみなす（User::hasVerifiedNotificationEmail）。
+        if (!empty($data['email_notification'])) {
+            $user->notification_email = $data['email'];
+            $user->save();
+        }
 
         // 同一IPからの複数アカウント作成を検知して自動停止（本番環境のみ）
         if (app()->isProduction()) {

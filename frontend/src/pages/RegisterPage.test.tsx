@@ -122,8 +122,33 @@ describe('RegisterPage（利用規約同意フロー）', () => {
       password: 'password123',
       password_confirmation: 'password123',
       characters: [{ server: 'Emerald', character_name: 'Hero', is_default: false }],
+      // 既定ではメール通知を利用しない（メールアドレスはハッシュのみ保存）
+      email_notification: false,
     })
     expect(localStorage.getItem('auth_token')).toBe('new-token')
+  })
+
+  it('「メールで通知を受け取る」をONにすると email_notification: true で登録する', async () => {
+    mockedAuthApi.register.mockResolvedValue({
+      data: { token: 'new-token', user },
+    } as Awaited<ReturnType<typeof authApi.register>>)
+    mockedAuthApi.me.mockResolvedValue({
+      data: user,
+    } as Awaited<ReturnType<typeof authApi.me>>)
+
+    renderPage()
+    await agree()
+    await userEvent.type(emailInput(), 'user@example.com')
+    const [pw, confirm] = passwordInputs()
+    await userEvent.type(pw, 'password123')
+    await userEvent.type(confirm, 'password123')
+    await userEvent.click(screen.getByRole('checkbox', { name: /メールで通知を受け取る/ }))
+    await userEvent.click(submitButton())
+
+    await waitFor(() => expect(mockedAuthApi.register).toHaveBeenCalled())
+    expect(mockedAuthApi.register).toHaveBeenCalledWith(
+      expect.objectContaining({ email_notification: true })
+    )
   })
 
   it('登録APIがエラーを返した場合はメッセージを表示する', async () => {

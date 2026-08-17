@@ -19,6 +19,8 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  // メール通知を利用するか（ONのときだけ登録アドレスを送信可能な形でも保存する）
+  const [emailNotification, setEmailNotification] = useState(false)
   const [agreed, setAgreed] = useState(false)
   const pwId = useId()
 
@@ -54,7 +56,11 @@ export default function RegisterPage() {
       const payload = showPassword
         ? { ...form, password_confirmation: form.password }
         : form
-      const res = await authApi.register({ ...payload, characters: charList })
+      const res = await authApi.register({
+        ...payload,
+        characters: charList,
+        email_notification: emailNotification,
+      })
       saveToken(res.data.token)
       await refresh()
       navigate('/')
@@ -133,6 +139,26 @@ export default function RegisterPage() {
                 />
               </div>
             )}
+
+            {/* メール通知の利用（任意）。
+                通常はメールアドレスを復元できない形（ハッシュ）でしか保存しないため、
+                メール通知を使う場合だけ、送信に使える形での保存に同意してもらう。 */}
+            <label className="flex items-start gap-2 cursor-pointer bg-surface border border-surface-border rounded px-3 py-2">
+              <input
+                type="checkbox"
+                checked={emailNotification}
+                onChange={(e) => setEmailNotification(e.target.checked)}
+                className="mt-0.5 accent-primary-500"
+              />
+              <span className="text-xs text-gray-300">
+                メールで通知を受け取る
+                <span className="block text-gray-500 mt-0.5">
+                  取引の新着などをメールでもお知らせします。この場合、上のメールアドレスを送信に使える形（暗号化して保存）でも保持します。
+                  希望しない場合はチェックを外してください（メールアドレスは復元できない形でのみ保存されます）。
+                  設定は登録後にマイページの「通知設定」からいつでも変更・削除できます。
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* キャラクター名 */}
