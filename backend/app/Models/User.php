@@ -34,9 +34,13 @@ class User extends Authenticatable implements MustVerifyEmail
         'push_notify_trade',
         'push_notify_auction',
         'push_notify_expiry',
+        'push_notify_listing',
+        'push_notify_buying',
         'email_notify_trade',
         'email_notify_auction',
         'email_notify_expiry',
+        'email_notify_listing',
+        'email_notify_buying',
     ];
 
     /**
@@ -49,9 +53,14 @@ class User extends Authenticatable implements MustVerifyEmail
         'push_notify_trade'   => true,
         'push_notify_auction' => true,
         'push_notify_expiry'  => true,
+        // 新規出品・新規買取は全件対象のブロードキャストのため既定OFF（オプトイン）
+        'push_notify_listing' => false,
+        'push_notify_buying'  => false,
         'email_notify_trade'   => true,
         'email_notify_auction' => true,
         'email_notify_expiry'  => true,
+        'email_notify_listing' => false,
+        'email_notify_buying'  => false,
     ];
 
     protected $hidden = [
@@ -76,9 +85,13 @@ class User extends Authenticatable implements MustVerifyEmail
             'push_notify_trade' => 'boolean',
             'push_notify_auction' => 'boolean',
             'push_notify_expiry' => 'boolean',
+            'push_notify_listing' => 'boolean',
+            'push_notify_buying' => 'boolean',
             'email_notify_trade' => 'boolean',
             'email_notify_auction' => 'boolean',
             'email_notify_expiry' => 'boolean',
+            'email_notify_listing' => 'boolean',
+            'email_notify_buying' => 'boolean',
         ];
     }
 

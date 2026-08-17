@@ -27,7 +27,7 @@ class NotificationSettingsTest extends TestCase
         $this->deleteJson('/api/notification-settings/email')->assertStatus(401);
     }
 
-    public function test_既定では全種別ONで通知先メールは未設定(): void
+    public function test_既定では自分宛て種別がONで新規出品買取はOFF_通知先メールは未設定(): void
     {
         $this->actingAs($this->makeUser(), 'sanctum')
             ->getJson('/api/notification-settings')
@@ -36,8 +36,9 @@ class NotificationSettingsTest extends TestCase
                 'notification_email'          => null,
                 'notification_email_verified' => false,
                 'notification_email_status'   => 'none',
-                'push'  => ['trade' => true, 'auction' => true, 'expiry' => true],
-                'email' => ['trade' => true, 'auction' => true, 'expiry' => true],
+                // 新規出品・新規買取は全件対象のブロードキャストのため既定OFF（オプトイン）
+                'push'  => ['trade' => true, 'auction' => true, 'expiry' => true, 'listing' => false, 'buying' => false],
+                'email' => ['trade' => true, 'auction' => true, 'expiry' => true, 'listing' => false, 'buying' => false],
             ]);
     }
 
@@ -47,13 +48,13 @@ class NotificationSettingsTest extends TestCase
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/notification-settings', [
-                'push'  => ['trade' => true,  'auction' => false, 'expiry' => true],
-                'email' => ['trade' => false, 'auction' => true,  'expiry' => false],
+                'push'  => ['trade' => true,  'auction' => false, 'expiry' => true,  'listing' => true,  'buying' => false],
+                'email' => ['trade' => false, 'auction' => true,  'expiry' => false, 'listing' => false, 'buying' => true],
             ])
             ->assertOk()
             ->assertJson([
-                'push'  => ['trade' => true,  'auction' => false, 'expiry' => true],
-                'email' => ['trade' => false, 'auction' => true,  'expiry' => false],
+                'push'  => ['trade' => true,  'auction' => false, 'expiry' => true,  'listing' => true,  'buying' => false],
+                'email' => ['trade' => false, 'auction' => true,  'expiry' => false, 'listing' => false, 'buying' => true],
             ]);
 
         $user->refresh();
@@ -61,6 +62,10 @@ class NotificationSettingsTest extends TestCase
         $this->assertFalse($user->push_notify_auction);
         $this->assertFalse($user->email_notify_trade);
         $this->assertTrue($user->email_notify_auction);
+        $this->assertTrue($user->push_notify_listing);
+        $this->assertFalse($user->push_notify_buying);
+        $this->assertFalse($user->email_notify_listing);
+        $this->assertTrue($user->email_notify_buying);
     }
 
     public function test_ONOFFの指定漏れはバリデーションエラー(): void
@@ -68,7 +73,7 @@ class NotificationSettingsTest extends TestCase
         $this->actingAs($this->makeUser(), 'sanctum')
             ->putJson('/api/notification-settings', ['push' => ['trade' => true]])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['push.auction', 'push.expiry', 'email.trade']);
+            ->assertJsonValidationErrors(['push.auction', 'push.expiry', 'push.listing', 'push.buying', 'email.trade']);
     }
 
     public function test_ログイン用と別のアドレスは確認メールが送られ確認まで未確認扱い(): void

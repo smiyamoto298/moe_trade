@@ -60,6 +60,41 @@ class Notifier
     }
 
     /**
+     * 指定種別を ON にしている全ユーザーへ通知する（新規出品・新規買取などの全体向け）。
+     *
+     * 宛先は「push かメールのどちらかを ON にしているユーザー」だけを DB 側で絞り込む
+     * （該当種別は既定 OFF のため、全ユーザーを走査せずに済む）。チャネルごとの最終
+     * 判定は send() と同じく wantsPush / wantsEmail に委ねる。
+     *
+     * @param  int|null  $excludeUserId  除外するユーザー（作成者本人など）
+     */
+    public function broadcast(string $category, string $title, string $body, string $url = '/mypage', ?int $excludeUserId = null): void
+    {
+        if (!NotificationCategory::isValid($category)) {
+            Log::warning("未知の通知種別です: {$category}");
+            return;
+        }
+
+        DB::afterCommit(function () use ($category, $title, $body, $url, $excludeUserId) {
+            User::query()
+                ->where(function ($query) use ($category) {
+                    $query->where('push_notify_' . $category, true)
+                        ->orWhere('email_notify_' . $category, true);
+                })
+                ->when($excludeUserId !== null, fn ($query) => $query->where('id', '!=', $excludeUserId))
+                ->each(function (User $user) use ($category, $title, $body, $url) {
+                    if ($user->wantsPush($category)) {
+                        $this->push->sendNow($user->id, $title, $body, $url);
+                    }
+
+                    if ($user->wantsEmail($category)) {
+                        $this->sendMail($user, $title, $body, $url);
+                    }
+                });
+        });
+    }
+
+    /**
      * 通知先メールへ送る。
      *
      * 平文アドレスはDBに保存されている暗号化列を復号して一時的に $plainEmail へ渡す

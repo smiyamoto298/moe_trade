@@ -204,10 +204,13 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 #### 通知チャネルと通知設定（Web Push / メール）
 サイトを閉じていても取引イベントを届けるチャネルは **Web Push** と **メール** の2つ。どちらも配信口は `App\Support\Notifier` に一本化されており、各コントローラ・バッチは `Notifier::send($userId, $category, $title, $body, $url)` だけを呼ぶ（宛先の指定はユーザーIDのみで、呼び出し側は個人情報を扱わない）。Notifier が宛先ユーザーの設定を見て、有効なチャネルにだけ配信する。
 
-- **通知の種別（`App\Support\NotificationCategory`）**: `trade`（取引）/ `auction`（オークション）/ `expiry`（期限切れ）の3種。種別 × チャネルの計6通りを users の `push_notify_*` / `email_notify_*` 列で個別に ON/OFF できる。**既定は全て ON**（従来の Web Push の挙動を維持。メールは宛先未設定・未確認なら送らないので既定 ON でも勝手には届かない）
+- **通知の種別（`App\Support\NotificationCategory`）**: `trade`（取引）/ `auction`（オークション）/ `expiry`（期限切れ）/ `listing`（新規出品）/ `buying`（新規買取）の5種。種別 × チャネルの計10通りを users の `push_notify_*` / `email_notify_*` 列で個別に ON/OFF できる。**自分宛て種別（trade / auction / expiry）の既定は ON**（従来の Web Push の挙動を維持。メールは宛先未設定・未確認なら送らないので既定 ON でも勝手には届かない）。**全体向け種別（listing / buying）の既定は OFF**（サイト上の全出品・全買取が対象のブロードキャストのため、希望者だけが設定画面で ON にするオプトイン方式）
   - `trade`: 新しい取引希望／販売希望・新着チャットメッセージ・取引成立・見送り
   - `auction`: 入札あり・価格更新（outbid）・落札／落選・オークション成立／不成立
   - `expiry`: 期限切れ前日のリマインド
+  - `listing`: 誰かが新しく出品したとき（作成者本人を除く全ユーザー向け・既定 OFF）
+  - `buying`: 誰かが新しく買取を登録したとき（作成者本人を除く全ユーザー向け・既定 OFF）
+- **全体向け通知の配信（`Notifier::broadcast($category, $title, $body, $url, $excludeUserId)`）**: 該当種別を push かメールのどちらかで ON にしているユーザーだけを DB 側で絞り込んで配信する（既定 OFF のため全ユーザー走査にはならない）。作成者本人は `$excludeUserId` で除外。チャネルごとの最終判定（メール宛先の確認状態など）は `send()` と共通
 - **配信の共通仕様**: DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗は警告ログのみでリクエスト処理を止めない。種別が未知の場合は配信せず警告ログのみ
 - **通知設定画面（`/mypage/notifications`・ログイン必須）**: サイトヘッダー右側（ログイン時のみ表示）の「⚙️ 通知設定」から遷移。種別 × チャネルのトグル（変更即保存・失敗時は元に戻す）と、メール通知の宛先設定をまとめて行う。チャネル自体が無効な状態（ブラウザ通知が未許可／ブロック／OFF、通知先メールが未設定／未確認）のときは「ONにしても届かない」旨と復旧動線を表示する
   - **「ブラウザ通知（このブラウザ）」の行**（種別トグルの直下）で、このブラウザへの配信可否を操作する。上の種別トグルが「何を受け取るか」の設定なのに対し、こちらは「このブラウザに配信するか」。**マイページから移設したもので、以下は従来と同じ挙動**
@@ -241,6 +244,8 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
   - オークション入札（`auction`） → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
   - オークション解決（`auction`。即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
   - **期限切れの前日**（`expiry`。期限まで24時間以内・バッチ `trades:notify-expiring` 毎時）→ 登録者へ期限更新を促す通知。送信済みは `expiry_notified_at` で管理し同じ期限に再送しない（期限の延長・再出品で `expires_at` が変わるとリセットされ、新しい期限の前日に再通知）。オークションは自動成立/取り下げ・延長不可のため対象外
+  - **新規出品**（`listing`。`POST /api/listings`）→ 種別を ON にしている全ユーザー（作成者本人を除く）。本文はアイテム名、URL は出品詳細 `/listings/{id}`
+  - **新規買取**（`buying`。`POST /api/buy-requests`）→ 種別を ON にしている全ユーザー（作成者本人を除く）。本文はアイテム名、URL は買取詳細 `/buy-requests/{id}`
 - **実装**: `minishlink/web-push`（VAPID）。鍵は env（`VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`・`config/webpush.php`）。**未設定なら送信は no-op**（テスト・鍵未配備の環境で安全）。DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗はログのみでリクエストを止めず、期限切れ購読（410/404）は自動削除する
 - **対応環境**: デスクトップ/Android の主要ブラウザ（Firefox も可）。iOS Safari はホーム画面追加（PWA）時のみ対応。クリック時は既存タブをフォーカスして通知ペイロードの `url` へ遷移（既定 `/mypage`・新着メッセージは `/mypage?chat=<chat_id>`。無ければ新規ウィンドウ）
 - **Service Worker の登録契機**: 以前は通知を有効にしたユーザーだけが登録していたが、PWA のインストール判定に SW 登録が必須なため **`main.tsx` で全ユーザーに無条件登録**するよう変更した（購読自体は従来どおりユーザー操作を契機に `utils/webPush.ts` が行う）。詳細は「PWA（ホーム画面インストール・更新検知）」章
@@ -828,7 +833,9 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 | notification_email | TEXT NULL | メール通知の宛先。**暗号化して保存**（`encrypted` キャスト。送信には復号が必要なためハッシュではない）。メール通知を希望したユーザーのみ。NULL なら メール通知は届かない |
 | notification_email_verified_at | TIMESTAMP NULL | 通知先メールの確認完了時刻。ログイン用と同一アドレスの場合は確認メールを送らないため NULL のままで、`email_verified_at` をもって確認済みとみなす（§8 参照） |
 | push_notify_trade / push_notify_auction / push_notify_expiry | BOOLEAN | 種別ごとの Web Push の ON/OFF（デフォルト true） |
+| push_notify_listing / push_notify_buying | BOOLEAN | 新規出品・新規買取（全体向けブロードキャスト）の Web Push の ON/OFF（**デフォルト false**・オプトイン） |
 | email_notify_trade / email_notify_auction / email_notify_expiry | BOOLEAN | 種別ごとのメール通知の ON/OFF（デフォルト true。宛先が未設定・未確認なら送らない） |
+| email_notify_listing / email_notify_buying | BOOLEAN | 新規出品・新規買取のメール通知の ON/OFF（**デフォルト false**・オプトイン） |
 | password | VARCHAR(255) | ハッシュ済み |
 | role | ENUM('user','editor','admin') | 権限 |
 | register_ip | VARCHAR(45) | 登録時IPアドレス（IPv6対応） |
@@ -1370,7 +1377,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `GET    /api/push/public-key` — Web Push 購読用の VAPID 公開鍵（未設定なら null = Push 無効）
 - `POST   /api/push/subscriptions` — Web Push 購読の登録（`endpoint`・`keys.p256dh`・`keys.auth`・任意 `content_encoding`）。endpoint 一致で upsert し、ログイン中ユーザーへ付け替える
 - `DELETE /api/push/subscriptions` — Web Push 購読の解除（本人の endpoint のみ削除）
-- `GET    /api/notification-settings` — 通知設定の取得（本人のみ）。`notification_email` / `notification_email_verified` / `notification_email_status`（`none` / `verified` / `pending_confirmation` / `pending_account_verification`）/ `is_login_email` / `push`・`email`（それぞれ `trade`・`auction`・`expiry` の真偽値）
+- `GET    /api/notification-settings` — 通知設定の取得（本人のみ）。`notification_email` / `notification_email_verified` / `notification_email_status`（`none` / `verified` / `pending_confirmation` / `pending_account_verification`）/ `is_login_email` / `push`・`email`（それぞれ `trade`・`auction`・`expiry`・`listing`・`buying` の真偽値）
 - `PUT    /api/notification-settings` — 種別 × チャネルの ON/OFF を更新（`push.*`・`email.*` を全て必須で受け取る）
 - `PUT    /api/notification-settings/email` — 通知先メールの設定・変更（`email`）。ログイン用と別アドレスなら確認メールを送る。`throttle:5,1`
 - `DELETE /api/notification-settings/email` — 通知先メールの削除（メール通知は届かなくなる）
@@ -1769,9 +1776,9 @@ worktree を残したままにするとポート枠が空かないため、作�
 | `tests/Feature/NotificationApiTest.php` | 通知サマリー（未読チャット・掲示板新着・対象者判定） |
 | `tests/Unit/WebPushSenderTest.php` | Web Push 送信（VAPID未設定はno-op・購読なしは送信しない・期限切れ購読の自動削除・トランザクション中はコミット後送信） |
 | `tests/Feature/PushSubscriptionApiTest.php` | Web Push 購読API（401・登録・endpoint一致のユーザー付け替え・URL検証・本人のみ解除・公開鍵取得） |
-| `tests/Unit/NotifierTest.php` | 通知の振り分け（種別 × チャネルの ON/OFF・通知先メール未設定/未確認は送らない・宛先nullや不明ユーザー・未知の種別・コミット後配信とロールバック時の抑止・メール送信失敗でも止まらない） |
-| `tests/Feature/NotificationSettingsTest.php` | 通知設定API（401・既定は全ON・種別×チャネルの更新とバリデーション・別アドレスは確認メール／ログイン用と同一なら確認不要・アカウント未認証は未確認扱い・署名付き確認リンク（無署名403・古いリンクは無効）・変更で確認解除・削除・平文非保存・他人の設定は見えない） |
-| `tests/Feature/NotificationDispatchTest.php` | 取引イベントの通知配信と種別（新規取引希望・順番待ち除外・買取・新着メッセージ（URL は `/mypage?chat=<chat_id>`）・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
+| `tests/Unit/NotifierTest.php` | 通知の振り分け（種別 × チャネルの ON/OFF・通知先メール未設定/未確認は送らない・宛先nullや不明ユーザー・未知の種別・コミット後配信とロールバック時の抑止・メール送信失敗でも止まらない・broadcast は ON のユーザーだけに届き指定ユーザーを除外/未確認メールに送らない/未知種別・ロールバック時の抑止） |
+| `tests/Feature/NotificationSettingsTest.php` | 通知設定API（401・既定は自分宛て種別ON／新規出品・買取OFF・種別×チャネルの更新とバリデーション・別アドレスは確認メール／ログイン用と同一なら確認不要・アカウント未認証は未確認扱い・署名付き確認リンク（無署名403・古いリンクは無効）・変更で確認解除・削除・平文非保存・他人の設定は見えない） |
+| `tests/Feature/NotificationDispatchTest.php` | 取引イベントの通知配信と種別（新規出品・新規買取のブロードキャスト（種別/URL/作成者除外）・新規取引希望・順番待ち除外・買取・新着メッセージ（URL は `/mypage?chat=<chat_id>`）・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
 | `tests/Feature/NotifyExpiringTradesTest.php` | 期限切れ前日の通知バッチ（24時間以内の出品/買取に通知・二重送信なし・24時間超/期限超過/非active/オークションは対象外・期限延長でリセットされ新期限の前日に再通知） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |

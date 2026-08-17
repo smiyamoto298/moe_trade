@@ -22,10 +22,16 @@ class NotificationCategory
     /** 期限切れ: 期限切れ前日のリマインド */
     public const EXPIRY = 'expiry';
 
+    /** 新規出品: 誰かが新しく出品したとき（全出品が対象のため既定OFF） */
+    public const LISTING = 'listing';
+
+    /** 新規買取: 誰かが新しく買取を登録したとき（全買取が対象のため既定OFF） */
+    public const BUYING = 'buying';
+
     /** @return list<string> */
     public static function all(): array
     {
-        return [self::TRADE, self::AUCTION, self::EXPIRY];
+        return [self::TRADE, self::AUCTION, self::EXPIRY, self::LISTING, self::BUYING];
     }
 
     public static function isValid(string $category): bool
@@ -40,6 +46,8 @@ class NotificationCategory
             self::TRADE   => '取引',
             self::AUCTION => 'オークション',
             self::EXPIRY  => '期限切れ',
+            self::LISTING => '新規出品',
+            self::BUYING  => '新規買取',
             default       => $category,
         };
     }

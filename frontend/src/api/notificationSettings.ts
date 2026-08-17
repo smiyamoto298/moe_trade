@@ -4,7 +4,7 @@ import client from './client'
 // 通知先メールは本人にしか返らない（サーバー側で認証ユーザーの分だけを返す）。
 
 /** 通知の種別。users の push_notify_* / email_notify_* 列と対応する。 */
-export type NotificationCategory = 'trade' | 'auction' | 'expiry'
+export type NotificationCategory = 'trade' | 'auction' | 'expiry' | 'listing' | 'buying'
 
 /** 通知先メールの状態。画面の案内文の出し分けに使う。 */
 export type NotificationEmailStatus =
@@ -44,6 +44,16 @@ export const NOTIFICATION_CATEGORIES: {
     key: 'expiry',
     label: '期限切れ',
     description: '自分の出品・買取が期限切れになる前日のお知らせ',
+  },
+  {
+    key: 'listing',
+    label: '新規出品',
+    description: '誰かが新しく出品したとき（すべての出品が対象・初期設定はOFF）',
+  },
+  {
+    key: 'buying',
+    label: '新規買取',
+    description: '誰かが新しく買取を登録したとき（すべての買取が対象・初期設定はOFF）',
   },
 ]
 

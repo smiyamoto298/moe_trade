@@ -185,6 +185,75 @@ class NotifierTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_broadcastはONにしているユーザーだけに届き指定したユーザーは除外される(): void
+    {
+        Notification::fake();
+        $push = $this->spy(WebPushSender::class);
+
+        // push だけ ON / メールだけ ON / OFF（既定） / ON だが除外対象（作成者本人）
+        $pushOn  = User::factory()->create(['push_notify_listing' => true]);
+        $mailOn  = $this->userWithVerifiedEmail(['email_notify_listing' => true]);
+        $off     = User::factory()->create();
+        $creator = User::factory()->create(['push_notify_listing' => true]);
+
+        (new Notifier($push))->broadcast(
+            NotificationCategory::LISTING, '新規出品', '本文', '/listings/1', $creator->id
+        );
+
+        $push->shouldHaveReceived('sendNow')
+            ->withArgs(fn ($uid, $title, $body, $url) => $uid === $pushOn->id && $url === '/listings/1')
+            ->once();
+        $push->shouldNotHaveReceived('sendNow', fn ($uid) => $uid !== $pushOn->id);
+        Notification::assertSentTo($mailOn, TradeEventMail::class);
+        Notification::assertSentTimes(TradeEventMail::class, 1);
+    }
+
+    public function test_broadcastでも未確認の通知先メールには送らない(): void
+    {
+        Notification::fake();
+        $push = $this->spy(WebPushSender::class);
+        $user = User::factory()->create(['email_notify_buying' => true]);
+        $user->notification_email = 'unverified@example.com';
+        $user->save();
+
+        (new Notifier($push))->broadcast(NotificationCategory::BUYING, '新規買取', '本文');
+
+        $push->shouldNotHaveReceived('sendNow');
+        Notification::assertNothingSent();
+    }
+
+    public function test_broadcastの未知の種別は配信しない(): void
+    {
+        Notification::fake();
+        $push = $this->spy(WebPushSender::class);
+        User::factory()->create(['push_notify_listing' => true]);
+
+        (new Notifier($push))->broadcast('unknown_category', 'タイトル', '本文');
+
+        $push->shouldNotHaveReceived('sendNow');
+        Notification::assertNothingSent();
+    }
+
+    public function test_broadcastもロールバックされたトランザクションでは配信しない(): void
+    {
+        Notification::fake();
+        $push = $this->spy(WebPushSender::class);
+        User::factory()->create(['push_notify_listing' => true]);
+        $notifier = new Notifier($push);
+
+        try {
+            DB::transaction(function () use ($notifier) {
+                $notifier->broadcast(NotificationCategory::LISTING, '新規出品', '本文');
+                throw new \RuntimeException('rollback');
+            });
+        } catch (\RuntimeException) {
+            // 想定どおり
+        }
+
+        $push->shouldNotHaveReceived('sendNow');
+        Notification::assertNothingSent();
+    }
+
     public function test_メール送信に失敗してもリクエストは止まらない(): void
     {
         $push = $this->spy(WebPushSender::class);

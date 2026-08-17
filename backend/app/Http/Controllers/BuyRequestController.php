@@ -233,6 +233,15 @@ class BuyRequestController extends Controller
             return $buyRequest;
         });
 
+        // 新規買取を通知対象にしているユーザーへ配信（作成者本人は除く）
+        app(\App\Support\Notifier::class)->broadcast(
+            \App\Support\NotificationCategory::BUYING,
+            'MoE Trade — 新規買取',
+            "「{$buyRequest->item->name}」の買取が登録されました。",
+            "/buy-requests/{$buyRequest->id}",
+            $user->id
+        );
+
         return response()->json($buyRequest->load('item', 'servers'), 201);
     }
 

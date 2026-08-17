@@ -45,6 +45,57 @@ class NotificationDispatchTest extends TestCase
         return $listing;
     }
 
+    public function test_新規の出品で全体向けブロードキャストが配信される(): void
+    {
+        $seller = $this->makeUser();
+        $item   = $this->makeItem();
+
+        $listingId = $this->actingAs($seller, 'sanctum')
+            ->postJson('/api/listings', [
+                'item_id'    => $item->id,
+                'price'      => 1000,
+                'quantity'   => 1,
+                'trade_type' => 'fixed',
+                'servers'    => [['server' => 'Emerald']],
+            ])
+            ->assertStatus(201)
+            ->json('id');
+
+        // 出品者本人を除外した listing 種別のブロードキャスト。クリックで出品詳細を開く
+        $this->push->shouldHaveReceived('broadcast')
+            ->withArgs(fn ($cat, $title, $body, $url, $excludeUserId) => $cat === NotificationCategory::LISTING
+                && $title === 'MoE Trade — 新規出品'
+                && str_contains($body, $item->name)
+                && $url === "/listings/{$listingId}"
+                && $excludeUserId === $seller->id)
+            ->once();
+    }
+
+    public function test_新規の買取で全体向けブロードキャストが配信される(): void
+    {
+        $owner = $this->makeUser();
+        $item  = $this->makeItem();
+
+        $buyRequestId = $this->actingAs($owner, 'sanctum')
+            ->postJson('/api/buy-requests', [
+                'item_id'    => $item->id,
+                'price'      => 500,
+                'quantity'   => 1,
+                'trade_type' => 'fixed',
+                'servers'    => [['server' => 'Emerald']],
+            ])
+            ->assertStatus(201)
+            ->json('id');
+
+        $this->push->shouldHaveReceived('broadcast')
+            ->withArgs(fn ($cat, $title, $body, $url, $excludeUserId) => $cat === NotificationCategory::BUYING
+                && $title === 'MoE Trade — 新規買取'
+                && str_contains($body, $item->name)
+                && $url === "/buy-requests/{$buyRequestId}"
+                && $excludeUserId === $owner->id)
+            ->once();
+    }
+
     public function test_新規取引希望で出品者に通知される(): void
     {
         $seller  = $this->makeUser();

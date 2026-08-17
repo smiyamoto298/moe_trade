@@ -6,7 +6,8 @@ import NotificationSettingsPage from './NotificationSettingsPage'
 import { notificationSettingsApi, type NotificationSettings } from '../api/notificationSettings'
 
 // design.md §8「通知設定」:
-// - 種別（取引/オークション/期限切れ）× チャネル（ブラウザ通知/メール）を個別に ON/OFF
+// - 種別（取引/オークション/期限切れ/新規出品/新規買取）× チャネル（ブラウザ通知/メール）を個別に ON/OFF
+//   （新規出品・新規買取は全件対象のブロードキャストのため既定OFF）
 // - トグル操作で即座に保存し、失敗したら元の状態へ戻す
 // - 通知先メールが未設定/未確認のときは「ONにしても届かない」旨を明示する
 // - ログイン用と別のアドレスを指定すると確認メールを送り、確認まで通知は届かない
@@ -63,8 +64,8 @@ const settings = (overrides: Partial<NotificationSettings> = {}): NotificationSe
   notification_email_verified: false,
   notification_email_status: 'none',
   is_login_email: false,
-  push: { trade: true, auction: true, expiry: true },
-  email: { trade: true, auction: true, expiry: true },
+  push: { trade: true, auction: true, expiry: true, listing: false, buying: false },
+  email: { trade: true, auction: true, expiry: true, listing: false, buying: false },
   ...overrides,
 })
 
@@ -100,20 +101,25 @@ describe('NotificationSettingsPage', () => {
       expect(screen.getByRole('checkbox', { name: `${label}のブラウザ通知` })).toBeChecked()
       expect(screen.getByRole('checkbox', { name: `${label}のメール通知` })).toBeChecked()
     }
+    // 新規出品・新規買取は全件対象のブロードキャストのため既定OFF
+    for (const label of ['新規出品', '新規買取']) {
+      expect(screen.getByRole('checkbox', { name: `${label}のブラウザ通知` })).not.toBeChecked()
+      expect(screen.getByRole('checkbox', { name: `${label}のメール通知` })).not.toBeChecked()
+    }
   })
 
   it('トグルを切り替えると両チャネルの設定を送信して保存する', async () => {
     mockedApi.get.mockResolvedValue(ok(settings()))
     mockedApi.update.mockResolvedValue(
-      ok(settings({ push: { trade: true, auction: false, expiry: true } })) as never
+      ok(settings({ push: { trade: true, auction: false, expiry: true, listing: false, buying: false } })) as never
     )
     renderPage()
 
     await userEvent.click(await screen.findByRole('checkbox', { name: 'オークションのブラウザ通知' }))
 
     await waitFor(() => expect(mockedApi.update).toHaveBeenCalledWith({
-      push: { trade: true, auction: false, expiry: true },
-      email: { trade: true, auction: true, expiry: true },
+      push: { trade: true, auction: false, expiry: true, listing: false, buying: false },
+      email: { trade: true, auction: true, expiry: true, listing: false, buying: false },
     }))
   })
 

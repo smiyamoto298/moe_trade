@@ -511,6 +511,15 @@ class ListingController extends Controller
             return $listing;
         });
 
+        // 新規出品を通知対象にしているユーザーへ配信（作成者本人は除く）
+        app(\App\Support\Notifier::class)->broadcast(
+            \App\Support\NotificationCategory::LISTING,
+            'MoE Trade — 新規出品',
+            "「{$listing->item->name}」が出品されました。",
+            "/listings/{$listing->id}",
+            $user->id
+        );
+
         return response()->json($listing->load('item', 'servers'), 201);
     }
 
