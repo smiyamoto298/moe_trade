@@ -214,7 +214,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
     - 未許可（`default`）→「🔔 ブラウザ通知を有効にする」（許可と同時に Web Push を購読）
     - ON（`granted` かつオプトアウトなし）→「🔔 ON（プッシュ配信中）」表示＋「OFFにする」（Web Push 購読解除＋ページ内通知も抑制。localStorage `push_opt_out`）
     - OFF中 →「ONに戻す」で再購読
-    - ブロック（`denied`）→「解除方法」でプラットフォーム別（Android Chrome / iPhoneホーム画面アプリ / PC）の解除手順をダイアログ表示（`frontend/src/utils/pushGuide.ts`）。通知API非対応（iPhone/iPad Safari）は `notifSupported` で区別し「利用するには」でホーム画面追加（PWA）の手順を案内する
+    - ブロック（`denied`）→「解除方法」でプラットフォーム別（Android Chrome / iPhoneホーム画面アプリ / PC）の解除手順をダイアログ表示（`frontend/src/utils/pushGuide.ts`）。通知API非対応（iPhone/iPad Safari）は `notifSupported` で区別し「利用するには」でホーム画面追加（PWA）の手順を案内する。この手順には**インストール後の説明**として、Safari の通知設定はアプリに引き継がれないためアプリ内（「⚙️ 通知設定」）で通知を再度設定すること、OSの確認ダイアログで「許可」を選ぶこと（届かない場合は iOS「設定」→「通知」→「MoE Trade」でアプリ自体の通知許可を確認）を含める
 
 ##### メール通知の宛先（`notification_email`）
 本サイトは原則としてメールアドレスを復元できない形（HMAC ブラインドインデックス）でしか保存しないが、**メールを送るには宛先の復元が必要**なため、メール通知を希望したユーザーの分だけ `users.notification_email` に**暗号化して**保存する（Laravel の `encrypted` キャスト。`APP_KEY` が無ければ復号できない。平文では保存しない）。ユーザーはいつでも削除できる。

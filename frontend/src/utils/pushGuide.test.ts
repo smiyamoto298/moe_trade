@@ -13,7 +13,11 @@ describe('buildPushGuide', () => {
     const guide = buildPushGuide(false, { ua: IOS_UA, standalone: false })
     expect(guide.title).toBe('プッシュ通知を利用するには')
     expect(guide.message).toContain('ホーム画面に追加')
+    // インストール後の案内: アプリ内での通知の再設定と、アプリ自体の通知許可
+    expect(guide.message).toContain('アプリ内で通知を再度設定')
+    expect(guide.message).toContain('「許可」を選択')
     expect(guide.highlight).toContain('iOS 16.4')
+    expect(guide.highlight).toContain('「設定」→「通知」→「MoE Trade」')
   })
 
   it('通知API非対応のその他ブラウザでは対応ブラウザの利用を案内する', () => {
