@@ -59,6 +59,18 @@ describe('Header ローカル環境の視覚的識別', () => {
     expect(screen.queryByTestId('local-env-frame-right')).not.toBeInTheDocument()
   })
 
+  it('枠線は視認しやすい太さ・不透明度・グローで表示する', () => {
+    renderHeader()
+    for (const testId of ['local-env-frame-left', 'local-env-frame-right']) {
+      const frame = screen.getByTestId(testId)
+      expect(frame.className).toContain('w-2')
+      // 半透明（/70）ではなく不透明の黄色
+      expect(frame.className).toContain('bg-yellow-400')
+      expect(frame.className).not.toContain('bg-yellow-400/')
+      expect(frame.className).toContain('shadow-')
+    }
+  })
+
   it('ヘッダー背景に旧方式の黄色オーバーレイを付けない', () => {
     renderHeader()
     const header = screen.getByRole('banner')

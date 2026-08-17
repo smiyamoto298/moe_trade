@@ -150,12 +150,12 @@ export default function Header() {
           <div
             aria-hidden="true"
             data-testid="local-env-frame-left"
-            className="fixed inset-y-0 left-0 w-1 bg-yellow-400/70 z-[100] pointer-events-none"
+            className="fixed inset-y-0 left-0 w-2 bg-yellow-400 shadow-[0_0_12px_3px_rgba(250,204,21,0.6)] z-[100] pointer-events-none"
           />
           <div
             aria-hidden="true"
             data-testid="local-env-frame-right"
-            className="fixed inset-y-0 right-0 w-1 bg-yellow-400/70 z-[100] pointer-events-none"
+            className="fixed inset-y-0 right-0 w-2 bg-yellow-400 shadow-[0_0_12px_3px_rgba(250,204,21,0.6)] z-[100] pointer-events-none"
           />
         </>
       )}
