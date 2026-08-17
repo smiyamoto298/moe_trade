@@ -636,19 +636,31 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 
 → `items.base_stats` カラムにJSONで保持。よく検索される項目はGenerated Column + Indexで高速化。
 
-**その他（自由入力の追加効果）**: 上記の固定パラメータに無い効果は「その他」として、**項目名（自由入力）＋数値**の行を
+**その他（自由入力の追加効果）**: 上記の固定パラメータに無い効果は「その他」として、**項目名（自由入力）＋値**の行を
 任意件数追加できる（登録・編集フォーム3種共通: 新規アイテム登録 / アイテム編集 / 装備セット部位エディタ。
 共通コンポーネント `CustomStatsEditor` ＋ `utils/customStats.ts` の `splitBaseStats` / `mergeBaseStats`）。
 保存時は項目名をそのままキーにして `base_stats` へマージする（例: `{ "atk": 10, "釣り": 5 }`）。
 表示側は既知キーを `BASE_STAT_LABELS` で和名化し、未知キーはキーをそのまま項目名として表示する。
 項目名の入力候補は項目名候補マスタ（`bonus_value_labels` の `kind='stat'`）から取得し、保存時に未登録の項目名は
-自動で候補化される（`BonusValueLabel::syncFromBaseStats()`）。固定パラメータのキー（`atk` 等）と同名の自由入力は
+自動で候補化される（`BonusValueLabel::syncFromBaseStats()`。値の型に依らずキーで判定する）。
+固定パラメータのキー（`atk` 等）と同名の自由入力は
 上書き事故防止のため保存時に無視し、一覧絞り込みの対象は従来どおり固定キー（`Stats::KEYS`）のみとする。
+
+**その他の値は「数値 / テキスト」を行ごとに選べる**（付加効果の `value_unit === 'text'` と同じ考え方だが、
+`%`・倍率などの単位は持たない2択）。行の種別セレクトで切り替え、`数値` は number 入力で数値として、
+`テキスト` は text 入力で**文字列のまま** `base_stats` に保存する（例: `{ "atk": 10, "発動条件": "水中のみ" }`）。
+- 読込時（`splitBaseStats`）は値が数値として解釈できるかで種別を復元する（数値文字列の旧データは `数値` 扱い）。
+- テキスト→数値へ戻したとき数値にできない値は入力欄をクリアし、保存時も数値化できない行は送らない（`NaN` の保存防止）。
+- 空の項目名・空の値（テキストは空白のみも）の行は保存時に除外する。
+- サーバ側は `base_stats.*` / `pieces.*.base_stats.*` を「数値またはテキスト（100文字以内）」で検証し、
+  配列・真偽値は 422 で拒否する（`ItemController::baseStatValueRule()`）。
+- 一覧の数値絞り込み（`stats[key][min|max]`）は固定キーのみが対象のため、テキストの「その他」は絞り込み対象外。
 
 **数値の表示**: 追加効果・付加効果の数値は、負数（`-` 付き）以外には `+` を付けて表示する
 （`formatSignedValue`。例: `5` → `+5`、`-3` → `-3`）。ただし倍率（`value_unit === 'x'`）は増減ではないため
-`+` を付けない（例: `1.5倍`）。出品/買取の一覧・詳細・セット内訳・アイテム管理の
-表示箇所すべてに適用する（登録・編集フォームの入力欄は対象外）。
+`+` を付けない（例: `1.5倍`）。**数値でない値（追加効果「その他」のテキスト等）は増減ではないため
+`+` を付けずそのまま表示する**（数値判定は `utils/constants.ts` の `isNumericValue`）。出品/買取の一覧・詳細・
+セット内訳・アイテム管理の表示箇所すべてに適用する（登録・編集フォームの入力欄は対象外）。
 
 付加効果の値1件の表示は `formatBonusValueDisplay`（`utils/constants.ts`）に集約する。`value_unit` が
 `text` のときはテキストをそのまま（符号・単位なし）、`checking` のときは値に関わらず「不明」
@@ -818,7 +830,7 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 | description | TEXT | 説明文 |
 | image_url | VARCHAR(500) | アイテム画像 |
 | official_url | VARCHAR(500) | 公式DB（MasterOfEpic公式サイト `moepic.com` のアイテムページ）へのリンク。NULL = 未設定。全種別共通・全ログインユーザーが設定可。バリデーションで `moepic.com`（サブドメイン含む）以外を拒否（外部誘導の悪用防止） |
-| base_stats | JSON | 追加効果の数値（atk, mag, max_hp 等／装備品種別） |
+| base_stats | JSON | 追加効果（atk, mag, max_hp 等／装備品種別）。固定パラメータは数値、「その他」（自由入力の項目名）は数値かテキスト（文字列） |
 | special_conditions | JSON | 特殊条件フラグ配列（例: ["NT","ND"]／装備品種別） |
 | dyeable | BOOLEAN | 染色可否（NULL = 未設定／装備品種別） |
 | mithril | BOOLEAN | ミスリル装備フラグ（デフォルト: false／装備品種別） |
@@ -1732,7 +1744,9 @@ docker compose exec php vendor/bin/phpunit
 | `src/utils/itemType.test.ts` | 種別判定（最上位カテゴリ名→ equipment / technique / asset）・親フォールバック |
 | `src/utils/equipmentSet.test.ts` | 装備セット部位のグルーピング（追加効果・付加効果・性能全体、順序非依存・ミスリル差分） |
 | `src/components/EquipmentSetPiecesEditor.test.tsx` | 装備セット構成部位エディタ（名前入力欄のカテゴリ順表示・部位候補カテゴリ・テクニック部位の効果対象外と必要スキル/マスタリ・特殊条件の独立設定グループ（`formToPieces` の部位別適用・`membersToForm` の追加効果と独立なグルーピング・グループ追加ボタン）） |
-| `src/utils/constants.test.ts` | マスタ定数の design.md 整合（マスタリ構成スキルが SKILL_GROUPS と完全一致・特殊条件15種・追加効果キー18種＋セレクト表示順・追加効果入力欄の3列構成 `STAT_INPUT_COLUMNS`・アセット選択肢）・追加効果/付加効果数値の符号付き表示 `formatSignedValue`（負数以外は + 付き） |
+| `src/utils/constants.test.ts` | マスタ定数の design.md 整合（マスタリ構成スキルが SKILL_GROUPS と完全一致・特殊条件15種・追加効果キー18種＋セレクト表示順・追加効果入力欄の3列構成 `STAT_INPUT_COLUMNS`・アセット選択肢）・追加効果/付加効果数値の符号付き表示 `formatSignedValue`（負数以外は + 付き・数値でない値はそのまま表示）・数値判定 `isNumericValue` |
+| `src/utils/customStats.test.ts` | 追加効果「その他」の分離/マージ（固定パラメータとの分離・`kind=text` は文字列のまま保存・数値文字列の旧データは数値として復元・空項目名/空値の除外・数値化できない値は送らない・固定キー同名の自由入力は無視） |
+| `src/components/CustomStatsEditor.test.tsx` | 追加効果「その他」の入力欄（既定は数値入力・「テキスト」選択で text 入力へ切替・テキストは文字列のまま `base_stats` へマージ・テキスト→数値で数値にできない値はクリア／できる値は保持） |
 | `src/utils/inventory.test.ts` | アイテムボックスの行の実効種別判定 `effectiveTypeId`（ユーザー割当＞共通割当＞取引可能＞未設定・登録アイテム紐づけ行でも割当が優先・null は既定種別へ解決・名前正規化） |
 | `src/utils/inventoryStore.test.ts` | 表示種別タブ／サーバ登録対象外名／貼り付け領域の開閉状態（既定は閉じる・開閉の往復）の永続化、DBモードの分割保存（対象外行をサーバーへ送らずローカルへ・読込時マージ・local切替でクリア） |
 | `src/pages/RegisterPage.test.tsx` | 利用規約同意フロー（モーダル自動表示・同意までボタン無効・同意しない→トップ遷移・パスワード不一致・登録成功/失敗）・メール通知オプション（既定 OFF・ON で `email_notification: true`） |
