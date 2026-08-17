@@ -325,12 +325,21 @@ export default function Header() {
         {/* デスクトップ右側のログイン操作 */}
         <div className="hidden lg:flex items-center gap-3 shrink-0">
           {user ? (
-            <button
-              onClick={handleLogout}
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              ログアウト
-            </button>
+            <>
+              {/* ブラウザ通知の許可・ON/OFF は通知設定画面（/mypage/notifications）に集約している */}
+              <Link
+                to="/mypage/notifications"
+                className="text-sm text-gray-300 hover:text-white transition-colors"
+              >
+                ⚙️ 通知設定
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                ログアウト
+              </button>
+            </>
           ) : (
             <>
               <Link to="/auth/login" className="text-sm text-gray-300 hover:text-white transition-colors">
@@ -510,12 +519,21 @@ export default function Header() {
             )}
             <div className="mt-auto pt-4 border-t border-surface-border">
               {user ? (
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left py-3 text-gray-400 hover:text-white transition-colors"
-                >
-                  ログアウト
-                </button>
+                <>
+                  <Link
+                    to="/mypage/notifications"
+                    onClick={closeMobile}
+                    className="block py-3 border-b border-surface-border text-gray-300 hover:text-white transition-colors"
+                  >
+                    ⚙️ 通知設定
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left py-3 text-gray-400 hover:text-white transition-colors"
+                  >
+                    ログアウト
+                  </button>
+                </>
               ) : (
                 <div className="flex flex-col gap-2">
                   <Link

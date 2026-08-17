@@ -131,3 +131,33 @@ describe('Header ナビの並び順', () => {
     expect(linkTexts(navs[1])).toEqual(LOGGED_IN_ORDER)
   })
 })
+
+// design.md「マイページ」「通知チャネルと通知設定」:
+// 通知設定画面（/mypage/notifications）への導線はマイページからヘッダー右側へ移動した。
+// デスクトップはログアウトの左隣、モバイルはドロワー最下部（ログアウトの上）に表示する。
+describe('Header 通知設定リンク', () => {
+  it('ログイン時はデスクトップ右側に通知設定リンクを表示する（ログアウトの前）', () => {
+    mockAuth.user = { role: 'user' }
+    renderHeader()
+    const link = screen.getByRole('link', { name: /通知設定/ })
+    expect(link).toHaveAttribute('href', '/mypage/notifications')
+    const logout = screen.getByRole('button', { name: 'ログアウト' })
+    expect(link.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('未ログイン時は通知設定リンクを表示しない', () => {
+    renderHeader()
+    expect(screen.queryByRole('link', { name: /通知設定/ })).not.toBeInTheDocument()
+  })
+
+  it('モバイルドロワーにも通知設定リンクを表示する（ログアウトの上）', () => {
+    mockAuth.user = { role: 'user' }
+    renderHeader()
+    fireEvent.click(screen.getByRole('button', { name: 'メニュー' }))
+    const drawer = screen.getAllByRole('navigation')[1]
+    const link = within(drawer).getByRole('link', { name: /通知設定/ })
+    expect(link).toHaveAttribute('href', '/mypage/notifications')
+    const logout = within(drawer).getByRole('button', { name: 'ログアウト' })
+    expect(link.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})

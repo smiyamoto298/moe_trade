@@ -133,16 +133,18 @@ describe('MyPage', () => {
     })
   })
 
-  // 通知の許可・ON/OFF の操作は通知設定画面（/mypage/notifications）へ集約したため、
-  // マイページのヘッダー行には「通知設定」リンクだけを置く。
+  // 通知の許可・ON/OFF の操作は通知設定画面（/mypage/notifications）へ集約し、
+  // その導線「⚙️ 通知設定」もサイトヘッダー右側（Header.test.tsx でカバー）へ移動したため、
+  // マイページのヘッダー行には見出し以外のボタンを置かない。
   // 通知の状態表示・ON/OFF の挙動は NotificationSettingsPage.test.tsx でカバーする。
-  it('ヘッダー行は通知設定リンクのみで、通知ON/OFF・アイテムボックス・操作案内リセットは置かない', async () => {
+  it('ヘッダー行は見出しのみで、通知設定・通知ON/OFF・アイテムボックス・操作案内リセットは置かない', async () => {
     const { getByText, queryByText } = render(
       <MemoryRouter>
         <MyPage />
       </MemoryRouter>
     )
-    await waitFor(() => expect(getByText(/通知設定/)).toBeTruthy())
+    await waitFor(() => expect(getByText('マイページ')).toBeTruthy())
+    expect(queryByText(/通知設定/)).toBeNull()
     expect(queryByText(/通知ON（プッシュ配信中）/)).toBeNull()
     expect(queryByText('OFFにする')).toBeNull()
     expect(queryByText(/通知OFF — ONに戻す/)).toBeNull()

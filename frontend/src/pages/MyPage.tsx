@@ -570,19 +570,8 @@ export default function MyPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold text-white">マイページ</h1>
-
-        <div className="flex items-center gap-2">
-          {/* ブラウザ通知の許可・ON/OFF は通知設定画面（/mypage/notifications）に集約している */}
-          <Link
-            to="/mypage/notifications"
-            className="text-xs bg-surface-card border border-surface-border hover:border-primary-500 text-gray-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
-          >
-            ⚙️ 通知設定
-          </Link>
-        </div>
-      </div>
+      {/* 通知設定への導線はサイトヘッダー右側（Header.tsx）に移動した */}
+      <h1 className="text-xl font-bold text-white">マイページ</h1>
 
       {/* 期限切れの自分の出品・買取がある場合の通知バナー。
           再出品・再登録を促し、ボタンで該当タブ（出品中／買取中）の期限切れ一覧へ誘導する。 */}
