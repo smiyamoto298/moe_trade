@@ -1,5 +1,5 @@
 import type { Item, ItemCategory } from '../types'
-import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay } from '../utils/constants'
+import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, isNumericValue } from '../utils/constants'
 import { groupPiecesByBaseStats, groupPiecesByBonusEffects, groupPiecesBySpecialConditions, hasBaseStats, hasBonusEffects, hasSpecialConditions } from '../utils/equipmentSet'
 import { itemTypeOf } from '../utils/itemType'
 
@@ -8,14 +8,27 @@ import { itemTypeOf } from '../utils/itemType'
 
 // 追加効果（base_stats + ミスリル）のバッジ群。
 // 専用技は付加効果側（is_exclusive）で扱うため、ここでは表示しない。
-export function BaseStatBadges({ item }: { item: Item }) {
+// 「その他」のテキスト値は付加効果のテキストと同様、長い場合 [詳細] バッジに切り替える。
+export function BaseStatBadges({ item, longTextThreshold = TEXT_DETAIL_THRESHOLD }: {
+  item: Item
+  longTextThreshold?: number
+}) {
   return (
     <>
-      {Object.entries(item.base_stats ?? {}).map(([key, val]) => (
-        <span key={key} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
-          {BASE_STAT_LABELS[key] ?? key}: <span className="text-white font-medium">{formatSignedValue(val)}</span>
-        </span>
-      ))}
+      {Object.entries(item.base_stats ?? {}).map(([key, val]) => {
+        const disp = formatSignedValue(val)
+        // テキスト値（数値でない値）が列に収まらない長さなら [詳細] とし、ホバーで全文を出す
+        const isLongText = !isNumericValue(val) && disp.length >= longTextThreshold
+        return (
+          <span key={key} className="text-xs bg-surface border border-surface-border rounded px-1.5 py-0.5 text-gray-300">
+            {BASE_STAT_LABELS[key] ?? key}: {isLongText ? (
+              <DetailTextPopover text={disp} />
+            ) : (
+              <span className="text-white font-medium">{disp}</span>
+            )}
+          </span>
+        )
+      })}
       {item.mithril && (
         <span className="text-xs bg-slate-700/40 border border-slate-400/40 rounded px-1.5 py-0.5 text-slate-200">
           ミスリル
@@ -25,13 +38,27 @@ export function BaseStatBadges({ item }: { item: Item }) {
   )
 }
 
-// テキスト値を [詳細] バッジへ切り替える既定の文字数しきい値（各種別タブの付加効果列向け）
-export const BONUS_TEXT_DETAIL_THRESHOLD = 5
+// テキスト値を [詳細] バッジへ切り替える既定の文字数しきい値
+// （各種別タブの追加効果「その他」列・付加効果列で共通）
+export const TEXT_DETAIL_THRESHOLD = 5
+
+// 一覧に収まらない長さのテキスト値の表示。[詳細] バッジにし、ホバー（フォーカス）で全文を出す。
+// 追加効果「その他」のテキストと付加効果のテキストで共通利用する。
+function DetailTextPopover({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-block cursor-help focus:outline-none" tabIndex={0}>
+      <span className="text-[10px] bg-blue-900/40 border border-blue-600/40 rounded px-1 py-px text-blue-200">詳細</span>
+      <span className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block group-focus:block w-64 bg-surface-card border border-blue-600/40 rounded-md px-3 py-2 text-xs text-gray-200 shadow-xl whitespace-normal normal-case">
+        {text}
+      </span>
+    </span>
+  )
+}
 
 // 付加効果（bonus_effects）の一覧。
 // longTextThreshold で [詳細] 切替の文字数を呼び出し側の列幅に合わせて調整できる
 // （「全て」タブの情報列のように幅広の列では大きい値を渡し、収まるテキストはそのまま表示する）。
-export function BonusEffectList({ item, longTextThreshold = BONUS_TEXT_DETAIL_THRESHOLD }: {
+export function BonusEffectList({ item, longTextThreshold = TEXT_DETAIL_THRESHOLD }: {
   item: Item
   longTextThreshold?: number
 }) {
@@ -53,16 +80,7 @@ export function BonusEffectList({ item, longTextThreshold = BONUS_TEXT_DETAIL_TH
               <p key={i} className="text-gray-400 whitespace-nowrap">
                 {v.label && <span>{v.label}{disp && '：'}</span>}
                 {disp && (
-                  isLongText ? (
-                    <span className="group relative inline-block cursor-help focus:outline-none" tabIndex={0}>
-                      <span className="text-[10px] bg-blue-900/40 border border-blue-600/40 rounded px-1 py-px text-blue-200">詳細</span>
-                      <span className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block group-focus:block w-64 bg-surface-card border border-blue-600/40 rounded-md px-3 py-2 text-xs text-gray-200 shadow-xl whitespace-normal normal-case">
-                        {disp}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="text-gray-200">{disp}</span>
-                  )
+                  isLongText ? <DetailTextPopover text={disp} /> : <span className="text-gray-200">{disp}</span>
                 )}
               </p>
             )
@@ -129,12 +147,18 @@ export function TechniquePieceNames({ members }: { members: Item[] }) {
 
 // 装備セットの追加効果セル。設定グループが1つ（全部位共通）なら効果のみ、複数なら部位名つきで分けて表示。
 // テクニック部位は追加効果を持たないため対象外（部位アイテム名は付加効果列で表示する）。
-export function SetBaseStatsCell({ members, categories }: { members: Item[]; categories?: ItemCategory[] }) {
+export function SetBaseStatsCell({ members, categories, longTextThreshold }: {
+  members: Item[]
+  categories?: ItemCategory[]
+  longTextThreshold?: number
+}) {
   const effectMembers = members.filter((m) => !isTechniqueMember(m, categories))
   if (effectMembers.length === 0) return <span className="text-xs text-gray-600">—</span>
   const groups = groupPiecesByBaseStats(effectMembers)
   const renderEffects = (m: Item) =>
-    hasBaseStats(m) ? <BaseStatBadges item={m} /> : <span className="text-xs text-gray-600">—</span>
+    hasBaseStats(m)
+      ? <BaseStatBadges item={m} longTextThreshold={longTextThreshold} />
+      : <span className="text-xs text-gray-600">—</span>
   if (groups.length === 1) {
     return <div className="flex flex-wrap gap-1">{renderEffects(groups[0].member)}</div>
   }

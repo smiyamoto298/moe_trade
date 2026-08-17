@@ -109,8 +109,9 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 }
 
 // 「全て」タブの情報列は3列ぶち抜き（colSpan=3）で各種別タブの効果列より幅広のため、
-// 付加効果のテキスト値を [詳細] に切り替える文字数しきい値を緩め、列に収まる長さはそのまま表示する。
-const ALL_INFO_BONUS_TEXT_THRESHOLD = 20
+// テキスト値（追加効果「その他」・付加効果）を [詳細] に切り替える文字数しきい値を緩め、
+// 列に収まる長さはそのまま表示する。
+const ALL_INFO_TEXT_THRESHOLD = 20
 
 // 「全て」タブの情報列。行ごとに種別を判定し、その種別に応じた情報を1セルにまとめて表示する。
 // 各種別タブの効果列と同じ部品（equipmentCells / MasteryBadges）を再利用する。
@@ -205,12 +206,12 @@ function AllInfoCell({ item, type, categories }: { item: Item; type: ItemType; c
   return (
     <div className="flex flex-col gap-2">
       <Labeled label="追加効果">
-        {isSet ? <SetBaseStatsCell members={members} categories={categories} />
-          : hasBase ? <div className="flex flex-wrap gap-1"><BaseStatBadges item={item} /></div> : dash}
+        {isSet ? <SetBaseStatsCell members={members} categories={categories} longTextThreshold={ALL_INFO_TEXT_THRESHOLD} />
+          : hasBase ? <div className="flex flex-wrap gap-1"><BaseStatBadges item={item} longTextThreshold={ALL_INFO_TEXT_THRESHOLD} /></div> : dash}
       </Labeled>
       <Labeled label="付加効果">
-        {isSet ? <SetBonusCell members={members} categories={categories} showTechniqueNames={false} longTextThreshold={ALL_INFO_BONUS_TEXT_THRESHOLD} />
-          : hasBonus ? <div className="flex flex-col gap-1.5"><BonusEffectList item={item} longTextThreshold={ALL_INFO_BONUS_TEXT_THRESHOLD} /></div> : dash}
+        {isSet ? <SetBonusCell members={members} categories={categories} showTechniqueNames={false} longTextThreshold={ALL_INFO_TEXT_THRESHOLD} />
+          : hasBonus ? <div className="flex flex-col gap-1.5"><BonusEffectList item={item} longTextThreshold={ALL_INFO_TEXT_THRESHOLD} /></div> : dash}
       </Labeled>
       <Labeled label="特殊条件">
         {isSet ? <SetSpecialConditionsCell members={members} categories={categories} />

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import type { Item, ItemBonusEffect, ItemCategory, RecipeEntry } from '../types'
-import { BonusEffectList, OtherInfoCell, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from './equipmentCells'
+import { BaseStatBadges, BonusEffectList, OtherInfoCell, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from './equipmentCells'
 
 // 付加効果のテキスト値が長い（5文字以上）場合、一覧では [詳細] にしてホバーで全文を出す。
 // 単位付き数値や4文字以下のテキストはそのまま表示する。
@@ -70,6 +70,42 @@ describe('BonusEffectList', () => {
 
     expect(screen.getByText('詳細')).toBeInTheDocument()
     expect(screen.getByText(longText)).toBeInTheDocument()
+  })
+})
+
+// 追加効果「その他」のテキスト値も、付加効果のテキストと同じしきい値・同じ [詳細] 表示にする。
+function itemWithBaseStats(baseStats: Record<string, number | string>): Item {
+  return { base_stats: baseStats, mithril: false } as unknown as Item
+}
+
+describe('BaseStatBadges', () => {
+  it('5文字以上のテキスト値は「詳細」バッジで表示し、全文をポップアップに含める', () => {
+    render(<BaseStatBadges item={itemWithBaseStats({ 発動条件: '水中でのみ発動する' })} />)
+
+    expect(screen.getByText('詳細')).toBeInTheDocument()
+    expect(screen.getByText('水中でのみ発動する')).toBeInTheDocument()
+  })
+
+  it('4文字以下のテキスト値はそのまま表示し「詳細」バッジにしない', () => {
+    render(<BaseStatBadges item={itemWithBaseStats({ 発動条件: '水中' })} />)
+
+    expect(screen.getByText('水中')).toBeInTheDocument()
+    expect(screen.queryByText('詳細')).not.toBeInTheDocument()
+  })
+
+  it('数値は桁数に関わらずそのまま符号付きで表示する', () => {
+    render(<BaseStatBadges item={itemWithBaseStats({ atk: 123456, 釣り: 5 })} />)
+
+    expect(screen.getByText('+123456')).toBeInTheDocument()
+    expect(screen.getByText('+5')).toBeInTheDocument()
+    expect(screen.queryByText('詳細')).not.toBeInTheDocument()
+  })
+
+  it('longTextThreshold 未満のテキスト値はそのまま表示する（幅広の列向け）', () => {
+    render(<BaseStatBadges item={itemWithBaseStats({ 発動条件: '水中でのみ発動する' })} longTextThreshold={20} />)
+
+    expect(screen.getByText('水中でのみ発動する')).toBeInTheDocument()
+    expect(screen.queryByText('詳細')).not.toBeInTheDocument()
   })
 })
 
@@ -252,6 +288,17 @@ describe('SetBaseStatsCell / SetSpecialConditionsCell テクニック部位の�
       category: { id: 31, parent_id: 3, name: 'ノアピース', sort_order: 1 },
     }),
   ]
+
+  it('追加効果列は longTextThreshold を部位の追加効果表示（BaseStatBadges）へ引き継ぐ', () => {
+    const textMembers = [
+      setMember({ id: 1, name: '頭装備', base_stats: { 発動条件: '水中でのみ発動する' }, special_conditions: [] }),
+    ]
+    render(<SetBaseStatsCell members={textMembers} categories={setCategories} longTextThreshold={20} />)
+
+    // 既定（5文字）なら [詳細] になる長さでも、しきい値を緩めればそのまま表示される
+    expect(screen.getByText('水中でのみ発動する')).toBeInTheDocument()
+    expect(screen.queryByText('詳細')).not.toBeInTheDocument()
+  })
 
   it('追加効果列はテクニック部位をグループ化対象から外す（空グループの部位チップを出さない）', () => {
     render(<SetBaseStatsCell members={members} categories={setCategories} />)
