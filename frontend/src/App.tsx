@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import Header from './components/Header'
 import Spinner from './components/Spinner'
 import Footer from './components/Footer'
+import UpdateBanner from './components/UpdateBanner'
+import InstallAppButton from './components/InstallAppButton'
 import SideBanners from './components/SideBanners'
 import TourOverlay from './components/TourOverlay'
 import HelpButton from './components/HelpButton'
@@ -58,11 +60,14 @@ export default function App() {
     // pb-* はfixedフッターの高さ分の逃げ（著作権表記の折り返し行数が画面幅で変わる）
     <div className="min-h-screen flex flex-col pb-24 sm:pb-20 min-[1150px]:pb-16">
       <Header />
+      <UpdateBanner />
+      <InstallAppButton />
       <main className="flex-1">
         {/* 遅延読み込みルートのチャンク取得中はスピナーを表示 */}
         <Suspense fallback={<Spinner center />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/listings" replace />} />
+          {/* サイトのホームは全種別を横断表示する /all */}
+          <Route path="/" element={<Navigate to="/all" replace />} />
           <Route path="/listings" element={<ListingsPage key="equipment" mode="equipment" />} />
           <Route path="/all" element={<ListingsPage key="all" mode="all" />} />
           <Route path="/skills" element={<ListingsPage key="skill" mode="skill" />} />

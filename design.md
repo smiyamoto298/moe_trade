@@ -242,7 +242,8 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
   - オークション解決（`auction`。即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
   - **期限切れの前日**（`expiry`。期限まで24時間以内・バッチ `trades:notify-expiring` 毎時）→ 登録者へ期限更新を促す通知。送信済みは `expiry_notified_at` で管理し同じ期限に再送しない（期限の延長・再出品で `expires_at` が変わるとリセットされ、新しい期限の前日に再通知）。オークションは自動成立/取り下げ・延長不可のため対象外
 - **実装**: `minishlink/web-push`（VAPID）。鍵は env（`VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`・`config/webpush.php`）。**未設定なら送信は no-op**（テスト・鍵未配備の環境で安全）。DBトランザクション中の送信要求はコミット後に実行（ロールバック時は送らない）。送信失敗はログのみでリクエストを止めず、期限切れ購読（410/404）は自動削除する
-- **対応環境**: デスクトップ/Android の主要ブラウザ。iOS Safari はホーム画面追加（PWA）時のみ対応のため `manifest.webmanifest` を配布する。クリック時は既存タブをフォーカスして通知ペイロードの `url` へ遷移（既定 `/mypage`・新着メッセージは `/mypage?chat=<chat_id>`。無ければ新規ウィンドウ）
+- **対応環境**: デスクトップ/Android の主要ブラウザ（Firefox も可）。iOS Safari はホーム画面追加（PWA）時のみ対応。クリック時は既存タブをフォーカスして通知ペイロードの `url` へ遷移（既定 `/mypage`・新着メッセージは `/mypage?chat=<chat_id>`。無ければ新規ウィンドウ）
+- **Service Worker の登録契機**: 以前は通知を有効にしたユーザーだけが登録していたが、PWA のインストール判定に SW 登録が必須なため **`main.tsx` で全ユーザーに無条件登録**するよう変更した（購読自体は従来どおりユーザー操作を契機に `utils/webPush.ts` が行う）。詳細は「PWA（ホーム画面インストール・更新検知）」章
 
 ### 9. お問い合わせ（掲示板）
 - 表示名は「お問い合わせ」（旧称: 運営掲示板。URL `/board`・APIパス・テーブル名 `board_*` は旧称のまま変更しない）
@@ -398,7 +399,7 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 - **構造化データ（JSON-LD）**: アイテムページに `Product` スキーマ（`name`/`category`/`brand`=Master of Epic/`url`/`description`/`image`）を
   `<script type="application/ld+json">` で出力。ゲーム内通貨はISO通貨コードでないため `offers` は付けない（無効通貨でリッチリザルトが無視されるのを避ける）。
 - **サイトマップ**: `GET /sitemap.xml`（`SitemapController`・Laravel `routes/web.php`）が動的生成。
-  トップ（`/`）＋一覧ページ（`/listings` `/skills` `/assets` `/items` `/buy-requests`）＋ **`verified_status=verified` の全アイテムの恒久ページ `/items/{id}`**
+  トップ（`/`）＋一覧ページ（`/all` `/listings` `/skills` `/assets` `/items` `/buy-requests`）＋ **`verified_status=verified` の全アイテムの恒久ページ `/items/{id}`**
   ＋ **`status=active` の出品・買取の詳細URL**（いずれも `lastmod`=`updated_at`）を列挙する。
   未確認アイテムは精査前のため含めない。出品・買取は取り下げ・期限切れ・成立済みを含めない（詳細APIが404を返すページをクローラーに渡さない）。
   URLのベースは `config('app.frontend_url')`（`FRONTEND_URL`）
@@ -438,6 +439,7 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 - 効果: 初回バンドル 904KB（gzip 253KB）→ 458KB（gzip 132KB）。recharts は「相場情報」等で初めてチャートを開いたときに取得される
 
 ### 出品一覧のタブとルーティング
+- **`/all` がサイトのホーム**。`/` はここへリダイレクトし、PWA の `start_url` も `/all?src=pwa`（`src=pwa` はインストール経由の利用を計測するため）
 - `/all`（全て）・`/listings`（装備品）・`/skills`（テクニック）・`/assets`（アセット）・`/others`（その他）は同一の `ListingsPage` コンポーネントを `mode` プロップ（`'all' | 'equipment' | 'skill' | 'asset' | 'other'`）で切り替える
 - ルートごとに React の `key`（`"all"` / `"equipment"` / `"skill"` / `"asset"` / `"other"`）を付与し、タブ切り替え時に確実に再マウントさせる（検索パラメータやフィルター状態が古いまま残らないようにするため）
 - 種別は検索パラメータ `item_type`（`equipment` / `technique` / `asset` / `other`）でバックエンドに渡す。旧 `is_skill` パラメータも後方互換で受け付ける（`is_skill=1`→テクニック、`is_skill=0`→装備品）
@@ -456,14 +458,43 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
   - 「戻る」操作で非表示ステップに入った場合は前方向へスキップし、先頭まで達したら前進に切り替える（行き止まり防止）
   - ステップカウンター（`n / N`）は表示できるステップだけで数え直す（スキップ対象は番号・総数に含めず、番号が飛ばない）。最後に表示できるステップで「完了」ボタンになる
 
+### PWA（ホーム画面インストール・更新検知）
+
+スマートフォンでアプリのように起動できるようにする。**Android はサイト内のボタンからワンタップでインストールでき、iPhone は Safari の「ホーム画面に追加」を手動で行う**（iOS は JS からホーム画面追加を起動する API が存在しないため、サイト側からは起動できない。Firefox も同様で、`beforeinstallprompt` 未実装のため Android のブラウザメニューから手動で追加する）。
+
+- **マニフェスト**（`frontend/public/manifest.webmanifest`）:
+  `id="/"` / `start_url="/all?src=pwa"` / `scope="/"` / `display=standalone` / `theme_color`=`background_color`=`#111827`。
+  アイコンは `img/icon-192.png`・`img/icon-512.png`（`purpose=any`）と `img/icon-maskable-512.png`（`purpose=maskable`・Android のアダプティブアイコン用にセーフゾーン分の余白を持たせる）。
+  **Android の WebAPK はアプリ名・アイコン・start_url の変更が既存インストール分に反映されない**ため、インストール導線を広める前に確定させること。
+- **インストールボタン**（`components/InstallAppButton.tsx` / `utils/installPrompt.ts`）:
+  Chrome の `beforeinstallprompt` を `main.tsx` の `installPromptCapture()` で横取りして保持し（既定のミニインフォバーは `preventDefault` で抑止）、ヘッダー直下のバナーから `prompt()` を呼ぶ。
+  `prompt()` は使い切りのため実行後はバナーを消す。「あとで」は localStorage `pwa_install_dismissed='1'` で以後非表示。
+  インストール済み（`display-mode: standalone` / iOS の `navigator.standalone`）では表示しない。
+  Chrome がインストール条件を満たしたと判断したときだけイベントが飛ぶので、非対応ブラウザ（iOS Safari・Firefox）では何も表示されない。
+- **Service Worker**（`frontend/public/sw.js`）: Web Push の表示・クリック遷移に加えて**オフライン時のフォールバック**（`offline.html`）を持つ。
+  Chrome はインストール判定で「オフラインを模した fetch イベントに 200 を返すか」を実際に検証するため、fetch ハンドラが無いと `beforeinstallprompt` が発火しない。
+  ただしキャッシュするのは `offline.html` の1ページだけで、**ナビゲーションが失敗したときにのみ**キャッシュを見る（通常のリクエスト・API・アセットは一切握らない）。
+  これにより index.html やアセットがキャッシュに固定されず、デプロイ内容は従来どおり即時反映される。SW は `main.tsx` で全ユーザーに無条件登録する。
+- **更新検知**（`components/UpdateBanner.tsx` / `utils/appUpdate.ts` / `utils/buildId.ts`）:
+  `vite.config.ts` がビルドごとに一意な `buildId`（ビルド時刻）を `__BUILD_ID__` として焼き込み、同じ値を `dist/version.json` にも出力する。
+  クライアントは `visibilitychange`（前面復帰時）と30分間隔のポーリングで `/version.json` を `cache: 'no-store'` で取得し、
+  焼き込み値と異なればヘッダー直下に「新しいバージョンがあります［更新する］」バナーを出してリロードさせる。一度検知したら監視を止める。
+  **standalone 起動のアプリはユーザーが閉じないため、古い JS が新しい API を叩く事故が通常のタブより起きやすい**。長時間開いたままのタブにも同じ効果がある。
+  取得失敗（オフライン・デプロイ中）や `__BUILD_ID__` 未定義（開発サーバー・テスト）では何もしない。
+- **キャッシュ制御**（本番 `.htaccess`・非公開運用ファイルで管理）: ハッシュ付きアセットは30日キャッシュのまま、
+  ハッシュの付かない `index.html` / `sw.js` / `version.json` / `manifest.webmanifest` / `offline.html` は `Cache-Control: no-cache, must-revalidate` を明示する。
+  特に `version.json` がキャッシュされると更新検知の仕組みごと無効化される。
+- 回帰防止テスト: `frontend/src/utils/appUpdate.test.ts` / `frontend/src/utils/installPrompt.test.ts` /
+  `frontend/src/components/UpdateBanner.test.tsx` / `frontend/src/components/InstallAppButton.test.tsx` / `frontend/src/App.test.tsx`（`/` → `/all`）
+
 ---
 
 ## 画面構成
 
 ```
-/ → /listings にリダイレクト
+/ → /all にリダイレクト（サイトのホーム。PWA の start_url も /all）
+├── /all                      # 出品一覧・検索（全てタブ：全種別を新着順で横断表示）＝ホーム
 ├── /listings                 # 出品一覧・検索（装備品タブ）
-├── /all                      # 出品一覧・検索（全てタブ：全種別を新着順で横断表示）
 ├── /skills                   # 出品一覧・検索（テクニックタブ）
 ├── /assets                   # 出品一覧・検索（アセットタブ）
 ├── /others                   # 出品一覧・検索（その他タブ：未開封ペット・レシピ・ペット用アイテム・アイテムセット）

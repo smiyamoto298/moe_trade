@@ -1,10 +1,32 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
+/**
+ * ビルドごとに一意な識別子。ビルド時に __BUILD_ID__ として焼き込み、
+ * 同じ値を dist/version.json にも出力する。クライアントは両者を比較して
+ * 「開きっぱなしで古くなったフロント」を検知し、更新を促す（utils/appUpdate.ts）。
+ * git hash はコミット漏れ時に同値になるため、ビルド時刻を採用する。
+ */
+const buildId = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react()],
+    define: { __BUILD_ID__: JSON.stringify(buildId) },
+    plugins: [
+      react(),
+      {
+        // 最新ビルドIDの配信元。dist 直下に置くので deploy の tar にそのまま乗る
+        name: 'emit-version-json',
+        generateBundle() {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'version.json',
+            source: JSON.stringify({ build: buildId }),
+          })
+        },
+      },
+    ],
     server: {
       host: true,
       watch: {

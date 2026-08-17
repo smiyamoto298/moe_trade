@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 // ビルド設定（vite.config.ts）とは分離し、テスト専用の構成を持つ。
 export default defineConfig({
   plugins: [react()],
+  // ビルド設定と同じく __BUILD_ID__ を定義する（未定義だと参照側が ReferenceError になる）
+  define: { __BUILD_ID__: JSON.stringify('test-build') },
   test: {
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],

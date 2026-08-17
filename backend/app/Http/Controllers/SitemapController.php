@@ -26,6 +26,8 @@ class SitemapController extends Controller
 
         $urls = [
             ['loc' => $base . '/'],
+            // サイトのホーム（/ のリダイレクト先）かつヘッダーの主要導線
+            ['loc' => $base . '/all'],
             ['loc' => $base . '/listings'],
             ['loc' => $base . '/skills'],
             ['loc' => $base . '/assets'],
