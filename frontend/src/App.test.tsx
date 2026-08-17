@@ -10,6 +10,7 @@ vi.mock('./components/SideBanners', () => ({ default: () => null }))
 vi.mock('./components/TourOverlay', () => ({ default: () => null }))
 vi.mock('./components/HelpButton', () => ({ default: () => null }))
 vi.mock('./components/UpdateBanner', () => ({ default: () => null }))
+vi.mock('./components/PushBlockedBanner', () => ({ default: () => null }))
 vi.mock('./components/InstallAppButton', () => ({ default: () => null }))
 vi.mock('./pages/ListingsPage', () => ({
   default: ({ mode }: { mode: string }) => <div data-testid="listings">mode:{mode}</div>,

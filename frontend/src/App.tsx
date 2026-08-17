@@ -4,6 +4,7 @@ import Header from './components/Header'
 import Spinner from './components/Spinner'
 import Footer from './components/Footer'
 import UpdateBanner from './components/UpdateBanner'
+import PushBlockedBanner from './components/PushBlockedBanner'
 import InstallAppButton from './components/InstallAppButton'
 import SideBanners from './components/SideBanners'
 import TourOverlay from './components/TourOverlay'
@@ -61,6 +62,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col pb-24 sm:pb-20 min-[1150px]:pb-16">
       <Header />
       <UpdateBanner />
+      <PushBlockedBanner />
       <InstallAppButton />
       <main className="flex-1">
         {/* 遅延読み込みルートのチャンク取得中はスピナーを表示 */}
