@@ -17,7 +17,9 @@ fail=0
 msgs=()
 
 # 1) バックエンドテスト
-if docker compose ps php >/dev/null 2>&1; then
+# worktree セッションでは、そのツリーの .env(COMPOSE_PROJECT_NAME) が効くので
+# cd した先のスタック = 自分のスタックで全件を回すことになる。
+if docker compose ps --status running -q php 2>/dev/null | grep -q .; then
   if ! docker compose exec -T php php artisan test >/tmp/be.log 2>&1; then
     fail=1; msgs+=("バックエンドテストが失敗(tail: $(tail -5 /tmp/be.log | tr '\n' ' '))")
   fi

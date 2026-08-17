@@ -46,37 +46,63 @@
 - orchestrator は独立ストリームを **`isolation: "worktree"`** でディスパッチする。各 implementer/simple-impl は自分の worktree 内だけで編集・テストする。ストリーム間はファイルが物理的に別ツリーなので衝突しない。
 - architect は「重ならないモジュール単位（例: order/ risk/ feed/）」でストリームを割り当てる。**依存のあるタスクは同一ストリームに寄せる**（直列に処理させる）。
 - 統合は orchestrator が各 worktree をマージして行い、コンフリクトは git で解決する。
-- **フォールバック（単一ツリーで複数編集する場合のみ）**: `bash .claude/lock.sh acquire/release/check <agent> <相対パス>` と `.claude/shared_paths.txt` を手動で使う。pre/post edit の自動ロック hook は撤去済み（worktree が標準のため不要かつ毎編集のオーバーヘッド）。
+- ファイルロックの仕組みは**全廃した**（`lock.sh` / `.claude/locks/` / PreToolUse フック）。ロックは「相手のコミット待ち」で相互デッドロックを起こすため、分離で解決する。
 
 ### テスト品質ゲート（カバレッジ維持・実行回数を最適化）
 
 全件テストを毎サブエージェント停止ごとに回すのをやめ（最大のコスト要因だった）、**スコープ実行＋統合時全件**でカバレッジを同等に保つ:
 
-- **実装中（各 worktree）**: `bash .claude/test-scope.sh` が **変更したテストファイルだけ** を実行する。テストは SQLite `:memory:` なので worktree ごとのエフェメラル php コンテナで並列実行しても DB 競合しない。backend のコードを変更したのにテスト未追加なら **gate FAIL**（テスト追加を機械的に強制）。
-- **統合時（Stop hook）**: `stop_quality_gate.sh` が main ツリーで **全件**（backend PHPUnit ＋ frontend ビルド）を実行し、回帰を最終担保する。
+- **実装中（各 worktree）**: `bash .claude/test-scope.sh` が **変更したテストファイルだけ** を実行する。実行先はそのツリー自身の Docker スタック（未起動なら main スタックに自分の backend をマウントしたエフェメラルコンテナ）。テストは SQLite `:memory:` なので並列実行しても DB 競合しない。backend のコードを変更したのにテスト未追加なら **gate FAIL**（テスト追加を機械的に強制）。
+- **統合時（Stop hook）**: `stop_quality_gate.sh` がそのツリーで **全件**（backend PHPUnit ＋ frontend ビルド）を実行し、回帰を最終担保する。
 - SubagentStop hook は backstop（main ツリーに変更が見えればスコープ実行、無ければ no-op）。
 
-## 複数セッションの並行作業（クロスセッション・ロック）
+## 複数セッションの並行作業（1セッション = 1ブランチ = 1 worktree = 1 Docker スタック）
 
-同一ワーキングツリーで **複数の Claude Code セッション（別々の `claude` プロセス）を並行**して走らせる場合の、ファイル衝突防止の仕組み。worktree 分離（前章）は「1セッション内の複数サブエージェント」向け、こちらは「独立した複数セッション」向け。**自動で効くので普段は意識不要**だが、ブロックされたときの対処と design.md の扱いだけ把握しておく。
+複数の Claude Code セッション（別々の `claude` プロセス）を同時に走らせるときは、**ロックで待ち合わせない。物理的に分離する。** セッションごとに専用の git worktree（別フォルダ・別ブランチ）と、そこに紐づく独立した Docker スタックを持たせる。
 
-**仕組み（自動）**: `PreToolUse(Edit|Write|MultiEdit)` フック `.claude/hooks/cross_session_lock.sh` が、編集しようとした全ファイルを `session_id` 名義でロックする。`.claude/locks/` が全セッション共有のレジストリ（=「いま誰が何を編集中か」）。
+> かつては `.claude/locks/` のクロスセッション・ロックで同時編集を防いでいたが、**解放条件が「コミット済みになること」だったため、全員が作業中＝全員が未コミット＝誰も解放しない相互デッドロック**を起こした。仕組みごと撤去済み。
 
-- **ロックの寿命 = コミットまで**。対象ファイルが git で clean（コミット済み）になると自動解放され、待っていた別セッションが即座に取得できる。明示解放は不要。
-- 他セッションが **未コミットで編集中** のファイルを触ろうとすると **編集がブロックされる（exit 2）**。別ファイルを触る限り衝突しないので並行作業の摩擦は小さい。
+### 鉄則
 
-**ブロックされたときの対処**（フックがメッセージで案内する）:
-1. 相手がコミットするまで待つ → コミット後に同じ編集を再試行すれば自動で通る。
-2. 先に別の（衝突しない）ファイルの作業を進める。
-3. どうしても待ちたい場合のみ: `bash .claude/lock.sh wait <session_id> <file> [timeout]`。
-- 状況確認: `bash .claude/lock.sh list`（誰が何を未コミットで持っているか）。
+- **main のワーキングツリー（`C:\Dev\moe_trade`）で走らせるセッションは常に1つだけ。** 2つ目以降は必ず worktree を作る。
+- 各セッションは**自分の worktree の中だけ**を編集する。他セッションの worktree には触らない。
+- 統合は git のマージで行う。同じファイルを触っていてもマージ時に解決すればよく、作業中に待つ必要はない。
 
-**design.md など「必ず触る共有ファイル」は細かく即コミット**して他セッションを待たせない:
-- 編集したらすぐ、その1ファイルだけコミット: `bash .claude/commit-doc.sh design.md "feat: 〇〇を追記"`（指定ファイルだけを pathspec コミットし、他の未コミット作業は巻き込まない。コミット後にロックも自動解放）。
-- 大きな仕様変更を1コミットに溜め込まない。章・機能単位で小さくコミットすることで、design.md を巡るブロックを最小化し並行作業を成立させる。
-- 設計上 30 分（`MOE_LOCK_STALE_SEC`）放置されたロックはクラッシュ扱いで奪取可能。長時間 design.md を未コミットで抱えないこと。
+### 2つ目以降のセッションの始め方
 
-> ロックファイル（`.claude/locks/*.lock`）は実行時の一時状態で git 追跡しない（`.claude/locks/.gitignore`）。`shared_paths.txt` と `.claude/lock.sh acquire/release` の手動運用は、worktree もクロスセッションも使わない単一ツリー・サブエージェントのフォールバック用に残置。
+```powershell
+# 1) worktree + 専用 Docker スタックを作成（Slot 省略で空きポートを自動採番）
+powershell -File scripts/new-worktree.ps1 -Branch feat-chat
+
+# 2) 表示されたパスへ移動して claude を起動
+cd ..\moe_trade-feat-chat
+claude
+```
+
+`new-worktree.ps1` がやること:
+- `../moe_trade-<branch>` に worktree を作成（ブランチが無ければ `main` から分岐）
+- `COMPOSE_PROJECT_NAME` とホストポートをずらしたルート `.env` を生成（named volume も分離＝**DB も完全に独立**）
+- main の `backend/.env` をコピーし `APP_URL` / `FRONTEND_URL` / `SANCTUM_STATEFUL_DOMAINS` をその worktree のポートに合わせる（合わせないと cookie 認証が壊れる）
+- スタック起動 → `composer install` → `migrate --seed` まで実行（`-NoStart` で抑止、`-Lean` で mailpit / phpMyAdmin / scheduler を省いて軽量起動、`-CopyDb` で main の DB 内容を複製）
+
+すでに走っているセッションを worktree へ移す場合は、`scripts/new-worktree.ps1 -NoStart` で作ってから **EnterWorktree ツール**に `path` を渡す（Claude Code のネイティブ機能。セッションの作業ディレクトリごと移動する）。
+
+### 片付け
+
+```powershell
+# コンテナ + DB ボリューム破棄 → worktree 削除 → ブランチ削除まで一括
+powershell -File scripts/remove-worktree.ps1 -Branch feat-chat -DeleteBranch
+```
+
+未コミット変更や main 未マージのコミットが残っていると中断する（`-Force` で強行）。**worktree を消さないとポート枠（Slot）が空かない**ので、終わったら必ず片付ける。
+
+### 統合フロー
+
+1. worktree 側でコミット（`design.md` とテストは CLAUDE.md 冒頭の必須ワークフローどおり）
+2. main のセッションで `git merge <branch>`（または PR）
+3. main ツリーで全件テスト＋ビルド（Stop hook の品質ゲートが自動で回す）
+
+`design.md` は全セッションが触る共有ファイルなので、**章・機能単位で小さくコミット**する（`bash .claude/commit-doc.sh design.md "feat: 〇〇を追記"`）。ブロックはされなくなったが、マージコンフリクトを小さく保つために有効。
 
 ### レビュー
 
