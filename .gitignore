@@ -36,3 +36,7 @@ frontend/public/img/banner/
 frontend/public/img/side_banner/
 frontend/public/img/castle.jpg
 frontend/public/img/favicon.jpg
+# PWA アイコンは favicon.jpg（ゲーム内アイコン）を拡大した派生物なので同様に非公開扱い
+frontend/public/img/icon-192.png
+frontend/public/img/icon-512.png
+frontend/public/img/icon-maskable-512.png
