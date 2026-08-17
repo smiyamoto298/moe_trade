@@ -8,7 +8,7 @@ export interface EquipmentSetPieceInput {
   category_id: number      // 部位カテゴリ
   name: string             // 部位ごとの名前
   official_url?: string | null // 部位ごとの公式DBリンク（moepic.com のアイテムページ）
-  base_stats: Record<string, number>
+  base_stats: Record<string, number | string>
   special_conditions: string[]
   dyeable?: boolean | null
   mithril?: boolean
@@ -83,7 +83,7 @@ export const itemsApi = {
     name: string
     description: string
     official_url?: string | null
-    base_stats: Record<string, number>
+    base_stats: Record<string, number | string>
     special_conditions: string[]
     is_equipment_set?: boolean
     set_piece_category_ids?: number[]
@@ -158,7 +158,7 @@ export const itemsApi = {
     name?: string
     description?: string
     official_url?: string | null
-    base_stats?: Record<string, number>
+    base_stats?: Record<string, number | string>
     special_conditions?: string[]
     mithril?: boolean
     placement?: AssetPlacement | null

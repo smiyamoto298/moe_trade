@@ -17,7 +17,9 @@ export interface PieceGroup {
 const partName = (it: Item): string => it.category?.name ?? ''
 
 // base_stats を順序非依存の安定したキーにする
-function sortedStats(stats: Record<string, number> | null | undefined): [string, number][] {
+function sortedStats(
+  stats: Record<string, number | string> | null | undefined,
+): [string, number | string][] {
   return Object.entries(stats ?? {}).sort(([a], [b]) => a.localeCompare(b))
 }
 

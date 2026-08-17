@@ -82,7 +82,8 @@ export interface Item {
   image_url: string | null
   // 公式DB: MasterOfEpic公式サイト（moepic.com）のアイテムページへのリンク
   official_url: string | null
-  base_stats: Record<string, number>
+  // 追加効果。固定パラメータ（atk 等）は数値。「その他」（自由入力の項目名）は数値かテキスト
+  base_stats: Record<string, number | string>
   special_conditions: string[]
   dyeable: boolean | null
   mithril: boolean

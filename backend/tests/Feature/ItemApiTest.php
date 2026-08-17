@@ -144,6 +144,48 @@ class ItemApiTest extends TestCase
         $this->assertDatabaseHas('bonus_value_labels', ['kind' => 'stat', 'label' => '採掘', 'is_organized' => false]);
     }
 
+    public function test_追加効果のその他はテキストの値も文字列のまま保存できる(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => 'テキスト効果付きの剣',
+            'base_stats'  => ['atk' => 10, '発動条件' => '水中のみ'],
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('base_stats.atk', 10)
+            ->assertJsonPath('base_stats.発動条件', '水中のみ');
+
+        $item = Item::where('name', 'テキスト効果付きの剣')->firstOrFail();
+        $this->assertSame('水中のみ', $item->base_stats['発動条件']);
+        // テキストの項目名も stat 候補として自動追加される（値の型に依らずキーで判定する）
+        $this->assertDatabaseHas('bonus_value_labels', ['kind' => 'stat', 'label' => '発動条件', 'is_organized' => false]);
+    }
+
+    public function test_追加効果の値に配列や長すぎるテキストは保存できない(): void
+    {
+        $user = $this->makeUser();
+        $cats = $this->makeCategoryTree();
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => '不正な追加効果の剣',
+            'base_stats'  => ['発動条件' => ['水中のみ']],
+        ])->assertStatus(422)->assertJsonValidationErrors('base_stats.発動条件');
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $cats['sword']->id,
+            'name'        => '長すぎる追加効果の剣',
+            'base_stats'  => ['発動条件' => str_repeat('あ', 101)],
+        ])->assertStatus(422)->assertJsonValidationErrors('base_stats.発動条件');
+
+        $this->assertDatabaseMissing('items', ['name' => '不正な追加効果の剣']);
+        $this->assertDatabaseMissing('items', ['name' => '長すぎる追加効果の剣']);
+    }
+
     public function test_公式DBのURLは公式サイトのリンクなら保存できる(): void
     {
         $user = $this->makeUser();
@@ -870,14 +912,39 @@ class ItemApiTest extends TestCase
                 [
                     'category_id' => $cats['sword']->id,
                     'name'        => 'その他効果の剣',
-                    'base_stats'  => ['atk' => 10, '泳ぎ' => 2],
+                    'base_stats'  => ['atk' => 10, '泳ぎ' => 2, '発動条件' => '水中のみ'],
                 ],
             ],
         ])->assertStatus(201);
 
         $piece = Item::where('name', 'その他効果の剣')->firstOrFail();
         $this->assertSame(2, $piece->base_stats['泳ぎ']);
+        // 部位でもテキストの値は文字列のまま保存される
+        $this->assertSame('水中のみ', $piece->base_stats['発動条件']);
         $this->assertDatabaseHas('bonus_value_labels', ['kind' => 'stat', 'label' => '泳ぎ', 'is_organized' => false]);
+        $this->assertDatabaseHas('bonus_value_labels', ['kind' => 'stat', 'label' => '発動条件', 'is_organized' => false]);
+    }
+
+    public function test_装備セットの部位の追加効果に配列は保存できない(): void
+    {
+        $admin    = $this->makeUserWithRole('admin');
+        $cats     = $this->makeCategoryTree();
+        $equipSet = ItemCategory::create(['name' => '装備セット', 'sort_order' => 9]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/items', [
+            'category_id'      => $equipSet->id,
+            'name'             => '不正な追加効果のセット',
+            'is_equipment_set' => true,
+            'pieces' => [
+                [
+                    'category_id' => $cats['sword']->id,
+                    'name'        => '不正な追加効果の剣',
+                    'base_stats'  => ['発動条件' => ['水中のみ']],
+                ],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('pieces.0.base_stats.発動条件');
+
+        $this->assertDatabaseMissing('items', ['name' => '不正な追加効果のセット']);
     }
 
     public function test_装備セットの部位ごとに公式DBを保存できる(): void

@@ -147,6 +147,7 @@ class ItemController extends Controller
             'image_url'                => 'nullable|url|max:500',
             'official_url'             => $this->officialUrlRule(),
             'base_stats'               => 'nullable|array',
+            'base_stats.*'             => $this->baseStatValueRule(),
             'special_conditions'       => 'nullable|array',
             'special_conditions.*'     => 'string',
             'dyeable'                  => 'nullable|boolean',
@@ -296,6 +297,7 @@ class ItemController extends Controller
             'image_url'                => 'nullable|url|max:500',
             'official_url'             => $this->officialUrlRule(),
             'base_stats'               => 'nullable|array',
+            'base_stats.*'             => $this->baseStatValueRule(),
             'special_conditions'       => 'nullable|array',
             'dyeable'                  => 'nullable|boolean',
             'mithril'                  => 'nullable|boolean',
@@ -517,6 +519,27 @@ class ItemController extends Controller
     }
 
     /**
+     * 追加効果（base_stats）の値1件のバリデーションルール。
+     * 固定パラメータは数値、「その他」（自由入力の項目名）は数値かテキストを保存する。
+     * 配列・真偽値は表示側が扱えないため拒否し、テキストは JSON の肥大化を防ぐため長さを制限する。
+     */
+    private function baseStatValueRule(): array
+    {
+        return [
+            'nullable',
+            function ($attribute, $value, $fail) {
+                if (is_array($value) || is_bool($value)) {
+                    $fail('追加効果の値は数値またはテキストで入力してください。');
+                    return;
+                }
+                if (!is_numeric($value) && mb_strlen((string) $value) > 100) {
+                    $fail('追加効果のテキストは100文字以内で入力してください。');
+                }
+            },
+        ];
+    }
+
+    /**
      * 公式DB（MasterOfEpic公式サイトのアイテムページ）URL のバリデーションルール。
      * 誰でも編集できるwiki型項目のため、外部誘導の悪用を防ぐ目的で
      * 公式サイト（moepic.com とそのサブドメイン）のリンクのみ許可する。
@@ -619,6 +642,7 @@ class ItemController extends Controller
             'pieces.*.name'                   => 'required_with:pieces|string|max:200',
             'pieces.*.official_url'           => $this->officialUrlRule(),
             'pieces.*.base_stats'             => 'nullable|array',
+            'pieces.*.base_stats.*'           => $this->baseStatValueRule(),
             'pieces.*.special_conditions'     => 'nullable|array',
             'pieces.*.special_conditions.*'   => 'string',
             'pieces.*.dyeable'                => 'nullable|boolean',

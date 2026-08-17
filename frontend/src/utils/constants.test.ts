@@ -10,6 +10,7 @@ import {
   ASSET_PLACEMENTS,
   ASSET_FUNCTIONS,
   formatSignedValue,
+  isNumericValue,
   unitSuffix,
   formatBonusValueDisplay,
   bonusValueForSave,
@@ -183,6 +184,30 @@ describe('formatSignedValue', () => {
     // 倍率以外の単位は + を付ける
     expect(formatSignedValue(15, '%')).toBe('+15')
     expect(formatSignedValue(41.25, 'per_min')).toBe('+41.25')
+  })
+
+  it('数値でない値（追加効果「その他」のテキスト）はそのまま表示する', () => {
+    expect(formatSignedValue('水中のみ')).toBe('水中のみ')
+    expect(formatSignedValue('-水中のみ')).toBe('-水中のみ')
+    expect(formatSignedValue('')).toBe('')
+  })
+})
+
+describe('isNumericValue', () => {
+  it('数値・数値文字列は true', () => {
+    expect(isNumericValue(0)).toBe(true)
+    expect(isNumericValue(-1.5)).toBe(true)
+    expect(isNumericValue('12')).toBe(true)
+    expect(isNumericValue(' -0.5 ')).toBe(true)
+  })
+
+  it('テキスト・空文字・null は false', () => {
+    expect(isNumericValue('水中のみ')).toBe(false)
+    expect(isNumericValue('')).toBe(false)
+    expect(isNumericValue('   ')).toBe(false)
+    expect(isNumericValue(NaN)).toBe(false)
+    expect(isNumericValue(null)).toBe(false)
+    expect(isNumericValue(undefined)).toBe(false)
   })
 })
 

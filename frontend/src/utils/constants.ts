@@ -123,10 +123,21 @@ export const BONUS_VALUE_LABEL_OPTIONS: string[] = [
 // 追加効果・付加効果の数値表示用フォーマッタ。
 // 負数（- 付き）以外は + を付けて表示する（例: 5 → "+5", -3 → "-3"）。
 // 倍率（value_unit === 'x'）は増減ではないため + を付けない（例: 1.5倍）。
+// 数値でない値（追加効果「その他」のテキスト等）は増減ではないためそのまま表示する。
 export function formatSignedValue(value: number | string, unit?: string): string {
   const s = String(value)
   if (unit === 'x') return s
+  if (!isNumericValue(s)) return s
   return s.startsWith('-') ? s : `+${s}`
+}
+
+// 数値として扱える値か（有限の数値・数値文字列）。空文字・テキストは false。
+// 追加効果「その他」の数値/テキスト判定（utils/customStats.ts）と表示側で共通利用する。
+export function isNumericValue(value: number | string | null | undefined): boolean {
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value !== 'string') return false
+  const t = value.trim()
+  return t !== '' && Number.isFinite(Number(t))
 }
 
 // 単位の表示サフィックス（% / 倍 / /min）。%・倍率・毎分以外は空。
