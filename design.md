@@ -194,7 +194,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - **未確認アイテムバッジ（editor / admin のみ）**: 未確認アイテムがあると件数バッジを表示。表示箇所は ①ヘッダーの「管理」メニュー・「アイテム管理」リンク（合計件数）②アイテム管理ページの「装備品」「テクニック」「アセット」「その他」タブ（カテゴリ別件数）。`notifications/summary` の `unverified_items`（`equipment` / `technique` / `asset` / `other` / `total`）を5秒ポーリングで取得。`equipment` は、アイテム管理の既定ビュー（「装備セットを展開表示」OFF＝セット本体のみ表示し構成部位を畳む）で数える確認中件数と一致させるため、**装備セットの構成部位（`equipment_set_members.piece_item_id`）を除外**してカウントする（構成部位はセット本体の確認に紐付くものとして二重計上しない）
 - **管理メニュー配下の通知バッジ**: ヘッダー「管理」ドロップダウン内の各管理画面に未対応の作業があると件数バッジ（黄）を表示し、ドロップダウンを閉じている間も「管理」ボタンに赤ドットで気づけるようにする。`notifications/summary` を5秒ポーリングで取得
   - **項目名の管理（editor / admin）**: 自動追加されたまま未整理（`is_organized=false`）の項目名があると、その件数を「項目名の管理」リンクに表示（付加効果 `kind='bonus'`・追加効果その他 `kind='stat'` の両種別を合算）。API: `unorganized_label_count`
-  - **アイテム種別管理（admin のみ）**: ユーザーが個別に設定した種別の共通化候補（DB保存分＋端末報告分から、共通化済み・却下済みを除いた名前の種類数）があると、その件数を「アイテム種別管理」リンクに表示。API: `excluded_suggestion_count`
+  - **アイテム種別管理（admin のみ）**: ユーザーが個別に設定した種別の共通化候補があると、その件数を「アイテム種別管理」リンクに表示。API: `excluded_suggestion_count`。**件数は管理画面「ユーザー個別設定の共通化」の一覧行数と必ず一致する**。すなわち ①未共通登録の**新規候補**（DB保存分＋端末報告分）②共通登録済みだが別種別を設定したユーザーがいる**上書き候補**の両方を数え、**ユーザー独自のカスタム種別（`user_excluded_items.user_exclusion_type_id` が非 null）への割当**と**却下済みの名前**は数えない。この一致を保証するため、集計は候補一覧 API（`user-suggestions`）と共通の `App\Support\ExclusionSuggestions`（`rows()` / `count()`）に一元化している（かつてバッジと一覧を別々に実装しており、「カスタム種別だけの名前でバッジが点くのに一覧は空」「上書き候補しか無いと一覧に行があるのにバッジが点かない」の両方向の乖離が起きたため）
 - **オークション価格更新バッジ**: 自分の入札がより有利な入札に抜かれると（`outbid_chats`）、ヘッダー「マイ取引」に加え、マイ取引の**「取引希望」「販売希望」タブ**にも通知バッジを表示。該当チャット行には、順番待ちではなく**「⚠ 他のユーザーが価格を更新しました」**を表示（抜かれていなければ「✓ 現在の最高/最安入札中」）。各入札チャットには**入札額と現在価格**を併記する。既読は localStorage で `outbid_at` をもとに管理
 - 既読管理はクライアント側（localStorage）。チャットを開くと該当チャット既読、掲示板閲覧で掲示板既読
 - **チャット画面・掲示板スレッドは5秒ポーリングで自動更新**（入力中テキストは別stateのため保持される）
@@ -1325,7 +1325,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `POST /api/listings/:id/chats` — 取引希望チャット作成（server・preferred_time を含む）。**オークションでは入札**（`server`・`bid_price`・任意 `note`）。条件を満たさない入札は 400。即決価格到達で即時成立。既存 open 入札があればより有利な額に更新
 
 ### 通知
-- `GET /api/notifications/summary` — 通知サマリー（5秒ポーリング用）。`unread_chats[]`（最後の発言が相手のチャット一覧。オークション入札は除く）・`outbid_chats[]`（オークションで自分の入札がより有利な入札に抜かれたもの。`chat_id` / `source_type` / `item_name` / `your_bid` / `current_price` / `outbid_at`。既読はクライアントの localStorage で `outbid_at` をもとに管理）・`board`（掲示板の関係する最新投稿）・`board_threads[]`・`unverified_items`（editor/admin のみ。`equipment` / `technique` / `total`）・`unorganized_label_count`（editor/admin のみ。未整理の付加効果ラベル件数）・`excluded_suggestion_count`（admin のみ。ユーザー個別除外の昇格候補件数。カスタム種別への割当は共通化の対象外のため数えない）・`expired_count`（自分の期限切れ出品＋買取の件数。バッチ未確定の期限超過＝active かつ expires_at 過去も含む。ヘッダー「マイ取引」に通知バッジを出す）を返す
+- `GET /api/notifications/summary` — 通知サマリー（5秒ポーリング用）。`unread_chats[]`（最後の発言が相手のチャット一覧。オークション入札は除く）・`outbid_chats[]`（オークションで自分の入札がより有利な入札に抜かれたもの。`chat_id` / `source_type` / `item_name` / `your_bid` / `current_price` / `outbid_at`。既読はクライアントの localStorage で `outbid_at` をもとに管理）・`board`（掲示板の関係する最新投稿）・`board_threads[]`・`unverified_items`（editor/admin のみ。`equipment` / `technique` / `total`）・`unorganized_label_count`（editor/admin のみ。未整理の付加効果ラベル件数）・`excluded_suggestion_count`（admin のみ。ユーザー個別設定の共通化候補件数。新規候補＋上書き候補で、`user-suggestions` の行数と一致。カスタム種別への割当は共通化の対象外のため数えない）・`expired_count`（自分の期限切れ出品＋買取の件数。バッチ未確定の期限超過＝active かつ expires_at 過去も含む。ヘッダー「マイ取引」に通知バッジを出す）を返す
 - `GET    /api/push/public-key` — Web Push 購読用の VAPID 公開鍵（未設定なら null = Push 無効）
 - `POST   /api/push/subscriptions` — Web Push 購読の登録（`endpoint`・`keys.p256dh`・`keys.auth`・任意 `content_encoding`）。endpoint 一致で upsert し、ログイン中ユーザーへ付け替える
 - `DELETE /api/push/subscriptions` — Web Push 購読の解除（本人の endpoint のみ削除）
@@ -1414,7 +1414,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - （公開）`GET /api/server-excluded-items` — サーバ登録対象外（システム共通）の名前配列。クライアントの分割保存判定に使う
 - `POST   /api/excluded-items/report` — 端末保存ユーザーが分類した名前を匿名で報告（要ログイン。`names[]`・`reported_excluded_names` に firstOrCreate・既存は無視）。204
 - `GET    /api/admin/excluded-items` — 全件（id・`exclusion_type_id` 付き・admin）
-- `GET    /api/admin/excluded-items/user-suggestions` — ユーザー割当を集計した共通種別への昇格候補（admin。`[{ name, user_count, from_device, current_type_id, suggested_type_id, type_assignments }]`・user_count 降順→name 昇順）。DB保存分は人数を `user_count` に集計、端末保存ユーザーの匿名報告分は `from_device=true` で合流（人数は持たないため `user_count=0` もあり得る）。`type_assignments` は種別ごとの設定人数の内訳（多い順・null=その他）、`suggested_type_id` は最も多い種別。**新規候補**（未登録）は `current_type_id=null`、**上書き候補**（共通登録済みだが別種別へ変更したユーザーがいる）は `current_type_id` に現在の共通種別。却下済みの名前、および上書きの無い共通登録済みの名前は除外
+- `GET    /api/admin/excluded-items/user-suggestions` — ユーザー割当を集計した共通種別への昇格候補（admin。`[{ name, user_count, from_device, current_type_id, suggested_type_id, type_assignments }]`・user_count 降順→name 昇順）。DB保存分は人数を `user_count` に集計、端末保存ユーザーの匿名報告分は `from_device=true` で合流（人数は持たないため `user_count=0` もあり得る）。`type_assignments` は種別ごとの設定人数の内訳（多い順・null=その他）、`suggested_type_id` は最も多い種別。**新規候補**（未登録）は `current_type_id=null`、**上書き候補**（共通登録済みだが別種別へ変更したユーザーがいる）は `current_type_id` に現在の共通種別。却下済みの名前、上書きの無い共通登録済みの名前、およびユーザー独自のカスタム種別（`user_exclusion_type_id` が非 null）への割当は除外。集計は `App\Support\ExclusionSuggestions::rows()` にあり、通知バッジ件数（`excluded_suggestion_count` = `ExclusionSuggestions::count()`）と**同一の集合**を見る（バッジと一覧の件数が食い違わないよう実装を一元化している）
 - `POST   /api/admin/excluded-items/dismiss-suggestion` — 候補名を「共通にしない」と却下（admin。`name`）。以後 `user-suggestions` に出さない。`dismissed_excluded_suggestions` に保存（既存なら無変更）。204
 - `POST   /api/admin/excluded-items` — 追加／共通化（admin。`names[]` で改行区切り一括登録可。`exclusion_type_id` 任意＝省略時は既定種別「その他」）。既定では既存名はスキップ。`update_existing=true` のときは既存名の共通種別を `exclusion_type_id` へ**上書き更新**する（上書き候補の共通化用）。レスポンス `{ created_count, updated_count, skipped_count }`。**共通化した名前は `user_excluded_items` から削除**（重複排除）
 - `PUT    /api/admin/excluded-items/:id` — 編集（admin。`name` / `exclusion_type_id` を更新）
@@ -1615,7 +1615,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 ホスト公開ポートは環境変数で上書きできる（既定値は上表のとおり）。`NGINX_PORT` / `VITE_PORT` / `DB_PORT` / `PMA_PORT` / `MAILPIT_UI_PORT` / `MAILPIT_SMTP_PORT`。コンテナ内部ポートは固定で、サービス間通信（`php:9000` / `frontend:5173` / `db:3306`）はサービス名解決のためホストポートの変更に影響されない。main の作業ディレクトリではルートに `.env` を置かず既定値のまま使う。
 
-**ローカル環境の視覚的識別**: ローカル開発中（vite dev・`import.meta.env.DEV`）は本番画面と取り違えないよう、**画面両脇（左右端）に黄色の縦枠線**（`fixed` の細いバー・クリック透過）を常時表示する（`Header.tsx`）。以前はヘッダー背景に黄色を重ねる方式だったが、枠線表示に変更した。本番ビルドでは表示されない。
+**ローカル環境の視覚的識別**: ローカル開発中（vite dev・`import.meta.env.DEV`）は本番画面と取り違えないよう、**画面両脇（左右端）に黄色の縦枠線**（`fixed` のバー・クリック透過）を常時表示する（`Header.tsx`）。視認性のため幅 8px（`w-2`）・不透明の黄色（`bg-yellow-400`）＋外側へのグロー（`shadow`）とする。以前はヘッダー背景に黄色を重ねる方式だったが、枠線表示に変更した。本番ビルドでは表示されない。
 
 ### よく使うコマンド
 ```bash
@@ -1636,30 +1636,47 @@ docker compose exec -e COMPOSER_PROCESS_TIMEOUT=0 php composer install   # unzip
 
 ### 平行開発（git worktree + 複数スタック同時起動）
 
-複数の機能を同時に開発し、それぞれをブラウザで動作確認したい場合は、機能ごとに
-git worktree（別フォルダ・別ブランチ）と独立した Docker スタックを立てる。
+複数の機能を同時に開発する場合、および**複数の開発セッション（Claude Code の別プロセス等）を
+同時に走らせる場合**は、作業単位ごとに git worktree（別フォルダ・別ブランチ）と独立した
+Docker スタックを立てる。**1作業 = 1ブランチ = 1 worktree = 1スタック**が原則で、
+ファイル・コンテナ・DB がすべて物理的に分離されるため、同時編集の待ち合わせが不要になる。
 
 - `COMPOSE_PROJECT_NAME` でスタックを区別する。名前付きボリューム（`db_data` / `vendor_data` /
   `node_modules_data`）はこの名前で分離されるため、**worktree ごとに DB も完全に独立**する。
-- 上記のポート環境変数をずらして、ホストポートの衝突を避ける。
-- `backend/.env` は gitignore 対象で worktree には自動コピーされないため、別途生成する。
-  別ポートでアクセスするので `APP_URL` / `FRONTEND_URL` / `SANCTUM_STATEFUL_DOMAINS` を
-  その worktree の nginx ポートに合わせる（合わせないとログインの cookie 認証が成立しない）。
+- 上記のポート環境変数を Slot 番号でずらして、ホストポートの衝突を避ける
+  （nginx=8100+slot / vite=5173+slot / db=3306+slot / pma=8200+slot / mailpit=8300+slot・1025+slot）。
+- `backend/.env` と `frontend/.env.local` は gitignore 対象で worktree には自動コピーされないため、
+  別途生成する。別ポートでアクセスするので `APP_URL` / `FRONTEND_URL` /
+  `SANCTUM_STATEFUL_DOMAINS` をその worktree の nginx ポートに合わせる
+  （合わせないとログインの cookie 認証が成立しない）。
+- `vendor` はスタックごとの named volume なので、新スタックでは必ず `composer install` が必要。
 
-これらは `scripts/new-worktree.ps1` が自動化している。
+これらは `scripts/new-worktree.ps1` が自動化している（Slot 省略時は既存 worktree の `.env` と
+実際の LISTEN ポートを見て空き番号を自動採番する）。
 
 ```powershell
-# 例: feat-chat ブランチを slot 1 で作成（nginx=8101 / vite=5174 / db=3307 ...）
-pwsh scripts/new-worktree.ps1 -Branch feat-chat -Slot 1
+# 作成（起動・composer install・migrate --seed まで自動）
+powershell -File scripts/new-worktree.ps1 -Branch feat-chat
 
-cd ..\moe_trade-feat-chat
-docker compose up -d
-docker compose exec php php artisan migrate   # 初回のみ（DB は独立）
-# → http://localhost:8101 で確認
+cd ..\moe_trade-feat-chat   # → 表示された http://localhost:81xx で確認
+
+# 主なオプション
+#   -Slot 3      ポート枠を明示指定
+#   -Lean        mailpit / phpMyAdmin / scheduler を省いた軽量スタック（7→4コンテナ）
+#   -NoStart     ファイル生成のみ（Docker を起動しない。テストだけ回す用途）
+#   -CopyDb      main スタックの DB 内容を複製（既定は migrate --seed の空DB）
+```
+
+片付けは `scripts/remove-worktree.ps1`（`docker compose down -v` → `git worktree remove` →
+ブランチ削除まで一括）。未コミット変更や main 未マージのコミットがあると中断する（`-Force` で強行）。
+
+```powershell
+powershell -File scripts/remove-worktree.ps1 -List                          # 一覧（ブランチ / パス / ポート）
+powershell -File scripts/remove-worktree.ps1 -Branch feat-chat -DeleteBranch  # 片付け
 ```
 
 スタックごとの設定値は worktree 直下の `.env`（compose 用、`.env.example` が雛形）に記録される。
-片付けは `docker compose -p <project> down -v` でボリュームごと破棄し、`git worktree remove <path>`。
+worktree を残したままにするとポート枠が空かないため、作業が終わったら必ず片付ける。
 
 ---
 

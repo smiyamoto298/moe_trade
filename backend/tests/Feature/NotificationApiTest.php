@@ -168,6 +168,82 @@ class NotificationApiTest extends TestCase
         );
     }
 
+    public function test_カスタム種別への割当は昇格候補件数に数えない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+
+        // カスタム種別だけに割り当てられた名前は共通化の対象外（user-suggestions にも出ない）ため、
+        // バッジ件数にも数えない（バッジだけ点灯して管理画面に何も出ない状態を防ぐ）
+        $custom = \App\Models\UserExclusionType::create(['user_id' => $u1->id, 'name' => 'マイ分類']);
+        \App\Models\UserExcludedItem::create([
+            'user_id' => $u1->id, 'name' => '秘蔵の品', 'user_exclusion_type_id' => $custom->id,
+        ]);
+        // 通常の個別割当は従来どおり数える
+        \App\Models\UserExcludedItem::create(['user_id' => $u2->id, 'name' => 'ゴミ']);
+
+        $count = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/notifications/summary')->json('excluded_suggestion_count');
+        $this->assertSame(1, $count);
+
+        // 管理画面の候補一覧と件数が一致する（バッジと画面の乖離が無い）
+        $suggestions = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')->assertOk()->json();
+        $this->assertSame($count, count($suggestions));
+    }
+
+    public function test_上書き候補だけでも昇格候補件数に数えられる(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+        $u2 = $this->makeUser();
+
+        $other = \App\Models\ExclusionType::default();
+        $material = \App\Models\ExclusionType::create(['name' => '素材', 'sort_order' => 10]);
+
+        // 「ゴミ」は共通登録済み（＝新規候補ではない）だが、u1 が別種別へ変更している → 上書き候補
+        \App\Models\ExcludedItem::create(['name' => 'ゴミ', 'exclusion_type_id' => $other?->id]);
+        \App\Models\UserExcludedItem::create([
+            'user_id' => $u1->id, 'name' => 'ゴミ', 'exclusion_type_id' => $material->id,
+        ]);
+        // 共通種別と同じ種別を設定しているだけのユーザーは候補にしない
+        \App\Models\ExcludedItem::create(['name' => '木の枝', 'exclusion_type_id' => $material->id]);
+        \App\Models\UserExcludedItem::create([
+            'user_id' => $u2->id, 'name' => '木の枝', 'exclusion_type_id' => $material->id,
+        ]);
+
+        // 新規候補が0件でも、上書き候補があればバッジは点灯する（一覧に行があるのに0件だった不整合の回帰防止）
+        $count = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/notifications/summary')->json('excluded_suggestion_count');
+        $this->assertSame(1, $count);
+
+        $suggestions = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/admin/excluded-items/user-suggestions')->assertOk()->json();
+        $this->assertSame($count, count($suggestions));
+        $this->assertSame('ゴミ', $suggestions[0]['name']);
+    }
+
+    public function test_却下済みの上書き候補は昇格候補件数に数えない(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+        $u1 = $this->makeUser();
+
+        $other = \App\Models\ExclusionType::default();
+        $material = \App\Models\ExclusionType::create(['name' => '素材', 'sort_order' => 10]);
+
+        \App\Models\ExcludedItem::create(['name' => 'ゴミ', 'exclusion_type_id' => $other?->id]);
+        \App\Models\UserExcludedItem::create([
+            'user_id' => $u1->id, 'name' => 'ゴミ', 'exclusion_type_id' => $material->id,
+        ]);
+        \App\Models\DismissedExcludedSuggestion::create(['name' => 'ゴミ', 'dismissed_by' => $admin->id]);
+
+        $this->assertSame(
+            0,
+            $this->actingAs($admin, 'sanctum')->getJson('/api/notifications/summary')->json('excluded_suggestion_count')
+        );
+    }
+
     public function test_自分の期限切れ出品買取がexpired_countに数えられる(): void
     {
         $owner = $this->makeUser();

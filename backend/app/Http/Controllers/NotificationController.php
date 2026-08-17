@@ -5,15 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\BoardPost;
 use App\Models\BonusValueLabel;
 use App\Models\BuyRequest;
-use App\Models\DismissedExcludedSuggestion;
-use App\Models\ExcludedItem;
 use App\Models\Item;
 use App\Models\Listing;
 use App\Models\ItemCategory;
-use App\Models\ReportedExcludedName;
 use App\Models\TradeChat;
 use App\Models\User;
-use App\Models\UserExcludedItem;
+use App\Support\ExclusionSuggestions;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
@@ -212,26 +209,11 @@ class NotificationController extends Controller
             ? BonusValueLabel::where('is_organized', false)->count()
             : 0;
 
-        // ---- 除外アイテム管理: ユーザーが個別に除外している昇格候補件数（admin のみ） ----
-        // userSuggestions と同じ集合（DB保存ユーザー分＋端末報告分から、共通除外済み・却下済みを除く）の
-        // 名前の種類数。共通除外への昇格を検討すべき名前があることを管理者に知らせる。
-        $excludedSuggestionCount = 0;
-        if ($user->isAdmin()) {
-            $excludeNames = ExcludedItem::pluck('name')
-                ->merge(DismissedExcludedSuggestion::pluck('name'))
-                ->unique()
-                ->all();
-
-            $dbNames = UserExcludedItem::query()
-                ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
-                ->distinct()
-                ->pluck('name');
-            $deviceNames = ReportedExcludedName::query()
-                ->when(!empty($excludeNames), fn($q) => $q->whereNotIn('name', $excludeNames))
-                ->pluck('name');
-
-            $excludedSuggestionCount = $dbNames->merge($deviceNames)->unique()->count();
-        }
+        // ---- アイテム種別管理: ユーザー個別設定の共通化候補の件数（admin のみ） ----
+        // 管理画面「ユーザー個別設定の共通化」の一覧行数と必ず一致させるため、集計は
+        // ExclusionSuggestions（user-suggestions と同一実装）に委譲する。新規候補だけでなく
+        // 上書き候補（共通登録済みだが別種別を設定したユーザーがいる名前）も数える。
+        $excludedSuggestionCount = $user->isAdmin() ? ExclusionSuggestions::count() : 0;
 
         // ---- 期限切れの自分の出品・買取（再出品/再登録・取り下げを促す通知） ----
         // 「マイ取引」に通知バッジを出すための件数。バッチ未確定の期限超過も含める。
