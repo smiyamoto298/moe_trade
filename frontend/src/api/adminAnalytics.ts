@@ -18,7 +18,6 @@ export interface UsageDaily {
 }
 
 // 期間内のデータを日付を無視して JST の時刻（0〜23時）で束ねた分布。
-// アクセス（active_users）は日付単位でしか記録していないため含まれない。
 export interface UsageHourly {
   // JST の時（0〜23）
   hour: number
@@ -28,6 +27,9 @@ export interface UsageHourly {
   listing_trades: number
   buy_request_trades: number
   trades: number
+  // その時間帯のユニークアクセスユーザーの延べ数（日ごと・時間帯ごとに重複なし）。
+  // 他の系列と違い、合計は totals.active_users と一致しない
+  active_users: number
 }
 
 export interface UsageResponse {

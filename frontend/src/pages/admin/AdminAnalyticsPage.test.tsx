@@ -9,7 +9,7 @@ import type { UsageResponse } from '../../api/adminAnalytics'
 // 日ごとのユニークアクセスユーザー数「アクセス」を含む）は
 // 既定で「登録」「成立」「アクセス」の3系列のみ表示し、チェックボックスで系列ごとに
 // 表示・非表示を切り替えられ、「すべて」チェックで一括切替できる。
-// 時間帯分布の棒グラフは同じチェックボックスに追従するが、時刻を持たない「アクセス」は含まない。
+// 時間帯分布の棒グラフは同じチェックボックスに追従し、「アクセス」も含む7系列を出せる。
 
 vi.mock('../../api/adminAnalytics', () => ({ adminAnalyticsApi: { usage: vi.fn() } }))
 // recharts はスタブ化し、Line / Bar の dataKey だけ検証できるようにする
@@ -54,14 +54,13 @@ const makeUsage = (): UsageResponse => ({
     listing_trades: hour === 10 ? 2 : 0,
     buy_request_trades: hour === 10 ? 1 : 0,
     trades: hour === 10 ? 3 : 0,
+    active_users: hour === 10 ? 5 : 0,
   })),
 })
 
 const ALL_KEYS = ['registrations', 'listings', 'buy_requests', 'trades', 'listing_trades', 'buy_request_trades', 'active_users']
 const DEFAULT_KEYS = ['registrations', 'trades', 'active_users']
 const DETAIL_KEYS = ALL_KEYS.filter((k) => !DEFAULT_KEYS.includes(k))
-// 時間帯分布に出せる系列（アクセスは日単位の記録のため時刻を持たない）
-const HOURLY_KEYS = ALL_KEYS.filter((k) => k !== 'active_users')
 
 describe('AdminAnalyticsPage', () => {
   beforeEach(() => {
@@ -125,34 +124,36 @@ describe('AdminAnalyticsPage', () => {
     }
   })
 
-  it('時間帯分布の棒グラフを表示し、時刻を持たない「アクセス」は含めない', async () => {
+  it('時間帯分布の棒グラフを表示し、日別推移と同じ系列（アクセス含む）を出す', async () => {
     render(<AdminAnalyticsPage />)
     await screen.findByTestId('bar-chart')
 
-    // 既定表示のうち、時刻を持つ「登録」「成立」だけが棒グラフに出る
-    expect(screen.getByTestId('bar-registrations')).toBeInTheDocument()
-    expect(screen.getByTestId('bar-trades')).toBeInTheDocument()
-    expect(screen.queryByTestId('bar-active_users')).not.toBeInTheDocument()
-    expect(screen.getByText(/日付が違っても同じ時刻は同一時間として集計します/)).toBeInTheDocument()
-
-    // 「すべて」チェックでもアクセス以外の6系列のみが棒グラフに追加される
-    fireEvent.click(screen.getByLabelText('すべて'))
-    for (const key of HOURLY_KEYS) {
+    // 既定表示の「登録」「成立」「アクセス」がそのまま棒グラフに出る
+    for (const key of DEFAULT_KEYS) {
       expect(screen.getByTestId(`bar-${key}`)).toBeInTheDocument()
     }
-    expect(screen.queryByTestId('bar-active_users')).not.toBeInTheDocument()
+    for (const key of DETAIL_KEYS) {
+      expect(screen.queryByTestId(`bar-${key}`)).not.toBeInTheDocument()
+    }
+    expect(screen.getByText(/日付が違っても同じ時刻は同一時間として集計します/)).toBeInTheDocument()
+
+    // 「すべて」チェックで全7系列が棒グラフに追加される
+    fireEvent.click(screen.getByLabelText('すべて'))
+    for (const key of ALL_KEYS) {
+      expect(screen.getByTestId(`bar-${key}`)).toBeInTheDocument()
+    }
   })
 
-  it('「アクセス」だけを選ぶと時間帯分布は案内文になる', async () => {
+  it('「アクセス」だけを選んでも時間帯分布に表示される', async () => {
     render(<AdminAnalyticsPage />)
     await screen.findByTestId('bar-chart')
 
     fireEvent.click(screen.getByLabelText('登録'))
     fireEvent.click(screen.getByLabelText('成立'))
 
-    // 日別推移にはアクセスが残るが、時間帯分布は表示できる系列が無くなる
+    // 日別推移・時間帯分布ともアクセスだけが残る（案内文は出ない）
     expect(screen.getByTestId('line-active_users')).toBeInTheDocument()
-    expect(screen.queryByTestId('bar-chart')).not.toBeInTheDocument()
-    expect(screen.getByText('表示する系列が選択されていません。')).toBeInTheDocument()
+    expect(screen.getByTestId('bar-active_users')).toBeInTheDocument()
+    expect(screen.queryByText('表示する系列が選択されていません。')).not.toBeInTheDocument()
   })
 })

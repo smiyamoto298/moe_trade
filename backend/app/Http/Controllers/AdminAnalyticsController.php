@@ -24,7 +24,8 @@ class AdminAnalyticsController extends Controller
      * active_users は日ごとのユニークアクセスユーザー数（user_daily_accesses・RecordDailyAccess が記録）。
      * totals.active_users は期間内に1回でもアクセスしたユニークユーザー数（日ごとの単純合算ではない）。
      * hourly は期間内の全データを日付を無視して JST の時刻（0〜23時）で束ねた分布。
-     * アクセスは日付単位でしか記録していないため hourly には含まない。
+     * hourly.active_users は「日ごと・時間帯ごとのユニークユーザー」の延べ数のため、
+     * 他の系列と違い合計は totals.active_users とも daily.active_users の合算とも一致しない。
      */
     public function usage(Request $request)
     {
@@ -61,12 +62,13 @@ class AdminAnalyticsController extends Controller
             ->unique()
             ->count();
 
-        // 日次ユニークアクセス。date は JST 日付で保存済みなのでタイムゾーン変換不要。
-        // (user_id, date) ユニークのため日付ごとの行数がそのままユニークユーザー数になる
+        // アクセス記録。date（JST日付）・hour（JSTの時）で保存済みなのでタイムゾーン変換不要。
+        // (user_id, date, hour) ユニークのため、同じ日に複数の時間帯を使ったユーザーは複数行になる
         $accesses = UserDailyAccess::where('date', '>=', $from->format('Y-m-d'))
-            ->get(['user_id', 'date']);
+            ->get(['user_id', 'date', 'hour']);
         $activeUsers = $accesses
-            ->countBy(fn ($a) => CarbonImmutable::parse($a->date)->format('Y-m-d'))
+            ->groupBy(fn ($a) => CarbonImmutable::parse($a->date)->format('Y-m-d'))
+            ->map(fn ($rows) => $rows->pluck('user_id')->unique()->count())
             ->all();
         $activeUsersTotal = $accesses->pluck('user_id')->unique()->count();
 
@@ -92,6 +94,14 @@ class AdminAnalyticsController extends Controller
         $listingTradesHour  = $this->countByHour($listingTradeTimes);
         $buyRequestTradeHr  = $this->countByHour($buyRequestTradeTimes);
 
+        // アクセスの時間帯分布。1行 = その時間帯にアクセスした1ユーザー（同じ日・同じ時間帯の重複は
+        // ユニーク制約で発生しない）なので、行数がそのまま延べユニークユーザー数になる。
+        // hour が null の行は時間帯の記録を始める前の古いデータで、時刻が分からないため除外する
+        $activeUsersByHour = $accesses
+            ->whereNotNull('hour')
+            ->countBy(fn ($a) => (int) $a->hour)
+            ->all();
+
         // 0〜23時を必ず全て返す（グラフの欠損時間を作らない）
         $hourly = [];
         for ($h = 0; $h < 24; $h++) {
@@ -103,6 +113,7 @@ class AdminAnalyticsController extends Controller
                 'listing_trades'     => $listingTradesHour[$h] ?? 0,
                 'buy_request_trades' => $buyRequestTradeHr[$h] ?? 0,
                 'trades'             => ($listingTradesHour[$h] ?? 0) + ($buyRequestTradeHr[$h] ?? 0),
+                'active_users'       => $activeUsersByHour[$h] ?? 0,
             ];
         }
 

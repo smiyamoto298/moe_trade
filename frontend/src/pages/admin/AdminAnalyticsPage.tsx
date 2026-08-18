@@ -61,9 +61,6 @@ const DEFAULT_VISIBLE: Record<SeriesKey, boolean> = {
   active_users: true,
 }
 
-// 時間帯分布に出せない系列。アクセスは日付単位でしか記録していないため時刻が無い
-const HOURLESS_KEYS: readonly SeriesKey[] = ['active_users']
-
 // 「YYYY-MM-DD」を「M/D」に短縮（X軸ラベル用）
 const fmtDate = (iso: string): string => {
   const [, m, d] = iso.split('-')
@@ -83,8 +80,6 @@ export default function AdminAnalyticsPage() {
 
   const allVisible = SERIES.every(({ key }) => visible[key])
   const shownSeries = SERIES.filter(({ key }) => visible[key])
-  // 時間帯分布は時刻を持つ系列だけ（チェックボックスは日別推移と共用）
-  const shownHourlySeries = shownSeries.filter(({ key }) => !HOURLESS_KEYS.includes(key))
 
   useEffect(() => {
     setLoading(true)
@@ -115,7 +110,7 @@ export default function AdminAnalyticsPage() {
         </div>
       </div>
       <p className="text-sm text-gray-400 mb-5">
-        出品・買取の登録件数（取り下げ・期限切れ分も含む）、取引成立件数（出品由来・買取由来別、相場対象のみ）、アクセスユーザー数（ログイン中に利用した人数・日ごとの重複なし）を日別に集計します。「登録」は出品＋買取、「成立」は出品成立＋買取成立の合算です。日付は日本時間です。日別推移に加えて、期間内のデータを時刻でまとめた時間帯分布も表示します。
+        出品・買取の登録件数（取り下げ・期限切れ分も含む）、取引成立件数（出品由来・買取由来別、相場対象のみ）、アクセスユーザー数（ログイン中に利用した人数・日ごとの重複なし）を日別に集計します。「登録」は出品＋買取、「成立」は出品成立＋買取成立の合算です。日付は日本時間です。日別推移に加えて、期間内のデータを時刻でまとめた時間帯分布も表示します（アクセスは時間帯ごとの延べ人数）。
       </p>
 
       {loading ? (
@@ -214,10 +209,11 @@ export default function AdminAnalyticsPage() {
               時間帯分布（{fmtDate(data.from)}〜{fmtDate(data.to)} の合計）
             </h2>
             <p className="text-xs text-gray-500">
-              日付が違っても同じ時刻は同一時間として集計します（日本時間）。アクセスは日単位の記録のため含みません。
+              日付が違っても同じ時刻は同一時間として集計します（日本時間）。アクセスは日ごと・時間帯ごとの
+              ユニークユーザーの延べ数のため、合計は期間合計のアクセス人数とは一致しません。
             </p>
           </div>
-          {shownHourlySeries.length === 0 ? (
+          {shownSeries.length === 0 ? (
             <p className="text-sm text-gray-500 py-10 text-center">表示する系列が選択されていません。</p>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
@@ -233,7 +229,7 @@ export default function AdminAnalyticsPage() {
                   formatter={(v: number, name: string) => `${v} ${UNIT_BY_LABEL[name] ?? '件'}`}
                 />
                 <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
-                {shownHourlySeries.map(({ key, label, color }) => (
+                {shownSeries.map(({ key, label, color }) => (
                   <Bar key={key} dataKey={key} fill={color} name={label} />
                 ))}
               </BarChart>

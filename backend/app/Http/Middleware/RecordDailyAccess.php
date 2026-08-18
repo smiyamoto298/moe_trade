@@ -8,9 +8,9 @@ use Closure;
 use Illuminate\Http\Request;
 
 /**
- * 認証済みユーザーのアクセスを (user_id, JST日付) 単位で記録する。
- * 利用状況解析の「アクセスユーザー」（日次ユニークアクセスユーザー数）の集計元。
- * insertOrIgnore のため同日2回目以降は no-op（ユニーク制約で吸収・競合安全）。
+ * 認証済みユーザーのアクセスを (user_id, JST日付, JSTの時) 単位で記録する。
+ * 利用状況解析の「アクセス」（日次ユニークアクセスユーザー数・時間帯分布）の集計元。
+ * insertOrIgnore のため同じ時間帯の2回目以降は no-op（ユニーク制約で吸収・競合安全）。
  */
 class RecordDailyAccess
 {
@@ -21,9 +21,12 @@ class RecordDailyAccess
         $user = $request->user('sanctum');
 
         if ($user) {
+            $now = CarbonImmutable::now('Asia/Tokyo');
+
             UserDailyAccess::insertOrIgnore([
                 'user_id' => $user->id,
-                'date'    => CarbonImmutable::now('Asia/Tokyo')->format('Y-m-d'),
+                'date'    => $now->format('Y-m-d'),
+                'hour'    => (int) $now->format('G'),
             ]);
         }
 

@@ -264,10 +264,12 @@ class AdminAnalyticsApiTest extends TestCase
         $carol = $this->makeUser();
 
         // JST 8/5 に alice・bob、8/6 に alice（リピート）。carol は期間外（7/30）
-        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-05']);
-        UserDailyAccess::create(['user_id' => $bob->id,   'date' => '2026-08-05']);
-        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-06']);
-        UserDailyAccess::create(['user_id' => $carol->id, 'date' => '2026-07-30']);
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-05', 'hour' => 10]);
+        // 同じ日の別の時間帯にもう1行できても、日次では同一ユーザーとして1人に数える
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-05', 'hour' => 22]);
+        UserDailyAccess::create(['user_id' => $bob->id,   'date' => '2026-08-05', 'hour' => 10]);
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-06', 'hour' => 9]);
+        UserDailyAccess::create(['user_id' => $carol->id, 'date' => '2026-07-30', 'hour' => 9]);
 
         $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
 
@@ -285,7 +287,7 @@ class AdminAnalyticsApiTest extends TestCase
     {
         $user = $this->makeUser();
 
-        // UTC 8/5 20:00 = JST 8/6 05:00 → JST の 8/6 として記録される
+        // UTC 8/5 20:00 = JST 8/6 05:00 → JST の 8/6・5時として記録される
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-05 20:00:00', 'UTC'));
 
         $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
@@ -293,10 +295,11 @@ class AdminAnalyticsApiTest extends TestCase
         $this->assertDatabaseHas('user_daily_accesses', [
             'user_id' => $user->id,
             'date'    => '2026-08-06',
+            'hour'    => 5,
         ]);
     }
 
-    public function test_同日の複数リクエストでもアクセス記録は1件のまま(): void
+    public function test_同じ時間帯の複数リクエストでもアクセス記録は1件のまま(): void
     {
         $user = $this->makeUser();
 
@@ -304,6 +307,24 @@ class AdminAnalyticsApiTest extends TestCase
         $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
 
         $this->assertSame(1, UserDailyAccess::where('user_id', $user->id)->count());
+    }
+
+    public function test_同日でも時間帯が違えばアクセス記録は別行になる(): void
+    {
+        $user = $this->makeUser();
+
+        // JST 8/6 10時
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-06 01:00:00', 'UTC'));
+        $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
+        // 同じ 10 時台なので増えない
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-06 01:59:00', 'UTC'));
+        $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
+        // JST 8/6 11時 → 別の時間帯なので1行増える
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-06 02:00:00', 'UTC'));
+        $this->actingAs($user, 'sanctum')->getJson('/api/items')->assertOk();
+
+        $this->assertSame([10, 11], UserDailyAccess::where('user_id', $user->id)
+            ->orderBy('hour')->pluck('hour')->all());
     }
 
     public function test_未認証リクエストはアクセス記録されない(): void
@@ -381,9 +402,43 @@ class AdminAnalyticsApiTest extends TestCase
         $res     = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
         $hourly  = collect($res->json('hourly'));
 
+        // active_users は「日ごと・時間帯ごとのユニークユーザー」の延べ数なので、
+        // 期間ユニークの totals.active_users とは一致しない（下のテストで検証する）
         foreach (['listings', 'buy_requests', 'registrations', 'listing_trades', 'buy_request_trades', 'trades'] as $key) {
             $this->assertSame($res->json("totals.$key"), $hourly->sum($key), "時間帯分布の $key 合計が期間合計と一致しない");
         }
+    }
+
+    public function test_時間帯分布のアクセスは時間帯ごとのユニークユーザーの延べ数を返す(): void
+    {
+        $admin = $this->makeUserWithRole('admin');
+
+        $alice = $this->makeUser();
+        $bob   = $this->makeUser();
+
+        // 日付が違っても同じ 10 時台なら合算される（alice の 8/4・8/5 で 2）
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-04', 'hour' => 10]);
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-05', 'hour' => 10]);
+        UserDailyAccess::create(['user_id' => $bob->id,   'date' => '2026-08-05', 'hour' => 10]);
+        // 同じユーザーの別の時間帯は別の時間にカウントされる
+        UserDailyAccess::create(['user_id' => $alice->id, 'date' => '2026-08-05', 'hour' => 23]);
+        // 時間帯の記録開始前の古い行（hour が null）は時刻が不明なため含まない
+        UserDailyAccess::create(['user_id' => $bob->id, 'date' => '2026-08-05', 'hour' => null]);
+        // 期間外（7/30）は含まない
+        UserDailyAccess::create(['user_id' => $bob->id, 'date' => '2026-07-30', 'hour' => 10]);
+
+        $res = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/analytics/usage?days=7');
+
+        $hourly = collect($res->json('hourly'))->keyBy('hour');
+        $this->assertSame(3, $hourly[10]['active_users']);
+        $this->assertSame(1, $hourly[23]['active_users']);
+        // このリクエスト自身が JST 8/6 12時のアクセスとして記録される
+        $this->assertSame(1, $hourly[12]['active_users']);
+        // 該当のない時間はゼロ埋めされる
+        $this->assertSame(0, $hourly[0]['active_users']);
+        // 延べ数のため、期間ユニークの合計（alice・bob・admin の3人）とは一致しない
+        $res->assertJsonPath('totals.active_users', 3);
+        $this->assertSame(5, collect($res->json('hourly'))->sum('active_users'));
     }
 
     public function test_daysの指定が不正なら422(): void
