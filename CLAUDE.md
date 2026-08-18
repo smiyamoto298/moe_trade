@@ -62,6 +62,15 @@
 
 > かつては `.claude/locks/` のクロスセッション・ロックで同時編集を防いでいたが、**解放条件が「コミット済みになること」だったため、全員が作業中＝全員が未コミット＝誰も解放しない相互デッドロック**を起こした。仕組みごと撤去済み。
 
+### セッション開始時の自動検知（SessionStart フック）
+
+セッション起動時に `.claude/hooks/session_register.sh`（SessionStart フック）が走り、セッションを共有 `.git/claude-sessions/` に登録したうえで、**同じ作業ツリーを使う生存中の別セッションを検知したら「worktree に分岐するか」の確認指示をコンテキストに注入する**。検知されたセッションの Claude は:
+
+1. 最初の応答で AskUserQuestion により分岐の要否を必ず確認する
+2. 承認されたら `powershell -File scripts/new-worktree.ps1 -Branch <名前> -NoStart`（フル環境が要るなら `-Lean`）を**自動実行**し、EnterWorktree で移動してから元の依頼を続行する
+
+セッション終了時は `session_unregister.sh`（SessionEnd フック）が登録を片付ける。生存判定は claude プロセスの PID（異常終了で残ったマーカーは自動掃除）。
+
 ### 鉄則
 
 - **main のワーキングツリー（`C:\Dev\moe_trade`）で走らせるセッションは常に1つだけ。** 2つ目以降は必ず worktree を作る。
