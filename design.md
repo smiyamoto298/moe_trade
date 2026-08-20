@@ -1713,7 +1713,8 @@ cd ..\moe_trade-feat-chat   # → 表示された http://localhost:81xx で確�
 # 主なオプション
 #   -Slot 3      ポート枠を明示指定
 #   -Lean        mailpit / phpMyAdmin / scheduler を省いた軽量スタック（7→4コンテナ）
-#   -NoStart     ファイル生成のみ（Docker を起動しない。テストだけ回す用途）
+#                ※セッション分岐時の既定。db/php/nginx/frontend が起動するので動作確認できる
+#   -NoStart     ファイル生成のみ（Docker を起動しない。動作確認は不可、テストだけ回す用途）
 #   -CopyDb      main スタックの DB 内容を複製（既定は migrate --seed の空DB）
 ```
 

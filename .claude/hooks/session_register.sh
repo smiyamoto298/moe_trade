@@ -78,8 +78,8 @@ if [ "$conflicts" -gt 0 ]; then
   cat <<EOF
 [parallel-sessions] 同じ作業ツリー($ROOT)を使う別の Claude Code セッションが ${conflicts} 件並行しています。
 プロジェクトルール(CLAUDE.md): 作業に着手する前に、最初の応答で AskUserQuestion を使い「この作業を専用 worktree に分岐するか」を必ず確認すること。選択肢:
-1. 分岐する・軽量(推奨): ユーザー承認後、Bash で「powershell -File scripts/new-worktree.ps1 -Branch <作業内容に合った短い名前> -NoStart」を実行し、出力された worktree パス(../moe_trade-<name>)へ EnterWorktree ツールで移動してから元の依頼を続行する。
-2. 分岐する・フル環境: ブラウザ動作確認や専用DBが必要な場合。「-NoStart」の代わりに「-Lean」を付けて実行(Docker 起動含め数分かかる)。移動手順は同じ。
+1. 分岐する(推奨): ユーザー承認後、Bash で「powershell -File scripts/new-worktree.ps1 -Branch <作業内容に合った短い名前> -Lean」を実行し(専用 Docker スタックの起動まで行うため数分かかる)、出力された worktree パス(../moe_trade-<name>)へ EnterWorktree ツールで移動してから元の依頼を続行する。実装・修正はこれを選ぶ。
+2. 分岐する・Docker なし: 動作確認が不要でテストだけ回す場合に限り、「-Lean」の代わりに「-NoStart」を付けて実行(ブラウザでの動作確認はできない)。移動手順は同じ。
 3. 分岐しない: 調査・質問のみ等、ファイル編集を伴わない場合。そのまま続行してよいが、編集を伴う作業になったら改めて分岐を提案すること。
 EOF
 fi

@@ -67,7 +67,7 @@
 セッション起動時に `.claude/hooks/session_register.sh`（SessionStart フック）が走り、セッションを共有 `.git/claude-sessions/` に登録したうえで、**同じ作業ツリーを使う生存中の別セッションを検知したら「worktree に分岐するか」の確認指示をコンテキストに注入する**。検知されたセッションの Claude は:
 
 1. 最初の応答で AskUserQuestion により分岐の要否を必ず確認する
-2. 承認されたら `powershell -File scripts/new-worktree.ps1 -Branch <名前> -NoStart`（フル環境が要るなら `-Lean`）を**自動実行**し、EnterWorktree で移動してから元の依頼を続行する
+2. 承認されたら `powershell -File scripts/new-worktree.ps1 -Branch <名前> -Lean` を**自動実行**し、EnterWorktree で移動してから元の依頼を続行する。**`-Lean` が既定**（専用 Docker スタックまで起動するので実装後の動作確認ができる）。`-NoStart` は Docker を起動せず**ブラウザでの動作確認ができない**ため、テストだけ回す場合に限る
 
 セッション終了時は `session_unregister.sh`（SessionEnd フック）が登録を片付ける。生存判定は claude プロセスの PID（異常終了で残ったマーカーは自動掃除）。
 
@@ -94,7 +94,7 @@ claude
 - main の `backend/.env` をコピーし `APP_URL` / `FRONTEND_URL` / `SANCTUM_STATEFUL_DOMAINS` をその worktree のポートに合わせる（合わせないと cookie 認証が壊れる）
 - スタック起動 → `composer install` → `migrate --seed` まで実行（`-NoStart` で抑止、`-Lean` で mailpit / phpMyAdmin / scheduler を省いて軽量起動、`-CopyDb` で main の DB 内容を複製）
 
-すでに走っているセッションを worktree へ移す場合は、`scripts/new-worktree.ps1 -NoStart` で作ってから **EnterWorktree ツール**に `path` を渡す（Claude Code のネイティブ機能。セッションの作業ディレクトリごと移動する）。
+すでに走っているセッションを worktree へ移す場合は、`scripts/new-worktree.ps1 -Lean` で作ってから **EnterWorktree ツール**に `path` を渡す（Claude Code のネイティブ機能。セッションの作業ディレクトリごと移動する）。`-NoStart` で作ると Docker スタックが無く動作確認ができないため、編集を伴う作業では使わない。
 
 ### 片付け
 
