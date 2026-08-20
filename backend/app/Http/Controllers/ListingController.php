@@ -355,7 +355,9 @@ class ListingController extends Controller
         // ソート分岐の select('listings.*') で消えないよう、ここで addSelect する。
         $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
 
-        $result = $query->paginate(20);
+        // 1ページあたりの表示件数。既定20件、シンプル表示のフロントは100件を要求する（上限100）
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $result  = $query->paginate($perPage);
         // 連絡先キャラ名を出品者の現在のキャラクターで解決し、オークションは現在価格等を付与
         $result->getCollection()->each(function (Listing $l) {
             $l->resolveServerContacts();

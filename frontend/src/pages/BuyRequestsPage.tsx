@@ -7,7 +7,11 @@ import { usePageMeta, SITE_BRAND } from '../hooks/usePageMeta'
 import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import OfficialDbLink from '../components/OfficialDbLink'
-import type { BuyRequest, Paginated } from '../types'
+import ListDisplayToggle from '../components/ListDisplayToggle'
+import ItemDetailModal from '../components/ItemDetailModal'
+import { useMediaQuery } from '../hooks/useMediaQuery'
+import { getListDisplayMode, setListDisplayMode, PER_PAGE_BY_MODE, type ListDisplayMode } from '../utils/listDisplayStore'
+import type { BuyRequest, Item, Paginated } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel, deadlineTooltip } from '../utils/constants'
 
 /**
@@ -79,6 +83,12 @@ export default function BuyRequestsPage() {
   // 既に売却を申し出済みの buy_request_id セット（この画面での申し出も含む）
   const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set())
 
+  // 表示モード（詳細 / シンプル）。出品一覧と同じキーで端末ごとに保持する。
+  // 1ページの件数が表示モードで変わる（シンプルは100件）ため、一覧取得より前に置く。
+  const [displayMode, setDisplayMode] = useState<ListDisplayMode>(() => getListDisplayMode())
+  const compact = displayMode === 'compact'
+  const perPage = PER_PAGE_BY_MODE[displayMode]
+
   const fetchList = useCallback(() => {
     setLoading(true)
     buyRequestsApi
@@ -87,10 +97,11 @@ export default function BuyRequestsPage() {
         item_names: appliedNames.length > 0 ? appliedNames : undefined,
         sort,
         page,
+        per_page: perPage,
       })
       .then((r) => setData(r.data))
       .finally(() => setLoading(false))
-  }, [appliedName, appliedNames, sort, page])
+  }, [appliedName, appliedNames, sort, page, perPage])
 
   useEffect(() => { fetchList() }, [fetchList])
 
@@ -122,20 +133,47 @@ export default function BuyRequestsPage() {
 
   const hasFilter = appliedName !== '' || appliedNames.length > 0
 
+  const changeDisplayMode = (m: ListDisplayMode) => {
+    setDisplayMode(m)
+    setListDisplayMode(m)
+    // 件数が変わるとページ割りも変わるため1ページ目に戻す
+    setPage(1)
+  }
+  // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
+  const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'
+
+  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ、スマホは /items/:id へ遷移。出品一覧と同じ）
+  const isWideScreen = useMediaQuery('(min-width: 768px)')
+  const [detailItemId, setDetailItemId] = useState<number | null>(null)
+
+  const compactItemName = (item: Item) => {
+    const cls = 'text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors'
+    return isWideScreen ? (
+      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(item.id)} className={cls}>
+        {item.name}
+      </button>
+    ) : (
+      <Link to={`/items/${item.id}`} className={`block ${cls}`}>{item.name}</Link>
+    )
+  }
+
   // 操作列の末尾リンク：スマホでは「詳細 →」（買取詳細ページへ）、
   // PCでは「相場情報」ボタンを表示し、押すと相場ポップアップを開く（出品一覧と同じ構成）。
+  // シンプル表示は列を絞って幅に余裕があるため、幅によらず「相場情報」ボタンだけを出す。
   const detailOrMarket = (b: BuyRequest) => (
     <>
-      <Link
-        to={`/buy-requests/${b.id}`}
-        className="listing-narrow-only text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
-      >
-        詳細 →
-      </Link>
+      {!compact && (
+        <Link
+          to={`/buy-requests/${b.id}`}
+          className="listing-narrow-only text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          詳細 →
+        </Link>
+      )}
       <button
         type="button"
         onClick={() => setAnalyticsItem({ id: b.item.id, name: b.item.name })}
-        className="listing-wide-only items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors"
+        className={`${compact ? 'inline-flex' : 'listing-wide-only'} items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors`}
       >
         相場情報
       </button>
@@ -249,16 +287,19 @@ export default function BuyRequestsPage() {
         <p className="text-xs text-gray-500">
           {data ? `${data.total} 件` : ''}
         </p>
-        <select
-          value={sort}
-          onChange={(e) => { setSort(e.target.value); setPage(1) }}
-          className="bg-surface-card border border-surface-border rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-primary-500"
-        >
-          <option value="newest">新着順</option>
-          <option value="name_asc">あいうえお順</option>
-          <option value="price_desc">買取価格が高い順</option>
-          <option value="price_asc">買取価格が安い順</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <ListDisplayToggle mode={displayMode} onChange={changeDisplayMode} />
+          <select
+            value={sort}
+            onChange={(e) => { setSort(e.target.value); setPage(1) }}
+            className="bg-surface-card border border-surface-border rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-primary-500"
+          >
+            <option value="newest">新着順</option>
+            <option value="name_asc">あいうえお順</option>
+            <option value="price_desc">買取価格が高い順</option>
+            <option value="price_asc">買取価格が安い順</option>
+          </select>
+        </div>
       </div>
 
       {/* 一覧（出品一覧と同じテーブルレイアウト。買取は装備性能・確認ステータスは表示しない） */}
@@ -266,9 +307,12 @@ export default function BuyRequestsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-surface-border">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">アイテム</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">取引</th>
+              {/* シンプル表示は列が少ないぶんアイテム名に幅を寄せる（他列は内容ぶんだけに縮める） */}
+              <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-full' : ''}`}>アイテム</th>
               <th className="text-right px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">価格</th>
+              <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide'}`}>
+                {compact ? 'サーバー' : '取引'}
+              </th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -287,36 +331,15 @@ export default function BuyRequestsPage() {
                 return (
                   <React.Fragment key={b.id}>
                   <tr className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'}`}>
-                    {/* アイテム名・種別 */}
+                    {/* アイテム名・種別（シンプル表示ではアイテム名のみ） */}
                     <td className="px-4 py-3">
-                      <p className="text-xs text-gray-400">{b.item.category.name}</p>
-                      <p className="text-white font-medium">{b.item.name}</p>
-                      {b.item.official_url && (
+                      {!compact && <p className="text-xs text-gray-400">{b.item.category.name}</p>}
+                      {compact ? compactItemName(b.item) : <p className="text-white font-medium">{b.item.name}</p>}
+                      {!compact && b.item.official_url && (
                         <div className="mt-1">
                           <OfficialDbLink url={b.item.official_url} />
                         </div>
                       )}
-                    </td>
-
-                    {/* 取引方法・サーバー */}
-                    <td className="listing-col-wide px-4 py-3 min-w-[8.5rem]">
-                      <div className="flex flex-wrap gap-1 mb-1">
-                        <span className={`px-2 py-0.5 rounded whitespace-nowrap ${b.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
-                          {b.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[b.trade_type]}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {b.servers.map((s) => (
-                          <div key={s.server} className="flex items-center gap-1.5">
-                            <span title={s.server} className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[s.server]}`}>
-                              {s.server[0]}
-                            </span>
-                            {s.character?.character_name && (
-                              <span className="text-xs text-gray-300 whitespace-nowrap">{s.character.character_name}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
                     </td>
 
                     {/* 買取希望価格・期限 */}
@@ -325,7 +348,9 @@ export default function BuyRequestsPage() {
                         <>
                           <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
                           <p className="text-base font-bold text-amber-300 whitespace-nowrap">{(b.current_price ?? b.price).toLocaleString()} {b.currency}</p>
-                          <p className="text-[10px] text-gray-500 whitespace-nowrap">入札 {b.bid_count ?? 0}件{b.buyout_price != null && ` ・即決 ${b.buyout_price.toLocaleString()}`}</p>
+                          {!compact && (
+                            <p className="text-[10px] text-gray-500 whitespace-nowrap">入札 {b.bid_count ?? 0}件{b.buyout_price != null && ` ・即決 ${b.buyout_price.toLocaleString()}`}</p>
+                          )}
                         </>
                       ) : (
                         <>
@@ -333,28 +358,54 @@ export default function BuyRequestsPage() {
                           <p className="text-base font-bold text-emerald-400 whitespace-nowrap">{b.price.toLocaleString()} {b.currency}</p>
                         </>
                       )}
-                      <p
-                        title={deadlineTooltip(b.expires_at, b.trade_type === 'auction')}
-                        className={`text-xs mt-0.5 whitespace-nowrap ${b.trade_type === 'auction' ? 'cursor-help' : ''} ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}
-                      >
-                        {remainingLabel(b.expires_at, b.trade_type === 'auction')}
-                      </p>
+                      {!compact && (
+                        <p
+                          title={deadlineTooltip(b.expires_at, b.trade_type === 'auction')}
+                          className={`text-xs mt-0.5 whitespace-nowrap ${b.trade_type === 'auction' ? 'cursor-help' : ''} ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}
+                        >
+                          {remainingLabel(b.expires_at, b.trade_type === 'auction')}
+                        </p>
+                      )}
+                    </td>
+
+                    {/* 取引方法・サーバー（シンプル表示は取引可能サーバーのみ） */}
+                    <td className={`px-4 py-3 ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide min-w-[8.5rem]'}`}>
+                      {!compact && (
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          <span className={`px-2 py-0.5 rounded whitespace-nowrap ${b.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
+                            {b.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[b.trade_type]}
+                          </span>
+                        </div>
+                      )}
+                      {/* シンプル表示はサーバー頭文字バッジのみを横一列に並べる（改行させない） */}
+                      <div className={compact ? 'flex items-center gap-1' : 'flex flex-col gap-1'}>
+                        {b.servers.map((s) => (
+                          <div key={s.server} className="flex items-center gap-1.5">
+                            <span title={s.server} className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[s.server]}`}>
+                              {s.server[0]}
+                            </span>
+                            {!compact && s.character?.character_name && (
+                              <span className="text-xs text-gray-300 whitespace-nowrap">{s.character.character_name}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </td>
 
                     {/* 操作 */}
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {isMine || isCompleted ? (
-                        <div className="flex flex-col gap-1 items-end">
+                        <div className={actionsClass}>
                           {isCompleted && <span className="text-xs text-primary-500">✓ 取引完了</span>}
                           {detailOrMarket(b)}
                         </div>
                       ) : isDone ? (
-                        <div className="flex flex-col gap-1 items-end">
+                        <div className={actionsClass}>
                           <span className="text-xs text-primary-500">✓ 申出済み</span>
                           {detailOrMarket(b)}
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-1 items-end">
+                        <div className={actionsClass}>
                           {user && !!user.email_verified_at && (
                             <button
                               onClick={() => setTradeTarget(isOpen ? null : b)}
@@ -373,8 +424,8 @@ export default function BuyRequestsPage() {
                     </td>
                   </tr>
 
-                  {/* 買取コメント行（コメントがある場合のみ、アイテム行の直下に表示） */}
-                  {b.comment && (
+                  {/* 買取コメント行（コメントがある場合のみ、アイテム行の直下に表示。シンプル表示では出さない） */}
+                  {b.comment && !compact && (
                     <tr className={`!border-t-0 ${isOpen ? 'bg-primary-500/5' : ''}`}>
                       <td colSpan={4} className="px-4 pb-3 pt-0">
                         <p className="text-xs text-gray-300 bg-surface rounded px-3 py-2 whitespace-pre-wrap break-words">
@@ -445,6 +496,11 @@ export default function BuyRequestsPage() {
           itemName={analyticsItem.name}
           onClose={() => setAnalyticsItem(null)}
         />
+      )}
+
+      {/* アイテム詳細ポップアップ（シンプル表示のアイテム名クリック・PCのみ） */}
+      {detailItemId != null && (
+        <ItemDetailModal itemId={detailItemId} onClose={() => setDetailItemId(null)} />
       )}
     </div>
   )

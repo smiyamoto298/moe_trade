@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -26,6 +26,10 @@ vi.mock('../api/client', () => ({
 // 相場情報モーダルは内部で相場APIを叩くためスタブ化する
 vi.mock('../components/PriceAnalyticsModal', () => ({
   default: ({ itemName }: { itemName: string }) => <div>相場モーダル: {itemName}</div>,
+}))
+// アイテム詳細モーダルも同様にスタブ化する
+vi.mock('../components/ItemDetailModal', () => ({
+  default: ({ itemId }: { itemId: number }) => <div data-testid="item-detail-modal">item:{itemId}</div>,
 }))
 
 // ログイン状態はテストごとに auth.user を差し替える
@@ -262,5 +266,133 @@ describe('BuyRequestsPage 操作列（取引・相場情報・詳細）', () => 
 
     await userEvent.click(screen.getByRole('button', { name: '相場情報' }))
     expect(await screen.findByText('相場モーダル: 炎の大剣')).toBeInTheDocument()
+  })
+})
+
+// design.md「出品一覧・買取一覧の表示モード（詳細 / シンプル）」:
+// - 出品一覧と同じトグル・同じ保存キー（moe_list_display_mode）を使う
+// - シンプル表示はアイテム名・取引可能サーバー・価格・ボタン（取引／相場情報）だけを表示する
+describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
+  // 取引可能サーバーにキャラクター名を持たせた買取（シンプル表示ではキャラ名を出さない）
+  const withCharacter = (over: Partial<BuyRequest> = {}) =>
+    makeBuyRequest({
+      servers: [{ server: 'Emerald', character_id: 1, character: { id: 1, character_name: 'テスト太郎' } }],
+      ...over,
+    })
+
+  it('既定は詳細表示で、種別・取引方法・キャラ名・期限・コメントを表示する', async () => {
+    mockedList.mockResolvedValue(page([withCharacter({ comment: '高価買取します' })]))
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.getByRole('button', { name: '詳細' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('columnheader', { name: '取引' })).toBeInTheDocument()
+    expect(screen.getByText('刀剣')).toBeInTheDocument()
+    expect(screen.getByText('即決')).toBeInTheDocument()
+    expect(screen.getByText('テスト太郎')).toBeInTheDocument()
+    expect(screen.getByText(/残り\d+日/)).toBeInTheDocument()
+    expect(screen.getByText('高価買取します')).toBeInTheDocument()
+
+    // 列順は詳細表示でも 価格 → 取引（サーバー）の順
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['アイテム', '価格', '取引', ''])
+  })
+
+  it('シンプルに切り替えるとアイテム名・サーバー・価格・ボタンだけになる', async () => {
+    auth.user = verifiedUser
+    mockedList.mockResolvedValue(page([withCharacter({ comment: '高価買取します' })]))
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    await userEvent.click(screen.getByRole('button', { name: 'シンプル' }))
+
+    expect(screen.getByText('炎の大剣')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+    expect(screen.getByTitle('Emerald')).toBeInTheDocument()
+    expect(screen.getByText('5,000 AC')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '取引' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '相場情報' })).toBeInTheDocument()
+
+    // サーバーはアイコン（頭文字バッジ）のみ・横一列（改行しない）
+    expect(screen.queryByText('テスト太郎')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Emerald').parentElement!.parentElement).toHaveClass('flex', 'items-center')
+
+    // 列順は アイテム → 価格 → サーバー → 操作
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['アイテム', '価格', 'サーバー', ''])
+
+    // 操作列のボタンは横並び
+    expect(screen.getByRole('button', { name: '取引' }).parentElement).toHaveClass('flex', 'items-center')
+
+    expect(screen.queryByRole('columnheader', { name: '取引' })).not.toBeInTheDocument()
+    expect(screen.queryByText('刀剣')).not.toBeInTheDocument()
+    expect(screen.queryByText('即決')).not.toBeInTheDocument()
+    expect(screen.queryByText(/残り\d+日/)).not.toBeInTheDocument()
+    expect(screen.queryByText('高価買取します')).not.toBeInTheDocument()
+  })
+
+  it('シンプル表示は1ページ100件、詳細表示は20件で取得する', async () => {
+    renderPage()
+    await screen.findByText('炎の大剣')
+    expect(lastParams()).toMatchObject({ per_page: 20, page: 1 })
+
+    await userEvent.click(screen.getByRole('button', { name: 'シンプル' }))
+    await waitFor(() => expect(lastParams()).toMatchObject({ per_page: 100, page: 1 }))
+
+    await userEvent.click(screen.getByRole('button', { name: '詳細' }))
+    await waitFor(() => expect(lastParams()).toMatchObject({ per_page: 20, page: 1 }))
+  })
+
+  it('出品一覧で保存したシンプル表示を引き継ぐ', async () => {
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.getByRole('button', { name: 'シンプル' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+    expect(lastParams()).toMatchObject({ per_page: 100 })
+  })
+})
+
+// design.md「出品一覧・買取一覧の表示モード（詳細 / シンプル）」:
+// シンプル表示のアイテム名はクリックでアイテム詳細を開く（PC はポップアップ、スマホは /items/:id へ遷移）。
+describe('BuyRequestsPage シンプル表示のアイテム名クリック', () => {
+  // jsdom は matchMedia 未実装 → useMediaQuery は fallback(true)= PC 扱いになる
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('PCではアイテム名クリックでアイテム詳細ポップアップを開く', async () => {
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+
+    const nameBtn = await screen.findByRole('button', { name: '炎の大剣' })
+    expect(nameBtn).toHaveAttribute('title', 'アイテム詳細を表示')
+    expect(screen.queryByTestId('item-detail-modal')).not.toBeInTheDocument()
+
+    await userEvent.click(nameBtn)
+    expect(await screen.findByTestId('item-detail-modal')).toHaveTextContent('item:1')
+  })
+
+  it('スマホではアイテム名がアイテム詳細ページへのリンクになる', async () => {
+    window.matchMedia = vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+
+    const link = await screen.findByRole('link', { name: '炎の大剣' })
+    expect(link).toHaveAttribute('href', '/items/1')
+    expect(screen.queryByRole('button', { name: '炎の大剣' })).not.toBeInTheDocument()
+  })
+
+  it('詳細表示のアイテム名はクリックできない（テキストのまま）', async () => {
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.queryByRole('button', { name: '炎の大剣' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '炎の大剣' })).not.toBeInTheDocument()
   })
 })

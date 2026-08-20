@@ -95,7 +95,9 @@ class BuyRequestController extends Controller
         // 現在の売却申し出者数（順番待ち人数）。一覧の取引パネルで「N人待ち」を表示するのに使う。
         $query->withCount(['chats as waiting_count' => fn($q) => $q->where('status', 'open')]);
 
-        $result = $query->paginate(20);
+        // 1ページあたりの表示件数。既定20件、シンプル表示のフロントは100件を要求する（上限100）
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $result  = $query->paginate($perPage);
         $result->getCollection()->each(function (BuyRequest $b) {
             $b->resolveServerContacts();
             $this->annotateAuction($b);

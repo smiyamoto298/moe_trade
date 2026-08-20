@@ -17,6 +17,10 @@ import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, 
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell, TechniquePieceNames, techniqueMembersOf } from '../components/equipmentCells'
 import InlineHashtags from '../components/InlineHashtags'
 import OfficialDbLink from '../components/OfficialDbLink'
+import ListDisplayToggle from '../components/ListDisplayToggle'
+import ItemDetailModal from '../components/ItemDetailModal'
+import { useMediaQuery } from '../hooks/useMediaQuery'
+import { getListDisplayMode, setListDisplayMode, PER_PAGE_BY_MODE, type ListDisplayMode } from '../utils/listDisplayStore'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -270,6 +274,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
   const [params, setParams] = useState<ListingSearchParams>({
     sort: 'newest', page: 1,
+    // 表示モードで1ページの件数を変える（シンプルは100件）
+    per_page: PER_PAGE_BY_MODE[getListDisplayMode()],
     // 「全て」タブは種別を問わないため item_type を送らない（バックエンドは未指定で全種別を返す）
     ...(mode === 'all' ? {} : {
       item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : mode === 'other' ? 'other' : 'equipment',
@@ -419,21 +425,55 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
   // 絞り込みパネルの開閉。狭い画面では畳んだ状態、サイドバー表示になる幅（lg以上）では開いた状態で始める
   const [filterOpen, setFilterOpen] = useState(() => window.innerWidth >= 1024)
 
+  // 表示モード（詳細 / シンプル）。端末ごとに localStorage で保持する
+  const [displayMode, setDisplayMode] = useState<ListDisplayMode>(() => getListDisplayMode())
+  const compact = displayMode === 'compact'
+  const changeDisplayMode = (m: ListDisplayMode) => {
+    setDisplayMode(m)
+    setListDisplayMode(m)
+    // 件数が変わるとページ割りも変わるため1ページ目に戻す
+    setParams((p) => ({ ...p, per_page: PER_PAGE_BY_MODE[m], page: 1 }))
+  }
+  // シンプル表示の列数（アイテム・価格・サーバー・操作）と詳細表示の列数
+  const colCount = compact ? 4 : 7
+  // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
+  const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'
+
+  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ、スマホは /items/:id へ遷移）。
+  // スマホでモーダルを出すと縦に長い詳細が扱いづらいため、端末幅（md=768px）で出し分ける。
+  const isWideScreen = useMediaQuery('(min-width: 768px)')
+  const [detailItemId, setDetailItemId] = useState<number | null>(null)
+
+  // シンプル表示のアイテム名。詳細表示では従来どおりただのテキスト。
+  const compactItemName = (item: Item) => {
+    const cls = 'text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors'
+    return isWideScreen ? (
+      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(item.id)} className={cls}>
+        {item.name}
+      </button>
+    ) : (
+      <Link to={`/items/${item.id}`} className={`block ${cls}`}>{item.name}</Link>
+    )
+  }
+
   // 操作列の末尾リンク：スマホでは「詳細 →」（出品詳細はスマホ専用画面）、
   // PCでは「相場情報」ボタンを表示し、押すと相場ポップアップを開く。
+  // シンプル表示は列を絞って幅に余裕があるため、幅によらず「相場情報」ボタンだけを出す。
   const detailOrMarket = (l: Listing, withTour = false) => (
     <>
-      <Link
-        to={`/listings/${l.id}`}
-        className="listing-narrow-only text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
-      >
-        詳細 →
-      </Link>
+      {!compact && (
+        <Link
+          to={`/listings/${l.id}`}
+          className="listing-narrow-only text-xs whitespace-nowrap text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          詳細 →
+        </Link>
+      )}
       <button
         type="button"
         {...(withTour ? { 'data-tour': 'listings-detail' } : {})}
         onClick={() => setAnalyticsItem({ id: l.item.id, name: l.item.name })}
-        className="listing-wide-only items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors"
+        className={`${compact ? 'inline-flex' : 'listing-wide-only'} items-center justify-center w-20 text-xs whitespace-nowrap bg-sky-900/40 hover:bg-sky-900/70 border border-sky-700/50 text-sky-300 px-2.5 py-1 rounded transition-colors`}
       >
         相場情報
       </button>
@@ -905,6 +945,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 </button>
               )}
             </div>
+            <div className="flex items-center gap-2">
+            <ListDisplayToggle mode={displayMode} onChange={changeDisplayMode} />
             <select
               value={params.sort ?? 'newest'}
               className="bg-surface-card border border-surface-border rounded px-3 py-1 text-sm text-white focus:outline-none"
@@ -927,14 +969,16 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                 </optgroup>
               ))}
             </select>
+            </div>
           </div>
 
           <div className="listing-table-container bg-surface-card border border-surface-border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-border">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-52">アイテム</th>
-                  {isAllMode ? (
+                  {/* シンプル表示は列が少ないぶんアイテム名に幅を寄せる（他列は内容ぶんだけに縮める） */}
+                  <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-full' : 'w-52'}`}>アイテム</th>
+                  {compact ? null : isAllMode ? (
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide" colSpan={3}>情報</th>
                   ) : isSkillMode ? (
                     <>
@@ -956,16 +1000,18 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">特殊条件</th>
                     </>
                   )}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">取引</th>
                   <th className="text-right px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">価格</th>
+                  <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide'}`}>
+                    {compact ? 'サーバー' : '取引'}
+                  </th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
                 {loading ? (
-                  <tr><td colSpan={7} className="text-center py-16 text-gray-500">読み込み中...</td></tr>
+                  <tr><td colSpan={colCount} className="text-center py-16 text-gray-500">読み込み中...</td></tr>
                 ) : listings.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-16 text-gray-500">出品が見つかりません</td></tr>
+                  <tr><td colSpan={colCount} className="text-center py-16 text-gray-500">出品が見つかりません</td></tr>
                 ) : (
                   listings.map((l) => {
                     const daysLeft = Math.ceil((new Date(l.expires_at).getTime() - Date.now()) / 86400000)
@@ -978,8 +1024,12 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                       <tr
                         className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'}`}
                       >
-                        {/* アイテム名・種別 */}
+                        {/* アイテム名・種別（シンプル表示ではアイテム名のみ） */}
                         <td data-tour="listings-itemname" className="px-4 py-3">
+                          {compact ? (
+                            compactItemName(l.item)
+                          ) : (
+                          <>
                           {l.item.verified_status === 'unverified' && (
                             <span
                               tabIndex={0}
@@ -1041,9 +1091,11 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                               onSaved={(hashtags) => updateItemHashtags(l.item.id, hashtags)}
                             />
                           </div>
+                          </>
+                          )}
                         </td>
 
-                        {isAllMode ? (
+                        {compact ? null : isAllMode ? (
                           /* 全てタブ: 行ごとに種別を判定し、その種別の情報を1セルにまとめて表示 */
                           <td className="listing-col-wide px-4 py-3 align-top" colSpan={3}>
                             <AllInfoCell item={l.item} type={itemTypeOf(l.item.category, categories)} categories={categories} />
@@ -1176,20 +1228,46 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </>
                         )}
 
-                        {/* 取引方法・サーバー */}
-                        <td className="listing-col-wide px-4 py-3 min-w-[8.5rem]">
-                          <div data-tour="listings-tradetype" className="flex flex-wrap gap-1 mb-1">
-                            <span className={`px-2 py-0.5 rounded whitespace-nowrap ${l.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
-                              {l.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[l.trade_type]}
-                            </span>
-                          </div>
-                          <div className="flex flex-col gap-1">
+                        {/* 価格・期限 */}
+                        <td className="px-3 py-3 text-right">
+                          {l.trade_type === 'auction' ? (
+                            <>
+                              <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
+                              <p className="text-base font-bold text-amber-300 whitespace-nowrap">{(l.current_price ?? l.price).toLocaleString()} {l.currency}</p>
+                              {!compact && (
+                                <p className="text-[10px] text-gray-500 whitespace-nowrap">入札 {l.bid_count ?? 0}件{l.buyout_price != null && ` ・即決 ${l.buyout_price.toLocaleString()}`}</p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-base font-bold text-primary-500 whitespace-nowrap">{l.price} {l.currency}</p>
+                          )}
+                          {!compact && (
+                            <p
+                              title={deadlineTooltip(l.expires_at, l.trade_type === 'auction')}
+                              className={`text-xs mt-0.5 whitespace-nowrap ${l.trade_type === 'auction' ? 'cursor-help' : ''} ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}
+                            >
+                              {remainingLabel(l.expires_at, l.trade_type === 'auction')}
+                            </p>
+                          )}
+                        </td>
+
+                        {/* 取引方法・サーバー（シンプル表示は取引可能サーバーのみ） */}
+                        <td className={`px-4 py-3 ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide min-w-[8.5rem]'}`}>
+                          {!compact && (
+                            <div data-tour="listings-tradetype" className="flex flex-wrap gap-1 mb-1">
+                              <span className={`px-2 py-0.5 rounded whitespace-nowrap ${l.trade_type === 'auction' ? 'text-[10px] bg-amber-900/40 border border-amber-600/40 text-amber-200' : 'text-xs bg-surface text-gray-300'}`}>
+                                {l.trade_type === 'auction' ? '🔨 オークション' : TRADE_TYPE_LABEL[l.trade_type]}
+                              </span>
+                            </div>
+                          )}
+                          {/* シンプル表示はサーバー頭文字バッジのみを横一列に並べる（改行させない） */}
+                          <div className={compact ? 'flex items-center gap-1' : 'flex flex-col gap-1'}>
                             {l.servers.map((s) => (
                               <div key={s.server} className="flex items-center gap-1.5">
                                 <span title={s.server} className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${SERVER_COLORS[s.server]}`}>
                                   {s.server[0]}
                                 </span>
-                                {s.character?.character_name && (
+                                {!compact && s.character?.character_name && (
                                   <span className="text-xs text-gray-300 whitespace-nowrap">{s.character.character_name}</span>
                                 )}
                               </div>
@@ -1197,39 +1275,20 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           </div>
                         </td>
 
-                        {/* 価格・期限 */}
-                        <td className="px-3 py-3 text-right">
-                          {l.trade_type === 'auction' ? (
-                            <>
-                              <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
-                              <p className="text-base font-bold text-amber-300 whitespace-nowrap">{(l.current_price ?? l.price).toLocaleString()} {l.currency}</p>
-                              <p className="text-[10px] text-gray-500 whitespace-nowrap">入札 {l.bid_count ?? 0}件{l.buyout_price != null && ` ・即決 ${l.buyout_price.toLocaleString()}`}</p>
-                            </>
-                          ) : (
-                            <p className="text-base font-bold text-primary-500 whitespace-nowrap">{l.price} {l.currency}</p>
-                          )}
-                          <p
-                            title={deadlineTooltip(l.expires_at, l.trade_type === 'auction')}
-                            className={`text-xs mt-0.5 whitespace-nowrap ${l.trade_type === 'auction' ? 'cursor-help' : ''} ${daysLeft <= 3 ? 'text-orange-400' : 'text-gray-500'}`}
-                          >
-                            {remainingLabel(l.expires_at, l.trade_type === 'auction')}
-                          </p>
-                        </td>
-
                         {/* 操作 */}
                         <td className="px-4 py-3 text-right whitespace-nowrap">
                           {isMyListing || isCompleted ? (
-                            <div className="flex flex-col gap-1 items-end">
+                            <div className={actionsClass}>
                               {isCompleted && <span className="text-xs text-primary-500">✓ 取引完了</span>}
                               {detailOrMarket(l)}
                             </div>
                           ) : isDone ? (
-                            <div className="flex flex-col gap-1 items-end">
+                            <div className={actionsClass}>
                               <span className="text-xs text-primary-500">✓ 希望済み</span>
                               {detailOrMarket(l)}
                             </div>
                           ) : (
-                            <div className="flex flex-col gap-1 items-end">
+                            <div className={actionsClass}>
                               {user && !!user.email_verified_at && (
                                 <button
                                   data-tour="listings-trade"
@@ -1249,10 +1308,10 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         </td>
                       </tr>
 
-                      {/* 出品コメント行（コメントがある場合のみ、アイテム行の直下に表示） */}
-                      {l.comment && (
+                      {/* 出品コメント行（コメントがある場合のみ、アイテム行の直下に表示。シンプル表示では出さない） */}
+                      {l.comment && !compact && (
                         <tr className={`!border-t-0 ${isOpen ? 'bg-primary-500/5' : ''}`}>
-                          <td colSpan={7} className="px-4 pb-3 pt-0">
+                          <td colSpan={colCount} className="px-4 pb-3 pt-0">
                             <p className="text-xs text-gray-300 bg-surface rounded px-3 py-2 whitespace-pre-wrap break-words">
                               <span className="text-gray-500 mr-1.5 select-none">💬</span>
                               {l.comment}
@@ -1264,7 +1323,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                       {/* 取引希望パネル（行を展開） */}
                       {isOpen && (
                         <tr key={`panel-${l.id}`}>
-                          <td colSpan={7} className="px-4 pb-4">
+                          <td colSpan={colCount} className="px-4 pb-4">
                             <TradeRequestPanel
                               source={l}
                               kind="listing"
@@ -1323,6 +1382,11 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
           itemName={analyticsItem.name}
           onClose={() => setAnalyticsItem(null)}
         />
+      )}
+
+      {/* アイテム詳細ポップアップ（シンプル表示のアイテム名クリック・PCのみ） */}
+      {detailItemId != null && (
+        <ItemDetailModal itemId={detailItemId} onClose={() => setDetailItemId(null)} />
       )}
     </div>
   )

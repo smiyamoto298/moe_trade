@@ -216,6 +216,8 @@ export interface BuyRequestSearchParams {
   include_completed?: boolean
   sort?: string
   page?: number
+  // 1ページの表示件数（1〜100・既定20）。シンプル表示では100を送る
+  per_page?: number
 }
 
 // ---- 相場 ----
@@ -316,6 +318,8 @@ export interface ListingSearchParams {
   hashtag?: string
   sort?: string  // 'newest' | 'name_asc' | 'name_desc' | 'price_asc' | 'price_desc' | 'stat_asc:{key}' | 'stat_desc:{key}' | 'bonus_asc:{label}' | 'bonus_desc:{label}'
   page?: number
+  // 1ページの表示件数（1〜100・既定20）。シンプル表示では100を送る
+  per_page?: number
 }
 
 // ---- チャット ----

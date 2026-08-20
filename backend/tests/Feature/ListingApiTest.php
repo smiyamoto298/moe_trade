@@ -800,4 +800,37 @@ class ListingApiTest extends TestCase
                 ->assertStatus(404);
         }
     }
+
+    // design.md「検索・閲覧機能」: 出品一覧は per_page で件数指定できる（既定20・上限100）。
+    // シンプル表示のフロントが per_page=100 を要求する。
+    public function test_出品一覧はper_pageで件数指定できる（既定20・上限100）(): void
+    {
+        $seller = $this->makeUser();
+        $item   = $this->makeItem();
+        for ($i = 0; $i < 101; $i++) {
+            $this->makeListing($seller, $item);
+        }
+
+        // 既定は20件
+        $default = $this->getJson('/api/listings')->assertOk()->json();
+        $this->assertSame(20, $default['per_page']);
+        $this->assertCount(20, $default['data']);
+        $this->assertSame(101, $default['total']);
+        $this->assertSame(6, $default['last_page']);
+
+        // シンプル表示の 100 件
+        $wide = $this->getJson('/api/listings?per_page=100')->assertOk()->json();
+        $this->assertSame(100, $wide['per_page']);
+        $this->assertCount(100, $wide['data']);
+        $this->assertSame(2, $wide['last_page']);
+
+        // 残り1件は2ページ目に出る
+        $this->getJson('/api/listings?per_page=100&page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        // 範囲外は 1〜100 に丸める
+        $this->assertSame(100, $this->getJson('/api/listings?per_page=9999')->assertOk()->json('per_page'));
+        $this->assertSame(1, $this->getJson('/api/listings?per_page=0')->assertOk()->json('per_page'));
+    }
 }
