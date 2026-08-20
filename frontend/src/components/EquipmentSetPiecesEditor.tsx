@@ -40,7 +40,6 @@ interface BonusEffectForm {
   effect_name: string
   values: BonusValueForm[]
   description: string
-  is_exclusive: boolean // この付加効果が専用技か
   no_warage_effect: boolean // WarAgeでは効果がない付加効果か
 }
 export interface BaseStatsGroupForm {
@@ -66,7 +65,7 @@ export interface EquipmentSetForm {
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
-const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false })
+const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', no_warage_effect: false })
 const emptyBaseGroup = (): BaseStatsGroupForm => ({
   partCategoryIds: [], base_stats: {}, custom_stats: [],
 })
@@ -90,11 +89,11 @@ function baseKey(m: Item): string {
 function specialKey(m: Item): string {
   return JSON.stringify([...(m.special_conditions ?? [])].sort())
 }
-// 付加効果（bonus_effects。専用技フラグも含む）が同一かを表すキー
+// 付加効果（bonus_effects）が同一かを表すキー
 function bonusKey(m: Item): string {
   return JSON.stringify(
     (m.bonus_effects ?? []).map((e) => ({
-      effect_name: e.effect_name, values: e.values, description: e.description, is_exclusive: !!e.is_exclusive, no_warage_effect: !!e.no_warage_effect,
+      effect_name: e.effect_name, values: e.values, description: e.description, no_warage_effect: !!e.no_warage_effect,
     }))
   )
 }
@@ -159,7 +158,6 @@ export function membersToForm(members: Item[], techniqueCatIds: Set<number> = ne
       effect_name: e.effect_name,
       values: e.values.map((v) => ({ value: String(v.value), value_unit: v.value_unit, label: v.label ?? '' })),
       description: e.description ?? '',
-      is_exclusive: !!e.is_exclusive,
       no_warage_effect: !!e.no_warage_effect,
     })),
   }), emptyBonusGroup)
@@ -214,7 +212,6 @@ export function formToPieces(form: EquipmentSetForm, techniqueCatIds: Set<number
       // 必要スキル・マスタリはテクニック部位のみ（装備部位は null で送って既存値もクリア）
       skill_requirements: null,
       mastery_requirements: null,
-      // 専用技は付加効果ごとの is_exclusive で保持する（アイテム単位のフラグは廃止）
       bonus_effects: ng.bonus_effects
         .filter((e) => e.effect_name.trim())
         .map((e) => ({
@@ -223,7 +220,6 @@ export function formToPieces(form: EquipmentSetForm, techniqueCatIds: Set<number
             .filter((v) => isLabelOnlyUnit(v.value_unit) || v.value !== '')
             .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
           description: e.description,
-          is_exclusive: e.is_exclusive,
           no_warage_effect: e.no_warage_effect,
         })),
     }
@@ -342,8 +338,6 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
   }
   const setBonusField = (gi: number, bi: number, key: 'effect_name' | 'description', val: string) =>
     updateBonus(gi, { bonus_effects: bonusGroups[gi].bonus_effects.map((e, i) => (i === bi ? { ...e, [key]: val } : e)) })
-  const setBonusExclusive = (gi: number, bi: number, val: boolean) =>
-    updateBonus(gi, { bonus_effects: bonusGroups[gi].bonus_effects.map((e, i) => (i === bi ? { ...e, is_exclusive: val } : e)) })
   const setBonusNoWarage = (gi: number, bi: number, val: boolean) =>
     updateBonus(gi, { bonus_effects: bonusGroups[gi].bonus_effects.map((e, i) => (i === bi ? { ...e, no_warage_effect: val } : e)) })
   const setBonusVal = (gi: number, bi: number, vi: number, key: keyof BonusValueForm, val: string) =>
@@ -583,10 +577,6 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-400">付加効果 {bi + 1}</span>
                     <div className="flex items-center gap-3">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-amber-200 select-none">
-                        <input type="checkbox" checked={e.is_exclusive} onChange={(ev) => setBonusExclusive(gi, bi, ev.target.checked)} className="accent-amber-500" />
-                        専用技
-                      </label>
                       <label className="flex items-center gap-1.5 cursor-pointer text-xs text-sky-200 select-none">
                         <input type="checkbox" checked={e.no_warage_effect} onChange={(ev) => setBonusNoWarage(gi, bi, ev.target.checked)} className="accent-sky-500" />
                         WarAge無効

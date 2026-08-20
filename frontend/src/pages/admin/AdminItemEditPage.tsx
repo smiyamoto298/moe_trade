@@ -32,13 +32,12 @@ interface BonusEffectForm {
   effect_name: string
   values: BonusValueForm[]
   description: string
-  is_exclusive: boolean // この付加効果が専用技か
   no_warage_effect: boolean // WarAgeでは効果がない付加効果か
 }
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
 const emptyBonus = (): BonusEffectForm => ({
-  effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false,
+  effect_name: '', values: [emptyValue()], description: '', no_warage_effect: false,
 })
 
 const isEquipmentSetCategory = (cat: ItemCategory) =>
@@ -170,7 +169,6 @@ export default function AdminItemEditPage() {
           ? e.values.map((v) => ({ value: String(v.value), value_unit: v.value_unit, label: v.label ?? '' }))
           : [emptyValue()],
         description: e.description ?? '',
-        is_exclusive: !!e.is_exclusive,
         no_warage_effect: !!e.no_warage_effect,
       })))
     }
@@ -291,7 +289,6 @@ export default function AdminItemEditPage() {
               effect_name: e.effect_name,
               values: e.values.map((v) => ({ value: v.value, value_unit: v.value_unit, label: v.label })),
               description: e.description,
-              is_exclusive: e.is_exclusive,
               no_warage_effect: e.no_warage_effect,
             })),
         },
@@ -345,7 +342,6 @@ export default function AdminItemEditPage() {
         effect_name: e.effect_name,
         values: e.values.length > 0 ? e.values.map((v) => ({ ...v })) : [emptyValue()],
         description: e.description,
-        is_exclusive: e.is_exclusive,
         no_warage_effect: e.no_warage_effect,
       })))
       return
@@ -383,9 +379,6 @@ export default function AdminItemEditPage() {
 
   const setBonus = (idx: number, key: 'effect_name' | 'description', val: string) =>
     setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, [key]: val } : e))
-
-  const setBonusExclusive = (idx: number, val: boolean) =>
-    setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, is_exclusive: val } : e))
 
   const setBonusNoWarage = (idx: number, val: boolean) =>
     setBonusEffects((prev) => prev.map((e, i) => i === idx ? { ...e, no_warage_effect: val } : e))
@@ -486,7 +479,6 @@ export default function AdminItemEditPage() {
               .filter((v) => isLabelOnlyUnit(v.value_unit) || v.value !== '')
               .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
-            is_exclusive: e.is_exclusive,
             no_warage_effect: e.no_warage_effect,
           })) : [],
         // ハッシュタグ（admin/editor は固定タグ・通常タグの両方を編集可。固定は権限をバックエンドでも再チェック）
@@ -819,15 +811,6 @@ export default function AdminItemEditPage() {
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-400 font-medium">付加効果 {idx + 1}</p>
                 <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs text-amber-200 select-none">
-                    <input
-                      type="checkbox"
-                      checked={e.is_exclusive}
-                      onChange={(ev) => setBonusExclusive(idx, ev.target.checked)}
-                      className="accent-amber-500"
-                    />
-                    専用技
-                  </label>
                   <label className="flex items-center gap-1.5 cursor-pointer text-xs text-sky-200 select-none">
                     <input
                       type="checkbox"
@@ -999,7 +982,7 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* ミスリル（装備品のみ。専用技は付加効果ごとに設定する） */}
+        {/* ミスリル（装備品のみ） */}
         {isPlain && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 flex items-center gap-6">
           <label className="flex items-center gap-2 cursor-pointer select-none">

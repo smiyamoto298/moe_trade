@@ -90,7 +90,6 @@ class ItemApiTest extends TestCase
             'bonus_effects' => [
                 [
                     'effect_name'  => '剛剣の使い手',
-                    'is_exclusive' => true,
                     'values'       => [['value' => 15, 'value_unit' => '%', 'label' => '物理ダメージ']],
                 ],
             ],
@@ -100,10 +99,10 @@ class ItemApiTest extends TestCase
             ->assertJsonPath('verified_status', 'unverified')
             ->assertJsonPath('mithril', true)
             ->assertJsonPath('submitted_by', $user->id)
-            // 専用技は付加効果単位（is_exclusive）で保持する（アイテム単位の exclusive_skill は廃止）
-            ->assertJsonPath('bonus_effects.0.is_exclusive', true);
+            // 専用技（is_exclusive）は廃止済みなのでレスポンスに含まれない
+            ->assertJsonMissingPath('bonus_effects.0.is_exclusive');
 
-        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手', 'is_exclusive' => true]);
+        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '剛剣の使い手']);
     }
 
     public function test_追加効果のその他は自由入力キーでbase_statsに保存されstat候補へ自動追加される(): void
@@ -1073,7 +1072,7 @@ class ItemApiTest extends TestCase
         ])->assertStatus(422);
     }
 
-    public function test_装備セットの部位は付加効果ごとに専用技を保存できる(): void
+    public function test_装備セットの部位に専用技を渡しても保存も返却もされない(): void
     {
         $admin    = $this->makeUserWithRole('admin');
         $cats     = $this->makeCategoryTree();
@@ -1087,21 +1086,18 @@ class ItemApiTest extends TestCase
                 [
                     'category_id'     => $cats['sword']->id,
                     'name'            => '専用技の剣',
+                    // 廃止済みのフラグ。旧クライアントが送っても無視される
                     'bonus_effects'   => [
                         ['effect_name' => '秘剣', 'is_exclusive' => true, 'values' => []],
-                        ['effect_name' => '通常効果', 'is_exclusive' => false, 'values' => []],
                     ],
                 ],
             ],
         ]);
 
         $res->assertStatus(201);
-        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '秘剣', 'is_exclusive' => true]);
-        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '通常効果', 'is_exclusive' => false]);
-        // show / set_members で付加効果ごとの is_exclusive が返る
+        $this->assertDatabaseHas('item_bonus_effects', ['effect_name' => '秘剣']);
         $effects = collect($res->json('set_members.0.bonus_effects'));
-        $this->assertTrue((bool) $effects->firstWhere('effect_name', '秘剣')['is_exclusive']);
-        $this->assertFalse((bool) $effects->firstWhere('effect_name', '通常効果')['is_exclusive']);
+        $this->assertArrayNotHasKey('is_exclusive', $effects->firstWhere('effect_name', '秘剣'));
     }
 
     public function test_装備セット更新で他アイテムのidを渡しても乗っ取れない(): void
@@ -1242,7 +1238,7 @@ class ItemApiTest extends TestCase
                     'name'        => '炎の大剣',
                     'base_stats'  => ['atk' => 10],
                     'bonus_effects' => [
-                        ['effect_name' => '炎の魔剣', 'is_exclusive' => true, 'values' => []],
+                        ['effect_name' => '炎の魔剣', 'values' => []],
                     ],
                 ],
             ],
@@ -1261,8 +1257,8 @@ class ItemApiTest extends TestCase
         $this->assertFalse($piece->is_equipment_set);
         // 出品は元アイテム(部位)に紐づいたまま
         $this->assertDatabaseHas('listings', ['id' => $listing->id, 'item_id' => $piece->id]);
-        // 部位の付加効果（専用技）が保存される
-        $this->assertDatabaseHas('item_bonus_effects', ['item_id' => $piece->id, 'effect_name' => '炎の魔剣', 'is_exclusive' => true]);
+        // 部位の付加効果が保存される
+        $this->assertDatabaseHas('item_bonus_effects', ['item_id' => $piece->id, 'effect_name' => '炎の魔剣']);
     }
 
     public function test_変換元以外のidを構成部位に渡しても採用されない(): void

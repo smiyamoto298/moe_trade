@@ -288,8 +288,8 @@ describe('ListingsPage タブ', () => {
           item: makeItem({
             id: 4, name: '守護の鎧',
             bonus_effects: [
-              { id: 1, effect_name: '状態異常耐性', is_exclusive: false, description: '', values: [{ value: fitsText, value_unit: 'text' }] },
-              { id: 2, effect_name: 'ペット強化', is_exclusive: false, description: '', values: [{ value: longText, value_unit: 'text' }] },
+              { id: 1, effect_name: '状態異常耐性', description: '', values: [{ value: fitsText, value_unit: 'text' }] },
+              { id: 2, effect_name: 'ペット強化', description: '', values: [{ value: longText, value_unit: 'text' }] },
             ] as unknown as Item['bonus_effects'],
           }),
         }),

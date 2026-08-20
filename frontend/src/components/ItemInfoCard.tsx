@@ -162,9 +162,6 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
             {item.bonus_effects.map((e) => (
               <div key={e.id} className="bg-surface rounded px-3 py-2 text-sm">
                 <span className="text-primary-500 font-medium">{e.effect_name}</span>
-                {e.is_exclusive && (
-                  <span className="ml-1.5 text-[10px] bg-amber-900/40 border border-amber-600/40 rounded px-1 py-px text-amber-200">専用技</span>
-                )}
                 {e.values.length > 0 && (
                   <span className="text-gray-300 ml-2">
                     {e.values.map((v, i) => (

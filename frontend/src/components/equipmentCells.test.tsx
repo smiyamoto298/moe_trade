@@ -11,7 +11,6 @@ function itemWithEffects(effects: Partial<ItemBonusEffect>[]): Item {
     bonus_effects: effects.map((e, i) => ({
       id: i + 1,
       effect_name: e.effect_name ?? '効果',
-      is_exclusive: e.is_exclusive ?? false,
       values: e.values ?? [],
     })),
   } as unknown as Item
@@ -207,7 +206,7 @@ describe('SetBonusCell テクニック部位の表示', () => {
     const members = [
       setMember({
         id: 1, name: '頭装備',
-        bonus_effects: [{ id: 1, effect_name: '炎纏い', is_exclusive: false, values: [], description: '' } as unknown as ItemBonusEffect],
+        bonus_effects: [{ id: 1, effect_name: '炎纏い', values: [], description: '' } as unknown as ItemBonusEffect],
       }),
       setMember({
         id: 2, name: 'ノアピース：ヴィガー',
@@ -229,7 +228,7 @@ describe('SetBonusCell テクニック部位の表示', () => {
     const members = [
       setMember({
         id: 1, name: '頭装備',
-        bonus_effects: [{ id: 1, effect_name: '炎纏い', is_exclusive: false, values: [], description: '' } as unknown as ItemBonusEffect],
+        bonus_effects: [{ id: 1, effect_name: '炎纏い', values: [], description: '' } as unknown as ItemBonusEffect],
       }),
       setMember({
         id: 2, name: 'ノアピース：ヴィガー',
@@ -249,7 +248,7 @@ describe('SetBonusCell テクニック部位の表示', () => {
       setMember({
         id: 1, name: '頭装備',
         bonus_effects: [{
-          id: 1, effect_name: '特殊効果', is_exclusive: false, description: '',
+          id: 1, effect_name: '特殊効果', description: '',
           values: [{ value: '長い説明テキストです', value_unit: 'text' }],
         } as unknown as ItemBonusEffect],
       }),

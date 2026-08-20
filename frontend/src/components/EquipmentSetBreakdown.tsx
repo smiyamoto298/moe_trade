@@ -46,15 +46,12 @@ export default function EquipmentSetBreakdown({ members }: { members?: Item[] })
                 </div>
               )}
 
-              {/* 付加効果（付加効果ごとに専用技を表示） */}
+              {/* 付加効果 */}
               {m.bonus_effects.length > 0 && (
                 <div className="flex flex-col gap-0.5 mb-1">
                   {m.bonus_effects.map((e) => (
                     <div key={e.id} className="text-xs">
                       <span className="text-primary-500 font-medium">{e.effect_name}</span>
-                      {e.is_exclusive && (
-                        <span className="ml-1 text-[10px] bg-amber-900/40 border border-amber-600/40 rounded px-1 py-px text-amber-200">専用技</span>
-                      )}
                       {e.values.map((v, i) => (
                         <span key={i} className="text-gray-300 ml-1">
                           {v.label && <span className="text-gray-400">{v.label} </span>}

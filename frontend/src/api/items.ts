@@ -19,7 +19,6 @@ export interface EquipmentSetPieceInput {
     effect_name: string
     values: { value: number | string; value_unit: string; label?: string }[]
     description: string
-    is_exclusive?: boolean
     no_warage_effect?: boolean
   }[]
 }
@@ -107,7 +106,6 @@ export const itemsApi = {
       effect_name: string
       values: { value: number | string; value_unit: string; label?: string }[]
       description: string
-      is_exclusive?: boolean
       no_warage_effect?: boolean
     }[]
     // 固定ハッシュタグ（admin/editor のみ反映）
@@ -179,7 +177,6 @@ export const itemsApi = {
       effect_name: string
       values: { value: number | string; value_unit: string; label?: string }[]
       description: string
-      is_exclusive?: boolean
       no_warage_effect?: boolean
     }[]
     // 固定ハッシュタグ（admin/editor のみ反映）

@@ -7,7 +7,6 @@ import { itemTypeOf } from '../utils/itemType'
 // 装備セットは「部位（部位カテゴリ名チップ）」「追加効果」「付加効果」を構成部位から組み立てて表示する。
 
 // 追加効果（base_stats + ミスリル）のバッジ群。
-// 専用技は付加効果側（is_exclusive）で扱うため、ここでは表示しない。
 // 「その他」のテキスト値は付加効果のテキストと同様、長い場合 [詳細] バッジに切り替える。
 export function BaseStatBadges({ item, longTextThreshold = TEXT_DETAIL_THRESHOLD }: {
   item: Item
@@ -66,12 +65,7 @@ export function BonusEffectList({ item, longTextThreshold = TEXT_DETAIL_THRESHOL
     <>
       {(item.bonus_effects ?? []).map((e) => (
         <div key={e.id} className="text-xs bg-surface border border-primary-500/20 rounded px-2 py-1">
-          <p className="text-primary-500 font-medium">
-            {e.effect_name}
-            {e.is_exclusive && (
-              <span className="ml-1 text-[10px] bg-amber-900/40 border border-amber-600/40 rounded px-1 py-px text-amber-200">専用技</span>
-            )}
-          </p>
+          <p className="text-primary-500 font-medium">{e.effect_name}</p>
           {e.values?.map((v, i) => {
             const disp = formatBonusValueDisplay(v.value, v.value_unit)
             // テキスト値が列に収まらない長さの場合は一覧では [詳細] とし、ホバーで全文をポップアップ表示する。

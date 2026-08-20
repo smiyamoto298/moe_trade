@@ -25,12 +25,11 @@ interface BonusEffectForm {
   effect_name: string
   values: BonusValueForm[]
   description: string
-  is_exclusive: boolean // この付加効果が専用技か
   no_warage_effect: boolean // WarAgeでは効果がない付加効果か
 }
 
 const emptyValue = (): BonusValueForm => ({ value: '', value_unit: '%', label: '' })
-const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', is_exclusive: false, no_warage_effect: false })
+const emptyBonus = (): BonusEffectForm => ({ effect_name: '', values: [emptyValue()], description: '', no_warage_effect: false })
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
 
@@ -156,9 +155,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
   const setBonus = (i: number, key: 'effect_name' | 'description', val: string) =>
     setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, [key]: val } : e))
 
-  const setBonusExclusive = (i: number, val: boolean) =>
-    setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, is_exclusive: val } : e))
-
   const setBonusNoWarage = (i: number, val: boolean) =>
     setBonusEffects((prev) => prev.map((e, idx) => idx === i ? { ...e, no_warage_effect: val } : e))
 
@@ -235,7 +231,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
               .filter((v) => isLabelOnlyUnit(v.value_unit) || v.value !== '')
               .map((v) => ({ value: bonusValueForSave(v), value_unit: v.value_unit, label: v.label || undefined })),
             description: e.description,
-            is_exclusive: e.is_exclusive,
             no_warage_effect: e.no_warage_effect,
           })) : [],
         // editor/admin が選んだ確認状態（一般ユーザーは undefined）
@@ -600,7 +595,7 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
         </div>
       </div>
 
-      {/* ミスリル（専用技は付加効果ごとに設定する） */}
+      {/* ミスリル */}
       <div className="flex items-center gap-6">
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
@@ -657,10 +652,6 @@ export default function NewItemForm({ onRegistered, onCancel, initialName = '' }
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">付加効果 {idx + 1}</span>
                 <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs text-amber-200 select-none">
-                    <input type="checkbox" checked={e.is_exclusive} onChange={(ev) => setBonusExclusive(idx, ev.target.checked)} className="accent-amber-500" />
-                    専用技
-                  </label>
                   <label className="flex items-center gap-1.5 cursor-pointer text-xs text-sky-200 select-none">
                     <input type="checkbox" checked={e.no_warage_effect} onChange={(ev) => setBonusNoWarage(idx, ev.target.checked)} className="accent-sky-500" />
                     WarAge無効
