@@ -264,3 +264,52 @@ describe('BuyRequestsPage 操作列（取引・相場情報・詳細）', () => 
     expect(await screen.findByText('相場モーダル: 炎の大剣')).toBeInTheDocument()
   })
 })
+
+// design.md「出品一覧・買取一覧の表示モード（詳細 / シンプル）」:
+// - 出品一覧と同じトグル・同じ保存キー（moe_list_display_mode）を使う
+// - シンプル表示はアイテム名・取引可能サーバー・価格・ボタン（取引／相場情報）だけを表示する
+describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
+  it('既定は詳細表示で、種別・取引方法・期限・コメントを表示する', async () => {
+    mockedList.mockResolvedValue(page([makeBuyRequest({ comment: '高価買取します' })]))
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.getByRole('button', { name: '詳細' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('columnheader', { name: '取引' })).toBeInTheDocument()
+    expect(screen.getByText('刀剣')).toBeInTheDocument()
+    expect(screen.getByText('即決')).toBeInTheDocument()
+    expect(screen.getByText(/残り\d+日/)).toBeInTheDocument()
+    expect(screen.getByText('高価買取します')).toBeInTheDocument()
+  })
+
+  it('シンプルに切り替えるとアイテム名・サーバー・価格・ボタンだけになる', async () => {
+    auth.user = verifiedUser
+    mockedList.mockResolvedValue(page([makeBuyRequest({ comment: '高価買取します' })]))
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    await userEvent.click(screen.getByRole('button', { name: 'シンプル' }))
+
+    expect(screen.getByText('炎の大剣')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+    expect(screen.getByTitle('Emerald')).toBeInTheDocument()
+    expect(screen.getByText('5,000 AC')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '取引' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '相場情報' })).toBeInTheDocument()
+
+    expect(screen.queryByRole('columnheader', { name: '取引' })).not.toBeInTheDocument()
+    expect(screen.queryByText('刀剣')).not.toBeInTheDocument()
+    expect(screen.queryByText('即決')).not.toBeInTheDocument()
+    expect(screen.queryByText(/残り\d+日/)).not.toBeInTheDocument()
+    expect(screen.queryByText('高価買取します')).not.toBeInTheDocument()
+  })
+
+  it('出品一覧で保存したシンプル表示を引き継ぐ', async () => {
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.getByRole('button', { name: 'シンプル' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+  })
+})

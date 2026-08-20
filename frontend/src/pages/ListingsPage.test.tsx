@@ -635,3 +635,82 @@ describe('ListingsPage ログイン状態によるアクション制御', () => 
     expect(screen.queryByRole('button', { name: '取引' })).not.toBeInTheDocument()
   })
 })
+
+// design.md「出品一覧・買取一覧の表示モード（詳細 / シンプル）」:
+// - トグルで「詳細」「シンプル」を切り替えられる
+// - シンプル表示はアイテム名・取引可能サーバー・価格・ボタン（取引／相場情報）だけを表示する
+// - 選択は端末ごとに localStorage（moe_list_display_mode）へ保存し、次回表示に引き継ぐ
+describe('ListingsPage 表示モード（詳細 / シンプル）', () => {
+  // 絞り込みパネルにも「即決」「刀剣」等が出るため、一覧テーブル内に限定して検証する
+  const table = () => within(screen.getByRole('table'))
+
+  it('既定は詳細表示で、効果列・種別・取引方法・期限・コメントを表示する', async () => {
+    mockedList.mockResolvedValue(page([makeListing({ comment: '値下げ交渉可です' })]))
+    renderAt('/listings')
+    await waitForLoaded()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.getByRole('button', { name: '詳細' })).toHaveAttribute('aria-pressed', 'true')
+    expect(table().getByRole('columnheader', { name: '追加効果' })).toBeInTheDocument()
+    expect(table().getByRole('columnheader', { name: '取引' })).toBeInTheDocument()
+    expect(table().getByText('刀剣')).toBeInTheDocument()
+    expect(table().getByText('即決')).toBeInTheDocument()
+    expect(table().getByText(/残り\d+日/)).toBeInTheDocument()
+    expect(table().getByText('値下げ交渉可です')).toBeInTheDocument()
+  })
+
+  it('シンプルに切り替えるとアイテム名・サーバー・価格・ボタンだけになる', async () => {
+    auth.user = verifiedUser
+    mockedList.mockResolvedValue(page([makeListing({ comment: '値下げ交渉可です' })]))
+    renderAt('/listings')
+    await waitForLoaded()
+    await screen.findByText('炎の大剣')
+
+    await userEvent.click(screen.getByRole('button', { name: 'シンプル' }))
+
+    // 残るもの: アイテム名・取引可能サーバー列・価格・取引/相場情報ボタン
+    expect(table().getByText('炎の大剣')).toBeInTheDocument()
+    expect(table().getByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+    expect(table().getByTitle('Emerald')).toBeInTheDocument()
+    expect(table().getByText('5000 AC')).toBeInTheDocument()
+    expect(table().getByRole('button', { name: '取引' })).toBeInTheDocument()
+    expect(table().getByRole('button', { name: '相場情報' })).toBeInTheDocument()
+
+    // 消えるもの: 効果列・種別（カテゴリ名）・取引方法・期限・コメント
+    expect(table().queryByRole('columnheader', { name: '追加効果' })).not.toBeInTheDocument()
+    expect(table().queryByRole('columnheader', { name: '付加効果' })).not.toBeInTheDocument()
+    expect(table().queryByRole('columnheader', { name: '特殊条件' })).not.toBeInTheDocument()
+    expect(table().queryByRole('columnheader', { name: '取引' })).not.toBeInTheDocument()
+    expect(table().queryByText('刀剣')).not.toBeInTheDocument()
+    expect(table().queryByText('即決')).not.toBeInTheDocument()
+    expect(table().queryByText(/残り\d+日/)).not.toBeInTheDocument()
+    expect(table().queryByText('値下げ交渉可です')).not.toBeInTheDocument()
+  })
+
+  it('シンプル表示を選ぶと端末に保存され、開き直しても維持される', async () => {
+    const view = renderAt('/listings')
+    await waitForLoaded()
+    await screen.findByText('炎の大剣')
+
+    await userEvent.click(screen.getByRole('button', { name: 'シンプル' }))
+    expect(localStorage.getItem('moe_list_display_mode')).toBe('compact')
+
+    view.unmount()
+    renderAt('/listings')
+    await waitForLoaded()
+
+    expect(screen.getByRole('button', { name: 'シンプル' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+  })
+
+  it('シンプル表示でも「取引」から取引希望パネルを開ける', async () => {
+    auth.user = verifiedUser
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderAt('/listings')
+    await waitForLoaded()
+    await screen.findByText('炎の大剣')
+
+    await userEvent.click(table().getByRole('button', { name: '取引' }))
+    expect(await screen.findByRole('button', { name: '取引を希望する' })).toBeInTheDocument()
+  })
+})
