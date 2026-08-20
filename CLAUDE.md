@@ -105,11 +105,17 @@ powershell -File scripts/remove-worktree.ps1 -Branch feat-chat -DeleteBranch
 
 未コミット変更や main 未マージのコミットが残っていると中断する（`-Force` で強行）。**worktree を消さないとポート枠（Slot）が空かない**ので、終わったら必ず片付ける。
 
-### 統合フロー
+### 作業完了時のフロー（分岐したセッションの終了手順）
+
+worktree に分岐したセッションは、実装が終わっても**勝手にマージ・破棄しない**。次の順で進める:
 
 1. worktree 側でコミット（`design.md` とテストは CLAUDE.md 冒頭の必須ワークフローどおり）
-2. main のセッションで `git merge <branch>`（または PR）
-3. main ツリーで全件テスト＋ビルド（Stop hook の品質ゲートが自動で回す）
+2. **ユーザーに確認する**（必須ゲート）: `-Lean` で起動したその worktree の環境（`http://localhost:81xx`）で動作確認し、結果を提示したうえで AskUserQuestion で「この内容で main にマージしてよいか」を必ず確認する。**OK が出るまでマージも環境の破棄もしない。**
+3. 修正が必要と言われたら worktree に留まって直し、2 に戻る
+4. OK なら main のセッションで `git merge <branch>`（または PR）
+5. main ツリーで全件テスト＋ビルド（Stop hook の品質ゲートが自動で回す）
+6. マージが通ったら `powershell -File scripts/remove-worktree.ps1 -Branch <名前> -DeleteBranch` で、**そのセッション用の Docker スタック（コンテナ＋DB ボリューム）・worktree・ブランチをまとめて破棄**する。破棄しないとポート枠（Slot）が空かない
+   - 作業ディレクトリが worktree の中のままだと削除に失敗するので、**ExitWorktree で main ツリーへ戻ってから**実行する
 
 `design.md` は全セッションが触る共有ファイルなので、**章・機能単位で小さくコミット**する（`bash .claude/commit-doc.sh design.md "feat: 〇〇を追記"`）。ブロックはされなくなったが、マージコンフリクトを小さく保つために有効。
 

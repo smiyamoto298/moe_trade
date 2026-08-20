@@ -1729,6 +1729,10 @@ powershell -File scripts/remove-worktree.ps1 -Branch feat-chat -DeleteBranch  # 
 スタックごとの設定値は worktree 直下の `.env`（compose 用、`.env.example` が雛形）に記録される。
 worktree を残したままにするとポート枠が空かないため、作業が終わったら必ず片付ける。
 
+作業完了時の順序は **「その worktree の環境で動作確認 → ユーザーに可否を確認 → OK なら main へマージ →
+`remove-worktree.ps1` で Docker スタック・worktree・ブランチを破棄」** に固定する
+（ユーザー確認前にマージや破棄をしない。詳細は `CLAUDE.md`「作業完了時のフロー」）。
+
 ---
 
 ## パスワード再設定フロー
