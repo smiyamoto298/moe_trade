@@ -10,7 +10,7 @@ import OfficialDbLink from '../components/OfficialDbLink'
 import ListDisplayToggle from '../components/ListDisplayToggle'
 import ItemDetailModal from '../components/ItemDetailModal'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { getListDisplayMode, setListDisplayMode, type ListDisplayMode } from '../utils/listDisplayStore'
+import { getListDisplayMode, setListDisplayMode, PER_PAGE_BY_MODE, type ListDisplayMode } from '../utils/listDisplayStore'
 import type { BuyRequest, Item, Paginated } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel, deadlineTooltip } from '../utils/constants'
 
@@ -83,6 +83,12 @@ export default function BuyRequestsPage() {
   // 既に売却を申し出済みの buy_request_id セット（この画面での申し出も含む）
   const [requestedIds, setRequestedIds] = useState<Set<number>>(new Set())
 
+  // 表示モード（詳細 / シンプル）。出品一覧と同じキーで端末ごとに保持する。
+  // 1ページの件数が表示モードで変わる（シンプルは100件）ため、一覧取得より前に置く。
+  const [displayMode, setDisplayMode] = useState<ListDisplayMode>(() => getListDisplayMode())
+  const compact = displayMode === 'compact'
+  const perPage = PER_PAGE_BY_MODE[displayMode]
+
   const fetchList = useCallback(() => {
     setLoading(true)
     buyRequestsApi
@@ -91,10 +97,11 @@ export default function BuyRequestsPage() {
         item_names: appliedNames.length > 0 ? appliedNames : undefined,
         sort,
         page,
+        per_page: perPage,
       })
       .then((r) => setData(r.data))
       .finally(() => setLoading(false))
-  }, [appliedName, appliedNames, sort, page])
+  }, [appliedName, appliedNames, sort, page, perPage])
 
   useEffect(() => { fetchList() }, [fetchList])
 
@@ -126,12 +133,11 @@ export default function BuyRequestsPage() {
 
   const hasFilter = appliedName !== '' || appliedNames.length > 0
 
-  // 表示モード（詳細 / シンプル）。出品一覧と同じキーで端末ごとに保持する
-  const [displayMode, setDisplayMode] = useState<ListDisplayMode>(() => getListDisplayMode())
-  const compact = displayMode === 'compact'
   const changeDisplayMode = (m: ListDisplayMode) => {
     setDisplayMode(m)
     setListDisplayMode(m)
+    // 件数が変わるとページ割りも変わるため1ページ目に戻す
+    setPage(1)
   }
   // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
   const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'

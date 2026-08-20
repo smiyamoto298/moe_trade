@@ -389,6 +389,7 @@ X（旧Twitter）への宣伝用に、対象期間の
 - **出品一覧・買取一覧の表示モード（詳細 / シンプル）**: 一覧の情報量をユーザーが自分で選べるようにする。ソート選択の左に「詳細 / シンプル」のトグル（`frontend/src/components/ListDisplayToggle.tsx`・`role="group"` / 各ボタン `aria-pressed`）を置き、**シンプル表示ではアイテム名・取引可能サーバー・価格・ボタン（取引／相場情報）だけ**を表示する。シンプル表示で落とすもの: 効果列（追加効果/付加効果/特殊条件・情報・必要スキル/マスタリ・設置/ストレージ）、種別（カテゴリ名）・装備セット/削れ/染色/確認中バッジ・公式DBリンク・ハッシュタグ・セット部位名、取引方法バッジ、残り期限・入札件数/即決価格、出品/買取コメント行。**サーバー列はシンプル表示では常に表示**する（列を絞っており幅に余裕があるため、コンテナクエリの `listing-col-wide` は付けない）。操作列も同じ理由で幅によらず「相場情報」ボタンを出す（「詳細 →」リンクは詳細表示のみ）
   - **シンプル表示の列幅・サーバー表示**: アイテム名が折り返さないよう、アイテム列に `w-full` を与えて残り幅を全部寄せ、サーバー列は `w-px whitespace-nowrap` で内容ぶんだけに縮める。**サーバーはアイコン（頭文字バッジ）のみを横一列**に並べ（`flex items-center`）、キャラクター名は表示しない・複数サーバーでも改行しない（詳細表示は従来どおり縦積み＋キャラ名併記）
   - **シンプル表示の操作列**: 「取引」「相場情報」ボタンを**横並び**にして行の高さを詰める（詳細表示は従来どおり縦積み）
+  - **表示件数はモードで変える**: 詳細表示は1ページ20件、**シンプル表示は100件**（`PER_PAGE_BY_MODE`・API の `per_page` として送る）。1行が浅いシンプル表示ではページ送りせず一度に多く見たいため。切替時はページ割りが変わるので**1ページ目に戻す**
   - **列順は詳細・シンプル共通**で `アイテム → （詳細列）→ 価格 → 取引/サーバー → 操作`。価格を左寄りに置き、可変幅のサーバー列を操作列の手前にまとめる
   - **シンプル表示のアイテム名クリックでアイテム詳細を開く**: 種別・効果・公式DBリンクを落としている代わりに、アイテム名から詳細へ辿れるようにする。PC（`useMediaQuery('(min-width: 768px)')` が真）は共通の `ItemDetailModal` をポップアップ表示し、スマホ（768px未満）は `/items/:id`（アイテム恒久ページ）へ遷移する（スマホでは縦に長い詳細モーダルが扱いづらいため）。**出し分けは CSS ではなく片方だけ描画**する（両方描画するとアイテム名が DOM に二重に現れるため）。詳細表示のアイテム名は従来どおりただのテキスト
   - 選択は**端末ごとに `localStorage` へ保存**（`frontend/src/utils/listDisplayStore.ts`・キー `moe_list_display_mode`・値 `'compact'` のみ保存し、**既定＝キー無し＝詳細表示**）。**出品一覧と買取一覧で同じキーを共有**するので、片方で切り替えるともう片方も同じ密度になる
@@ -1371,7 +1372,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `GET  /api/bonus-value-labels` — 付加効果数値のラベル一覧（サジェスト用）
 
 ### 出品
-- `GET  /api/listings` — 一覧・検索（**1ページ100件**）。`item_type`（`equipment` / `technique` / `asset`）でタブ別に絞り込み（旧 `is_skill` も後方互換で受付）。テクニックタブでは `skill_keys[]`（スキル名）と `skill_ranges[スキル名][min/max]`（必要値範囲）で絞り込み可。アセットタブでは `placements[]`（設置個所）・`special_functions[]`（特殊機能）・`storage_min` / `storage_max`（ストレージ数範囲）で絞り込み可。`exclude_worn=true` で削れあり出品を除外。`hashtag` でアイテムのハッシュタグ絞り込み可（タグ名・完全一致・大文字小文字無視）
+- `GET  /api/listings` — 一覧・検索（`per_page` は 1〜100 で指定可・既定20。シンプル表示のフロントは100を送る）。`item_type`（`equipment` / `technique` / `asset`）でタブ別に絞り込み（旧 `is_skill` も後方互換で受付）。テクニックタブでは `skill_keys[]`（スキル名）と `skill_ranges[スキル名][min/max]`（必要値範囲）で絞り込み可。アセットタブでは `placements[]`（設置個所）・`special_functions[]`（特殊機能）・`storage_min` / `storage_max`（ストレージ数範囲）で絞り込み可。`exclude_worn=true` で削れあり出品を除外。`hashtag` でアイテムのハッシュタグ絞り込み可（タグ名・完全一致・大文字小文字無視）
 - `GET  /api/listings/counts` — 種別タブ用の出品件数（認証不要）。`{ all, equipment, technique, asset, other }` を返す（`all` は種別を問わない総件数）。一覧と同じ公開条件で集計し、`include_completed=1` で `completed` も含む。`include_completed` 以外の絞り込みは反映しない
 - `GET  /api/listings/:id` — 詳細（公開対象の `active` / `completed` のみ。それ以外は 404）
 - `POST /api/listings` — 出品登録（要ログイン・メール認証済み。`quantity` は常に 1。`is_worn` で削れあり指定）。`trade_type=auction` では `buyout_price`（任意・`price` より高く）と `expires_at`（必須・未来日時・最長30日）を受け付ける
@@ -1407,7 +1408,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `POST /api/chats/:id/reopen` — 再オープン
 
 ### 買取（買いたい）
-- `GET    /api/buy-requests` — 一覧・検索（**1ページ100件**。アイテム名のみ。`item_name` 部分一致 / `item_names[]` 複数・末尾省略は前方一致）
+- `GET    /api/buy-requests` — 一覧・検索（`per_page` は 1〜100 で指定可・既定20。シンプル表示のフロントは100を送る。アイテム名のみ。`item_name` 部分一致 / `item_names[]` 複数・末尾省略は前方一致）
 - `GET    /api/buy-requests/:id` — 詳細（公開対象 `active` / `completed` のみ。それ以外は 404）
 - `POST   /api/buy-requests` — 登録（要ログイン・メール認証済み。期限1ヶ月）。`trade_type=auction` では `buyout_price`（任意・`price` より低く）と `expires_at`（必須・最長30日）を受け付ける
 - `PUT    /api/buy-requests/:id` — 編集（本人/admin・`BuyRequestPolicy`）。`price` は**値上げのみ可能**（現在価格より低い値は 422。値下げするには取り下げて再登録）。価格を変更した場合は再登録時と同様に `bumped_at` を更新して「新着扱い」にする。**オークションは入札があると編集不可（400）**

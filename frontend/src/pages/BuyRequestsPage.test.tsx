@@ -331,6 +331,18 @@ describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
     expect(screen.queryByText('高価買取します')).not.toBeInTheDocument()
   })
 
+  it('シンプル表示は1ページ100件、詳細表示は20件で取得する', async () => {
+    renderPage()
+    await screen.findByText('炎の大剣')
+    expect(lastParams()).toMatchObject({ per_page: 20, page: 1 })
+
+    await userEvent.click(screen.getByRole('button', { name: 'シンプル' }))
+    await waitFor(() => expect(lastParams()).toMatchObject({ per_page: 100, page: 1 }))
+
+    await userEvent.click(screen.getByRole('button', { name: '詳細' }))
+    await waitFor(() => expect(lastParams()).toMatchObject({ per_page: 20, page: 1 }))
+  })
+
   it('出品一覧で保存したシンプル表示を引き継ぐ', async () => {
     localStorage.setItem('moe_list_display_mode', 'compact')
     renderPage()
@@ -338,6 +350,7 @@ describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
 
     expect(screen.getByRole('button', { name: 'シンプル' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+    expect(lastParams()).toMatchObject({ per_page: 100 })
   })
 })
 

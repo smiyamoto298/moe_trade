@@ -20,7 +20,7 @@ import OfficialDbLink from '../components/OfficialDbLink'
 import ListDisplayToggle from '../components/ListDisplayToggle'
 import ItemDetailModal from '../components/ItemDetailModal'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { getListDisplayMode, setListDisplayMode, type ListDisplayMode } from '../utils/listDisplayStore'
+import { getListDisplayMode, setListDisplayMode, PER_PAGE_BY_MODE, type ListDisplayMode } from '../utils/listDisplayStore'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -274,6 +274,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
 
   const [params, setParams] = useState<ListingSearchParams>({
     sort: 'newest', page: 1,
+    // 表示モードで1ページの件数を変える（シンプルは100件）
+    per_page: PER_PAGE_BY_MODE[getListDisplayMode()],
     // 「全て」タブは種別を問わないため item_type を送らない（バックエンドは未指定で全種別を返す）
     ...(mode === 'all' ? {} : {
       item_type: mode === 'skill' ? 'technique' : mode === 'asset' ? 'asset' : mode === 'other' ? 'other' : 'equipment',
@@ -429,6 +431,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
   const changeDisplayMode = (m: ListDisplayMode) => {
     setDisplayMode(m)
     setListDisplayMode(m)
+    // 件数が変わるとページ割りも変わるため1ページ目に戻す
+    setParams((p) => ({ ...p, per_page: PER_PAGE_BY_MODE[m], page: 1 }))
   }
   // シンプル表示の列数（アイテム・価格・サーバー・操作）と詳細表示の列数
   const colCount = compact ? 4 : 7

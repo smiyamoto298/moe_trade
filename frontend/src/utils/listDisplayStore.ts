@@ -7,6 +7,15 @@ export type ListDisplayMode = 'detailed' | 'compact'
 // 出品一覧と買取一覧で同じキーを共有する（片方で切り替えたらもう片方も同じ密度になる）
 export const LIST_DISPLAY_MODE_KEY = 'moe_list_display_mode'
 
+/**
+ * 表示モードごとの1ページ表示件数（API の per_page として送る）。
+ * シンプル表示は1行が1〜2行ぶんの高さなので、ページ送りせず一度に多く見られるよう100件にする。
+ */
+export const PER_PAGE_BY_MODE: Record<ListDisplayMode, number> = {
+  detailed: 20,
+  compact: 100,
+}
+
 /** 現在の表示モード。未設定（既定）は 'detailed'。 */
 export function getListDisplayMode(): ListDisplayMode {
   try {

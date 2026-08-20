@@ -155,7 +155,7 @@ describe('ListingsPage タブ', () => {
     renderAt('/listings')
     await waitForLoaded()
 
-    expect(mockedList).toHaveBeenCalledWith({ sort: 'newest', page: 1, item_type: 'equipment' })
+    expect(mockedList).toHaveBeenCalledWith({ sort: 'newest', page: 1, per_page: 20, item_type: 'equipment' })
     // 装備品の列見出し（絞り込み側のラベルと区別するため columnheader で特定）
     expect(screen.getByRole('columnheader', { name: '追加効果' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: '付加効果' })).toBeInTheDocument()
@@ -173,7 +173,7 @@ describe('ListingsPage タブ', () => {
     await waitForLoaded()
 
     expect(mockedList).toHaveBeenCalledWith({
-      sort: 'newest', page: 1, item_type: 'technique', skill_match: 'normal',
+      sort: 'newest', page: 1, per_page: 20, item_type: 'technique', skill_match: 'normal',
     })
     expect(screen.getByRole('columnheader', { name: '必要スキル' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: '必要マスタリ' })).toBeInTheDocument()
@@ -196,7 +196,7 @@ describe('ListingsPage タブ', () => {
     renderAt('/assets')
     await waitForLoaded()
 
-    expect(mockedList).toHaveBeenCalledWith({ sort: 'newest', page: 1, item_type: 'asset' })
+    expect(mockedList).toHaveBeenCalledWith({ sort: 'newest', page: 1, per_page: 20, item_type: 'asset' })
     expect(screen.getByRole('columnheader', { name: '設置・サイズ' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'ストレージ・特殊機能' })).toBeInTheDocument()
     // アセット固有の絞り込み
@@ -229,7 +229,7 @@ describe('ListingsPage タブ', () => {
     await waitForLoaded()
 
     // item_type を含めずに取得する（全種別が対象）
-    expect(lastParams()).toEqual({ sort: 'newest', page: 1 })
+    expect(lastParams()).toEqual({ sort: 'newest', page: 1, per_page: 20 })
     // 情報列は1列に集約
     expect(screen.getByRole('columnheader', { name: '情報' })).toBeInTheDocument()
     // 種別ラベルと両種別の中身が混在して表示される（種別ラベルはタブにも出るため表内に限定）
@@ -343,7 +343,7 @@ describe('ListingsPage タブ', () => {
     await userEvent.click(screen.getByRole('link', { name: /テクニック/ }))
     await waitFor(() =>
       expect(lastParams()).toEqual({
-        sort: 'newest', page: 1, item_type: 'technique', skill_match: 'normal',
+        sort: 'newest', page: 1, per_page: 20, item_type: 'technique', skill_match: 'normal',
       })
     )
     expect(await screen.findByRole('columnheader', { name: '必要マスタリ' })).toBeInTheDocument()
@@ -729,6 +729,29 @@ describe('ListingsPage 表示モード（詳細 / シンプル）', () => {
 
     expect(screen.getByRole('button', { name: 'シンプル' })).toHaveAttribute('aria-pressed', 'true')
     expect(await screen.findByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+  })
+
+  it('シンプル表示は1ページ100件、詳細表示は20件で取得する', async () => {
+    renderAt('/listings')
+    await waitForLoaded()
+    await screen.findByText('炎の大剣')
+    expect(lastParams()).toMatchObject({ per_page: 20, page: 1 })
+
+    // シンプルへ切替 → 100件で取り直す（ページ割りが変わるので1ページ目に戻す）
+    await userEvent.click(screen.getByRole('button', { name: 'シンプル' }))
+    await waitFor(() => expect(lastParams()).toMatchObject({ per_page: 100, page: 1 }))
+
+    // 詳細へ戻すと20件に戻る
+    await userEvent.click(screen.getByRole('button', { name: '詳細' }))
+    await waitFor(() => expect(lastParams()).toMatchObject({ per_page: 20, page: 1 }))
+  })
+
+  it('シンプル表示を保存した端末では最初から100件で取得する', async () => {
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderAt('/listings')
+    await waitForLoaded()
+
+    expect(lastParams()).toMatchObject({ per_page: 100 })
   })
 
   it('シンプル表示でも「取引」から取引希望パネルを開ける', async () => {

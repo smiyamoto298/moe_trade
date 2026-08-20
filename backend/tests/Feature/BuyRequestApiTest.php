@@ -207,23 +207,35 @@ class BuyRequestApiTest extends TestCase
         $this->assertNull($buyRequest->fresh()->bumped_at);
     }
 
-    // design.md「3-B. 買取機能（買いたい）」: 買取一覧は1ページ100件で返す
-    public function test_買取一覧は1ページ100件で返す(): void
+    // design.md「3-B. 買取機能（買いたい）」: 買取一覧は per_page で件数指定できる（既定20・上限100）。
+    // シンプル表示のフロントが per_page=100 を要求する。
+    public function test_買取一覧はper_pageで件数指定できる（既定20・上限100）(): void
     {
         $item = $this->makeItem();
         for ($i = 0; $i < 101; $i++) {
             $this->makeBuyRequest($item);
         }
 
-        $page1 = $this->getJson('/api/buy-requests')->assertOk()->json();
-        $this->assertSame(100, $page1['per_page']);
-        $this->assertCount(100, $page1['data']);
-        $this->assertSame(101, $page1['total']);
-        $this->assertSame(2, $page1['last_page']);
+        // 既定は20件
+        $default = $this->getJson('/api/buy-requests')->assertOk()->json();
+        $this->assertSame(20, $default['per_page']);
+        $this->assertCount(20, $default['data']);
+        $this->assertSame(101, $default['total']);
+        $this->assertSame(6, $default['last_page']);
+
+        // シンプル表示の 100 件
+        $wide = $this->getJson('/api/buy-requests?per_page=100')->assertOk()->json();
+        $this->assertSame(100, $wide['per_page']);
+        $this->assertCount(100, $wide['data']);
+        $this->assertSame(2, $wide['last_page']);
 
         // 残り1件は2ページ目に出る
-        $this->getJson('/api/buy-requests?page=2')
+        $this->getJson('/api/buy-requests?per_page=100&page=2')
             ->assertOk()
             ->assertJsonCount(1, 'data');
+
+        // 範囲外は 1〜100 に丸める
+        $this->assertSame(100, $this->getJson('/api/buy-requests?per_page=9999')->assertOk()->json('per_page'));
+        $this->assertSame(1, $this->getJson('/api/buy-requests?per_page=0')->assertOk()->json('per_page'));
     }
 }
