@@ -138,6 +138,43 @@ worktree に分岐したセッションは、実装が終わっても**勝手に
 - DB: MySQL 8（開発は Docker）。テストは SQLite インメモリ
 - ローカル開発: Docker Compose（nginx / php / scheduler / frontend / db / mailpit / phpmyadmin）。scheduler は `php artisan schedule:work` で定期バッチ（auctions:resolve=15分ごと等）を自動実行
 
+## シェルの鉄則（PowerShell のバージョンに注意）
+
+このマシンには **PowerShell 7（`pwsh` 7.6.5）** と **Windows PowerShell 5.1（`powershell.exe`）**
+の両方がある。**5.1 にはパイプラインチェーン演算子 `&&` / `||` が無い**ので、5.1 に渡すと必ず
+
+```
+トークン '&&' は、このバージョンでは有効なステートメント区切りではありません。
+```
+
+というパースエラーになる。7 では `&&` / `||` / 三項演算子 `?:` / null 合体 `??` すべて使える。
+
+**セッション開始時に必ずどちらで動いているか確認する**（Claude Code の PowerShell ツールは
+起動時に解決されるため、ツール説明の記載か次のコマンドで判定する）:
+
+```powershell
+$PSVersionTable.PSVersion.ToString()   # 7.x なら && OK / 5.1 なら && 禁止
+```
+
+`powershell -File scripts/xxx.ps1` と**明示的に起動した場合は常に 5.1** になる点に注意
+（`.ps1` の中身も 5.1 互換で書く）。7 で走らせたいときは `pwsh -File ...`。
+
+### 5.1 に渡すときの書き換え表
+
+| やりたいこと | Bash / pwsh 7 | Windows PowerShell 5.1 |
+|---|---|---|
+| A が成功したら B | `A && B` | `A; if ($?) { B }` |
+| A が失敗したら B | `A \|\| B` | `A; if (-not $?) { B }` |
+| 続けて実行（成否不問） | `A; B` | `A; B` |
+| ディレクトリを移動して実行 | `cd frontend && npm run build` | `npm --prefix frontend run build` |
+
+- **複合コマンドは Bash ツールを使う**のが原則（このリポジトリのフック・スクリプトは全部 bash）。
+  PowerShell ツールは `scripts/*.ps1` の実行や Windows 固有の操作に限る。この原則を守っていれば
+  どちらのバージョンで動いていても事故らない。
+- `cd A && cmd` の代わりに、ツールが持つディレクトリ指定オプション（`npm --prefix`、
+  `git -C`、`docker compose --project-directory`）を優先する。サブシェルで閉じるなら
+  Bash ツールで `( cd A && cmd )`。
+
 ## よく使うコマンド
 
 ```bash
@@ -151,7 +188,7 @@ docker compose exec -T php php artisan test
 docker compose exec php php artisan migrate
 
 # フロントの型チェック＋ビルド
-cd frontend && npm run build
+npm --prefix frontend run build   # PowerShell から叩くとき（bash なら cd frontend && npm run build）
 ```
 
 ## メモ
