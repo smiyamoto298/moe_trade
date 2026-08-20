@@ -112,6 +112,27 @@ describe('ItemDetailPage', () => {
     await waitFor(() => expect(robots()).toBe('noindex'))
   })
 
+  // テクニックは効果ではなく必要スキル値・必要マスタリを持つ（design.md「必要マスタリ（スキル種別）」）
+  it('テクニックは必要スキル値・必要マスタリを表示する', async () => {
+    mockedGet.mockResolvedValue({
+      data: makeItem({
+        category: { id: 21, parent_id: 2, name: '秘伝の書', sort_order: 1 },
+        name: 'ダブルアタック',
+        base_stats: {},
+        skill_requirements: { 刀剣: 40 },
+        mastery_requirements: ['WAR'],
+      }),
+    })
+    renderAt()
+
+    expect(await screen.findByRole('heading', { name: 'ダブルアタック' })).toBeInTheDocument()
+    expect(screen.getByText('テクニック情報')).toBeInTheDocument()
+    expect(screen.getByText('必要スキル値')).toBeInTheDocument()
+    expect(screen.getByText(/刀剣:/)).toBeInTheDocument()
+    expect(screen.getByText('必要マスタリ')).toBeInTheDocument()
+    expect(screen.getByText('ウォーリアー【WAR】')).toBeInTheDocument()
+  })
+
   it('存在しないアイテムは見つからない旨を表示する', async () => {
     mockedGet.mockRejectedValue(new Error('404'))
     renderAt(999)

@@ -6,11 +6,12 @@ import { useNotification } from '../../contexts/NotificationContext'
 import Spinner from '../../components/Spinner'
 import type { Item, ItemCategory, ItemHashtag } from '../../types'
 import { SERVERS } from '../../types'
-import { SPECIAL_CONDITIONS, MASTERY_BY_CODE } from '../../utils/constants'
+import { SPECIAL_CONDITIONS } from '../../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell } from '../../components/equipmentCells'
 import InlineHashtags from '../../components/InlineHashtags'
 import OfficialDbLink from '../../components/OfficialDbLink'
 import { applyCopyRename, emptyCopyRename, type CopyRename } from '../../utils/copyRename'
+import MasteryBadges from '../../components/MasteryBadges'
 
 type Filter = 'all' | 'unverified' | 'unknown'
 type Mode = 'equipment' | 'skill' | 'asset' | 'other'
@@ -36,37 +37,6 @@ function ActionIconButton({ label, onClick, disabled, className, children }: {
     >
       {children}
     </button>
-  )
-}
-
-// 必要マスタリのバッジ群。マスタリ名【コード】と、条件になっている構成スキルを並べて表示する。
-function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
-  if (!codes || codes.length === 0) return <span className="text-xs text-gray-600">—</span>
-  return (
-    <div className="flex flex-col gap-1.5">
-      {codes.length > 1 && (
-        <span className="text-[10px] text-purple-300/80">いずれかで発動（OR）</span>
-      )}
-      {codes.map((code) => {
-        const m = MASTERY_BY_CODE[code]
-        return (
-          <div key={code} className="flex flex-col gap-0.5">
-            <span className="text-xs text-purple-200 bg-purple-900/30 border border-purple-700/40 rounded px-1.5 py-0.5 self-start">
-              {m ? `${m.name}【${code}】` : code}
-            </span>
-            {m && (
-              <span className="flex flex-wrap gap-0.5">
-                {m.skills.map((s) => (
-                  <span key={s} className="text-[10px] leading-tight bg-surface border border-surface-border text-gray-400 rounded px-1 py-px">
-                    {s}
-                  </span>
-                ))}
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </div>
   )
 }
 

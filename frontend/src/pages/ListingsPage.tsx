@@ -13,10 +13,11 @@ import Spinner from '../components/Spinner'
 import type { Listing, Item, ItemType, ItemCategory, ItemHashtag, ListingSearchParams, StatRange } from '../types'
 import { SERVERS } from '../types'
 import { itemTypeOf } from '../utils/itemType'
-import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERY_BY_CODE, remainingLabel, deadlineTooltip } from '../utils/constants'
+import { TRADE_TYPE_LABEL, SPECIAL_CONDITIONS, BASE_STAT_LABELS, SERVER_COLORS, SKILL_GROUPS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, remainingLabel, deadlineTooltip } from '../utils/constants'
 import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBaseStatsCell, SetBonusCell, SetSpecialConditionsCell, TechniquePieceNames, techniqueMembersOf } from '../components/equipmentCells'
 import InlineHashtags from '../components/InlineHashtags'
 import OfficialDbLink from '../components/OfficialDbLink'
+import MasteryBadges from '../components/MasteryBadges'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
 function categoriesToOptions(categories: ItemCategory[]): FilterOption[] {
@@ -38,37 +39,6 @@ function hasNonEquipSetCategory(selectedIds: string[], categories: ItemCategory[
   const equipSetCat = categories.find((c) => c.parent_id === null && c.name === '装備セット')
   if (!equipSetCat) return selectedIds.length > 0
   return selectedIds.some((id) => id !== String(equipSetCat.id))
-}
-
-// 必要マスタリのバッジ群。マスタリ名【コード】と、条件になっている構成スキルを並べて表示する。
-function MasteryBadges({ codes }: { codes: string[] | null | undefined }) {
-  if (!codes || codes.length === 0) return <span className="text-xs text-gray-600">—</span>
-  return (
-    <div className="flex flex-col gap-1.5">
-      {codes.length > 1 && (
-        <span className="text-[10px] text-purple-300/80">いずれかで発動（OR）</span>
-      )}
-      {codes.map((code) => {
-        const m = MASTERY_BY_CODE[code]
-        return (
-          <div key={code} className="flex flex-col gap-0.5">
-            <span className="text-xs text-purple-200 bg-purple-900/30 border border-purple-700/40 rounded px-1.5 py-0.5 self-start">
-              {m ? `${m.name}【${code}】` : code}
-            </span>
-            {m && (
-              <span className="flex flex-wrap gap-0.5">
-                {m.skills.map((s) => (
-                  <span key={s} className="text-[10px] leading-tight bg-surface border border-surface-border text-gray-400 rounded px-1 py-px">
-                    {s}
-                  </span>
-                ))}
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 // 種別切替タブ。ラベルの右に件数バッジを表示する。

@@ -2,10 +2,11 @@ import type { Item } from '../types'
 import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, formatBonusEffectDescription } from '../utils/constants'
 import { OTHER_RECIPE } from '../utils/itemType'
 import EquipmentSetBreakdown from './EquipmentSetBreakdown'
+import MasteryBadges from './MasteryBadges'
 import OfficialDbLink from './OfficialDbLink'
 
 /**
- * アイテムの基本情報カード（カテゴリ・名前・説明・装備セット内訳・アセット情報・
+ * アイテムの基本情報カード（カテゴリ・名前・説明・装備セット内訳・テクニック情報・アセット情報・
  * 追加効果・付加効果・特殊条件）。出品詳細・買取詳細・アイテム詳細ページで共通利用する。
  *
  * 確認バッジ（UnverifiedBadge）や取引情報はページ固有なので呼び出し側で表示する。
@@ -19,6 +20,15 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
             ? [{ name: item.recipe_name ?? null, skill_requirements: item.skill_requirements ?? {} }]
             : []))
     : []
+  // テクニック：必要スキル値・必要マスタリを表示する。カテゴリ一覧を持たない呼び出し側（アイテム詳細
+  // モーダル等）でも判定できるよう、「レシピ以外で必要スキル値／必要マスタリを持つ」＝テクニックとみなす
+  // （必要スキル値はテクニックとレシピにしか設定されず、レシピは recipe_entries 側で表示するため）。
+  const techniqueSkills = item.category.name === OTHER_RECIPE
+    ? []
+    : Object.entries(item.skill_requirements ?? {})
+  const techniqueMasteries = item.category.name === OTHER_RECIPE
+    ? []
+    : (item.mastery_requirements ?? [])
   return (
     <div className="bg-surface-card border border-surface-border rounded-lg p-4 sm:p-6">
       <p className="text-sm text-gray-400 mb-1">{item.category.name}</p>
@@ -36,6 +46,31 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
 
       {/* 装備セット内訳（部位ごとの名前・追加効果・付加効果） */}
       {item.is_equipment_set && <EquipmentSetBreakdown members={item.set_members} />}
+
+      {/* テクニック情報（必要スキル値・必要マスタリ）。マスタリを複数持つ場合は OR 条件で発動する */}
+      {(techniqueSkills.length > 0 || techniqueMasteries.length > 0) && (
+        <div className="mb-4">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">テクニック情報</h2>
+          {techniqueSkills.length > 0 && (
+            <div className="mb-2">
+              <p className="text-xs text-gray-500 mb-1">必要スキル値</p>
+              <div className="flex flex-wrap gap-1">
+                {techniqueSkills.map(([skill, val]) => (
+                  <span key={skill} className="text-xs bg-primary-500/10 border border-primary-500/30 rounded px-2 py-0.5 text-primary-300">
+                    {skill}: <span className="text-white font-medium">{val}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {techniqueMasteries.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">必要マスタリ</p>
+              <MasteryBadges codes={techniqueMasteries} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* アセット情報 */}
       {(item.placement || (item.asset_width && item.asset_height) || (item.storage_count ?? 0) > 0 || item.special_function) && (

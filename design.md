@@ -396,7 +396,8 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 
 - **アイテム恒久ページ（`/items/:id`・SEOの正規ランディング先）**: `ItemDetailPage`（公開・認証不要）。
   出品/買取の詳細URLは期限切れで消える「使い捨て」だが、このページはアイテムが登録されている限り存在し続けるため、
-  被リンク・クリック・クロール履歴が1URLに蓄積し順位が育つ。アイテム情報（`ItemInfoCard`）＋相場・取引履歴（`PriceAnalyticsAsync`）＋
+  被リンク・クリック・クロール履歴が1URLに蓄積し順位が育つ。アイテム情報（`ItemInfoCard`。装備品の効果だけでなく
+  **テクニックの必要スキル値・必要マスタリ**／アセット情報／「その他」種別情報も種別に応じて表示する）＋相場・取引履歴（`PriceAnalyticsAsync`）＋
   出品/買取への導線で構成し、`GET /api/items/{id}` と `GET /api/items/{id}/price-analytics` で取得する。
   未確認（`unverified`）アイテムは精査前のため `<meta name="robots" content="noindex">` でインデックス対象から外す。
 - **canonical による評価集約**: 出品詳細（`/listings/:id`）・買取詳細（`/buy-requests/:id`）は、
@@ -804,6 +805,12 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 - テクニックタブの絞り込みは2モード（`skill_match` パラメータ）:
   - `normal`（既定）: 指定スキルを必要スキルに含む。`skill_include_mastery=true` で「そのスキルを構成に含むマスタリを必要とするテクニック」も対象に含める（範囲が40を許容する場合）
   - `composition`（構成検索）: アイテムの必要スキルがすべて選択スキルに含まれ（部分集合）、かつ**必要マスタリ（複数は OR）のいずれか1つ**の構成スキルが選択スキルで完全被覆されるテクニックを表示
+- **必要マスタリの表示**: 共通部品 `frontend/src/components/MasteryBadges.tsx`（マスタリ名【コード】＋構成スキルのバッジ。複数コードのときは先頭に「いずれかで発動（OR）」、未設定は `—`）を、
+  出品一覧のテクニックタブ・「全て」タブの情報列（`ListingsPage`）・アイテム管理一覧（`AdminItemsPage`）・アイテム情報カード（`ItemInfoCard`）で共通利用する
+- **テクニックのアイテム情報カード表示**: テクニックは追加効果・付加効果・特殊条件を持たない代わりに、`ItemInfoCard` に
+  **「テクニック情報」枠（必要スキル値＋必要マスタリ）** を表示する（出品詳細・買取詳細・アイテム恒久ページ `/items/:id`・アイテム詳細モーダルで共通）。
+  カテゴリ一覧を持たない呼び出し側でも判定できるよう、**「レシピ以外で必要スキル値／必要マスタリを持つ」＝テクニック**とみなす
+  （必要スキル値はテクニックとレシピにしか設定されず、レシピの必要スキル値は「レシピ情報」枠でエントリごとに表示するため）
 
 ### アセットパラメータ（アセット種別）
 アセット種別のアイテムは以下の固有パラメータを持つ。
@@ -1816,6 +1823,7 @@ docker compose exec php vendor/bin/phpunit
 | `src/utils/itemType.test.ts` | 種別判定（最上位カテゴリ名→ equipment / technique / asset）・親フォールバック |
 | `src/utils/equipmentSet.test.ts` | 装備セット部位のグルーピング（追加効果・付加効果・性能全体、順序非依存・ミスリル差分） |
 | `src/components/EquipmentSetPiecesEditor.test.tsx` | 装備セット構成部位エディタ（名前入力欄のカテゴリ順表示・部位候補カテゴリ・テクニック部位の効果対象外と必要スキル/マスタリ・特殊条件の独立設定グループ（`formToPieces` の部位別適用・`membersToForm` の追加効果と独立なグルーピング・グループ追加ボタン）） |
+| `src/components/ItemInfoCard.test.tsx` | アイテム情報カードのテクニック対応（必要スキル値のスキル名＋値表示・必要マスタリのマスタリ名【コード】＋構成スキル表示・複数マスタリの OR 注記・条件を持たないアイテムでは枠を出さない・レシピの必要スキル値は「レシピ情報」側で表示しテクニック枠を出さない） |
 | `src/components/equipmentCells.test.tsx` | 一覧の効果セル（付加効果 `BonusEffectList` と追加効果 `BaseStatBadges` のテキスト省略: 5文字以上は「詳細」バッジ＋全文ポップアップ・4文字以下と数値はそのまま・`longTextThreshold` の緩和と `SetBonusCell`/`SetBaseStatsCell` からの引き継ぎ）・「その他」種別の情報セル・装備セットのテクニック部位除外 |
 | `src/utils/constants.test.ts` | マスタ定数の design.md 整合（マスタリ構成スキルが SKILL_GROUPS と完全一致・特殊条件15種・追加効果キー18種＋セレクト表示順・追加効果入力欄の3列構成 `STAT_INPUT_COLUMNS`・アセット選択肢）・追加効果/付加効果数値の符号付き表示 `formatSignedValue`（負数以外は + 付き・数値でない値はそのまま表示）・数値判定 `isNumericValue` |
 | `src/utils/customStats.test.ts` | 追加効果「その他」の分離/マージ（固定パラメータとの分離・`kind=text` は文字列のまま保存・数値文字列の旧データは数値として復元・空項目名/空値の除外・数値化できない値は送らない・固定キー同名の自由入力は無視） |
