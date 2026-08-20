@@ -18,6 +18,8 @@ import { BaseStatBadges, BonusEffectList, OtherInfoCell, PartNamesLabel, SetBase
 import InlineHashtags from '../components/InlineHashtags'
 import OfficialDbLink from '../components/OfficialDbLink'
 import ListDisplayToggle from '../components/ListDisplayToggle'
+import ItemDetailModal from '../components/ItemDetailModal'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { getListDisplayMode, setListDisplayMode, type ListDisplayMode } from '../utils/listDisplayStore'
 
 // カテゴリツリーをフラットなオプション配列に変換（装備セット親カテゴリも含む）
@@ -432,6 +434,23 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
   const colCount = compact ? 4 : 7
   // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
   const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'
+
+  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ、スマホは /items/:id へ遷移）。
+  // スマホでモーダルを出すと縦に長い詳細が扱いづらいため、端末幅（md=768px）で出し分ける。
+  const isWideScreen = useMediaQuery('(min-width: 768px)')
+  const [detailItemId, setDetailItemId] = useState<number | null>(null)
+
+  // シンプル表示のアイテム名。詳細表示では従来どおりただのテキスト。
+  const compactItemName = (item: Item) => {
+    const cls = 'text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors'
+    return isWideScreen ? (
+      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(item.id)} className={cls}>
+        {item.name}
+      </button>
+    ) : (
+      <Link to={`/items/${item.id}`} className={`block ${cls}`}>{item.name}</Link>
+    )
+  }
 
   // 操作列の末尾リンク：スマホでは「詳細 →」（出品詳細はスマホ専用画面）、
   // PCでは「相場情報」ボタンを表示し、押すと相場ポップアップを開く。
@@ -1004,7 +1023,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         {/* アイテム名・種別（シンプル表示ではアイテム名のみ） */}
                         <td data-tour="listings-itemname" className="px-4 py-3">
                           {compact ? (
-                            <p className="text-white font-medium">{l.item.name}</p>
+                            compactItemName(l.item)
                           ) : (
                           <>
                           {l.item.verified_status === 'unverified' && (
@@ -1359,6 +1378,11 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
           itemName={analyticsItem.name}
           onClose={() => setAnalyticsItem(null)}
         />
+      )}
+
+      {/* アイテム詳細ポップアップ（シンプル表示のアイテム名クリック・PCのみ） */}
+      {detailItemId != null && (
+        <ItemDetailModal itemId={detailItemId} onClose={() => setDetailItemId(null)} />
       )}
     </div>
   )

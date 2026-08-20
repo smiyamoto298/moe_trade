@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -26,6 +26,10 @@ vi.mock('../api/client', () => ({
 // 相場情報モーダルは内部で相場APIを叩くためスタブ化する
 vi.mock('../components/PriceAnalyticsModal', () => ({
   default: ({ itemName }: { itemName: string }) => <div>相場モーダル: {itemName}</div>,
+}))
+// アイテム詳細モーダルも同様にスタブ化する
+vi.mock('../components/ItemDetailModal', () => ({
+  default: ({ itemId }: { itemId: number }) => <div data-testid="item-detail-modal">item:{itemId}</div>,
 }))
 
 // ログイン状態はテストごとに auth.user を差し替える
@@ -334,5 +338,48 @@ describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
 
     expect(screen.getByRole('button', { name: 'シンプル' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('columnheader', { name: 'サーバー' })).toBeInTheDocument()
+  })
+})
+
+// design.md「出品一覧・買取一覧の表示モード（詳細 / シンプル）」:
+// シンプル表示のアイテム名はクリックでアイテム詳細を開く（PC はポップアップ、スマホは /items/:id へ遷移）。
+describe('BuyRequestsPage シンプル表示のアイテム名クリック', () => {
+  // jsdom は matchMedia 未実装 → useMediaQuery は fallback(true)= PC 扱いになる
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('PCではアイテム名クリックでアイテム詳細ポップアップを開く', async () => {
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+
+    const nameBtn = await screen.findByRole('button', { name: '炎の大剣' })
+    expect(nameBtn).toHaveAttribute('title', 'アイテム詳細を表示')
+    expect(screen.queryByTestId('item-detail-modal')).not.toBeInTheDocument()
+
+    await userEvent.click(nameBtn)
+    expect(await screen.findByTestId('item-detail-modal')).toHaveTextContent('item:1')
+  })
+
+  it('スマホではアイテム名がアイテム詳細ページへのリンクになる', async () => {
+    window.matchMedia = vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+
+    const link = await screen.findByRole('link', { name: '炎の大剣' })
+    expect(link).toHaveAttribute('href', '/items/1')
+    expect(screen.queryByRole('button', { name: '炎の大剣' })).not.toBeInTheDocument()
+  })
+
+  it('詳細表示のアイテム名はクリックできない（テキストのまま）', async () => {
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.queryByRole('button', { name: '炎の大剣' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '炎の大剣' })).not.toBeInTheDocument()
   })
 })

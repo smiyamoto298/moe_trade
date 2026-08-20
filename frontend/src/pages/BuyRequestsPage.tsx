@@ -8,8 +8,10 @@ import TradeRequestPanel from '../components/TradeRequestPanel'
 import PriceAnalyticsModal from '../components/PriceAnalyticsModal'
 import OfficialDbLink from '../components/OfficialDbLink'
 import ListDisplayToggle from '../components/ListDisplayToggle'
+import ItemDetailModal from '../components/ItemDetailModal'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { getListDisplayMode, setListDisplayMode, type ListDisplayMode } from '../utils/listDisplayStore'
-import type { BuyRequest, Paginated } from '../types'
+import type { BuyRequest, Item, Paginated } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel, deadlineTooltip } from '../utils/constants'
 
 /**
@@ -133,6 +135,21 @@ export default function BuyRequestsPage() {
   }
   // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
   const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'
+
+  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ、スマホは /items/:id へ遷移。出品一覧と同じ）
+  const isWideScreen = useMediaQuery('(min-width: 768px)')
+  const [detailItemId, setDetailItemId] = useState<number | null>(null)
+
+  const compactItemName = (item: Item) => {
+    const cls = 'text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors'
+    return isWideScreen ? (
+      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(item.id)} className={cls}>
+        {item.name}
+      </button>
+    ) : (
+      <Link to={`/items/${item.id}`} className={`block ${cls}`}>{item.name}</Link>
+    )
+  }
 
   // 操作列の末尾リンク：スマホでは「詳細 →」（買取詳細ページへ）、
   // PCでは「相場情報」ボタンを表示し、押すと相場ポップアップを開く（出品一覧と同じ構成）。
@@ -311,7 +328,7 @@ export default function BuyRequestsPage() {
                     {/* アイテム名・種別（シンプル表示ではアイテム名のみ） */}
                     <td className="px-4 py-3">
                       {!compact && <p className="text-xs text-gray-400">{b.item.category.name}</p>}
-                      <p className="text-white font-medium">{b.item.name}</p>
+                      {compact ? compactItemName(b.item) : <p className="text-white font-medium">{b.item.name}</p>}
                       {!compact && b.item.official_url && (
                         <div className="mt-1">
                           <OfficialDbLink url={b.item.official_url} />
@@ -473,6 +490,11 @@ export default function BuyRequestsPage() {
           itemName={analyticsItem.name}
           onClose={() => setAnalyticsItem(null)}
         />
+      )}
+
+      {/* アイテム詳細ポップアップ（シンプル表示のアイテム名クリック・PCのみ） */}
+      {detailItemId != null && (
+        <ItemDetailModal itemId={detailItemId} onClose={() => setDetailItemId(null)} />
       )}
     </div>
   )
