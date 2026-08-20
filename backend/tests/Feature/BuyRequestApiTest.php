@@ -206,4 +206,24 @@ class BuyRequestApiTest extends TestCase
             ->assertOk();
         $this->assertNull($buyRequest->fresh()->bumped_at);
     }
+
+    // design.md「3-B. 買取機能（買いたい）」: 買取一覧は1ページ100件で返す
+    public function test_買取一覧は1ページ100件で返す(): void
+    {
+        $item = $this->makeItem();
+        for ($i = 0; $i < 101; $i++) {
+            $this->makeBuyRequest($item);
+        }
+
+        $page1 = $this->getJson('/api/buy-requests')->assertOk()->json();
+        $this->assertSame(100, $page1['per_page']);
+        $this->assertCount(100, $page1['data']);
+        $this->assertSame(101, $page1['total']);
+        $this->assertSame(2, $page1['last_page']);
+
+        // 残り1件は2ページ目に出る
+        $this->getJson('/api/buy-requests?page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
 }

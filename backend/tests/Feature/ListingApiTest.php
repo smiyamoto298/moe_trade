@@ -800,4 +800,25 @@ class ListingApiTest extends TestCase
                 ->assertStatus(404);
         }
     }
+
+    // design.md「検索・閲覧機能」: 出品一覧は1ページ100件で返す
+    public function test_出品一覧は1ページ100件で返す(): void
+    {
+        $seller = $this->makeUser();
+        $item   = $this->makeItem();
+        for ($i = 0; $i < 101; $i++) {
+            $this->makeListing($seller, $item);
+        }
+
+        $page1 = $this->getJson('/api/listings')->assertOk()->json();
+        $this->assertSame(100, $page1['per_page']);
+        $this->assertCount(100, $page1['data']);
+        $this->assertSame(101, $page1['total']);
+        $this->assertSame(2, $page1['last_page']);
+
+        // 残り1件は2ページ目に出る
+        $this->getJson('/api/listings?page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
 }

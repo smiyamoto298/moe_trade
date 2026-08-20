@@ -269,8 +269,15 @@ describe('BuyRequestsPage 操作列（取引・相場情報・詳細）', () => 
 // - 出品一覧と同じトグル・同じ保存キー（moe_list_display_mode）を使う
 // - シンプル表示はアイテム名・取引可能サーバー・価格・ボタン（取引／相場情報）だけを表示する
 describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
-  it('既定は詳細表示で、種別・取引方法・期限・コメントを表示する', async () => {
-    mockedList.mockResolvedValue(page([makeBuyRequest({ comment: '高価買取します' })]))
+  // 取引可能サーバーにキャラクター名を持たせた買取（シンプル表示ではキャラ名を出さない）
+  const withCharacter = (over: Partial<BuyRequest> = {}) =>
+    makeBuyRequest({
+      servers: [{ server: 'Emerald', character_id: 1, character: { id: 1, character_name: 'テスト太郎' } }],
+      ...over,
+    })
+
+  it('既定は詳細表示で、種別・取引方法・キャラ名・期限・コメントを表示する', async () => {
+    mockedList.mockResolvedValue(page([withCharacter({ comment: '高価買取します' })]))
     renderPage()
     await screen.findByText('炎の大剣')
 
@@ -278,13 +285,18 @@ describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
     expect(screen.getByRole('columnheader', { name: '取引' })).toBeInTheDocument()
     expect(screen.getByText('刀剣')).toBeInTheDocument()
     expect(screen.getByText('即決')).toBeInTheDocument()
+    expect(screen.getByText('テスト太郎')).toBeInTheDocument()
     expect(screen.getByText(/残り\d+日/)).toBeInTheDocument()
     expect(screen.getByText('高価買取します')).toBeInTheDocument()
+
+    // 列順は詳細表示でも 価格 → 取引（サーバー）の順
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['アイテム', '価格', '取引', ''])
   })
 
   it('シンプルに切り替えるとアイテム名・サーバー・価格・ボタンだけになる', async () => {
     auth.user = verifiedUser
-    mockedList.mockResolvedValue(page([makeBuyRequest({ comment: '高価買取します' })]))
+    mockedList.mockResolvedValue(page([withCharacter({ comment: '高価買取します' })]))
     renderPage()
     await screen.findByText('炎の大剣')
 
@@ -296,6 +308,17 @@ describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
     expect(screen.getByText('5,000 AC')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '取引' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '相場情報' })).toBeInTheDocument()
+
+    // サーバーはアイコン（頭文字バッジ）のみ・横一列（改行しない）
+    expect(screen.queryByText('テスト太郎')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Emerald').parentElement!.parentElement).toHaveClass('flex', 'items-center')
+
+    // 列順は アイテム → 価格 → サーバー → 操作
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['アイテム', '価格', 'サーバー', ''])
+
+    // 操作列のボタンは横並び
+    expect(screen.getByRole('button', { name: '取引' }).parentElement).toHaveClass('flex', 'items-center')
 
     expect(screen.queryByRole('columnheader', { name: '取引' })).not.toBeInTheDocument()
     expect(screen.queryByText('刀剣')).not.toBeInTheDocument()

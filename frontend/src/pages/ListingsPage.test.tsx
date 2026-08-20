@@ -644,8 +644,15 @@ describe('ListingsPage 表示モード（詳細 / シンプル）', () => {
   // 絞り込みパネルにも「即決」「刀剣」等が出るため、一覧テーブル内に限定して検証する
   const table = () => within(screen.getByRole('table'))
 
-  it('既定は詳細表示で、効果列・種別・取引方法・期限・コメントを表示する', async () => {
-    mockedList.mockResolvedValue(page([makeListing({ comment: '値下げ交渉可です' })]))
+  // 取引可能サーバーにキャラクター名を持たせた出品（シンプル表示ではキャラ名を出さない）
+  const withCharacter = (over: Partial<Listing> = {}) =>
+    makeListing({
+      servers: [{ server: 'Emerald', character_id: 1, character: { id: 1, character_name: 'テスト太郎' } }],
+      ...over,
+    })
+
+  it('既定は詳細表示で、効果列・種別・取引方法・キャラ名・期限・コメントを表示する', async () => {
+    mockedList.mockResolvedValue(page([withCharacter({ comment: '値下げ交渉可です' })]))
     renderAt('/listings')
     await waitForLoaded()
     await screen.findByText('炎の大剣')
@@ -655,13 +662,18 @@ describe('ListingsPage 表示モード（詳細 / シンプル）', () => {
     expect(table().getByRole('columnheader', { name: '取引' })).toBeInTheDocument()
     expect(table().getByText('刀剣')).toBeInTheDocument()
     expect(table().getByText('即決')).toBeInTheDocument()
+    expect(table().getByText('テスト太郎')).toBeInTheDocument()
     expect(table().getByText(/残り\d+日/)).toBeInTheDocument()
     expect(table().getByText('値下げ交渉可です')).toBeInTheDocument()
+
+    // 列順は詳細表示でも 価格 → 取引（サーバー）の順
+    expect(table().getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['アイテム', '追加効果', '付加効果', '特殊条件', '価格', '取引', ''])
   })
 
   it('シンプルに切り替えるとアイテム名・サーバー・価格・ボタンだけになる', async () => {
     auth.user = verifiedUser
-    mockedList.mockResolvedValue(page([makeListing({ comment: '値下げ交渉可です' })]))
+    mockedList.mockResolvedValue(page([withCharacter({ comment: '値下げ交渉可です' })]))
     renderAt('/listings')
     await waitForLoaded()
     await screen.findByText('炎の大剣')
@@ -675,6 +687,17 @@ describe('ListingsPage 表示モード（詳細 / シンプル）', () => {
     expect(table().getByText('5000 AC')).toBeInTheDocument()
     expect(table().getByRole('button', { name: '取引' })).toBeInTheDocument()
     expect(table().getByRole('button', { name: '相場情報' })).toBeInTheDocument()
+
+    // サーバーはアイコン（頭文字バッジ）のみ・横一列（改行しない）
+    expect(table().queryByText('テスト太郎')).not.toBeInTheDocument()
+    expect(table().getByTitle('Emerald').parentElement!.parentElement).toHaveClass('flex', 'items-center')
+
+    // 列順は アイテム → 価格 → サーバー → 操作
+    expect(table().getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['アイテム', '価格', 'サーバー', ''])
+
+    // 操作列のボタンは横並び
+    expect(table().getByRole('button', { name: '取引' }).parentElement).toHaveClass('flex', 'items-center')
 
     // 消えるもの: 効果列・種別（カテゴリ名）・取引方法・期限・コメント
     expect(table().queryByRole('columnheader', { name: '追加効果' })).not.toBeInTheDocument()
