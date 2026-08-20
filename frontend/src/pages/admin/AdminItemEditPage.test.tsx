@@ -97,7 +97,6 @@ const sourceItem: Item = makeItem({
       type: { id: 1, type_key: 'custom', label: 'カスタム', category: 'other' },
       values: [{ value: 15, value_unit: '%', label: '炎耐性' }],
       description: '炎耐性+15%',
-      is_exclusive: true,
     },
   ],
 })
@@ -241,28 +240,28 @@ describe('AdminItemEditPage コピーして編集', () => {
 // design.md「装備セット」: 編集中に種別を 部位（装備品）↔ 装備セット で切り替えても、
 // 部位フォームの追加効果・付加効果・特殊条件と「全部位共通」グループ[0]の間でデータを保持する。
 describe('AdminItemEditPage 部位↔装備セット切替時のデータ保持', () => {
-  it('部位→装備セット→部位 で追加効果・付加効果（専用技フラグ含む）を全部位共通グループとの間で引き継ぐ', async () => {
+  it('部位→装備セット→部位 で追加効果・付加効果を全部位共通グループとの間で引き継ぐ', async () => {
     auth.user = makeUser('admin')
-    // 追加効果 atk:10 ＋ 専用技付き付加効果「炎の加護」を持つ装備品アイテムを編集
+    // 追加効果 atk:10 ＋ 付加効果「炎の加護」を持つ装備品アイテムを編集
     mockedGet.mockResolvedValue({ data: { ...sourceItem, locked_by_staff: false } })
     renderEditPage('/admin/items/7/edit')
 
-    // 装備品として読み込まれ、効果・専用技チェックが表示される
+    // 装備品として読み込まれ、効果が表示される（専用技チェックは廃止済み）
     expect(await screen.findByDisplayValue('炎の加護')).toBeInTheDocument()
     expect(screen.getByDisplayValue('10')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: '専用技' })).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: '専用技' })).not.toBeInTheDocument()
 
-    // 部位 → 装備セット: 全部位共通グループへ追加効果・付加効果（専用技）が引き継がれる
+    // 部位 → 装備セット: 全部位共通グループへ追加効果・付加効果が引き継がれる
     await userEvent.selectOptions(screen.getByDisplayValue('頭(防)'), '4')
     expect(await screen.findByDisplayValue('炎の加護')).toBeInTheDocument()
     expect(screen.getByDisplayValue('10')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: '専用技' })).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: '専用技' })).not.toBeInTheDocument()
 
-    // 装備セット → 部位: 部位フォームへ戻る（専用技も保持）
+    // 装備セット → 部位: 部位フォームへ戻る
     await userEvent.selectOptions(screen.getByDisplayValue('⚔ 装備セット'), '11')
     expect(await screen.findByDisplayValue('炎の加護')).toBeInTheDocument()
     expect(screen.getByDisplayValue('10')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: '専用技' })).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: '専用技' })).not.toBeInTheDocument()
   })
 
   it('部位→装備セット切替で確認に「はい」を選ぶと、現在の部位を構成部位として引用する', async () => {

@@ -54,8 +54,6 @@ export interface ItemBonusEffect {
   type: BonusEffectType
   values: BonusEffectValue[]  // 複数の数値
   description: string
-  // この付加効果が専用技か（装備セットの部位では付加効果ごとに設定）。古いレスポンスでは未定義
-  is_exclusive?: boolean
   // WarAgeでは効果がない付加効果か。true のとき説明末尾に注記を表示する。古いレスポンスでは未定義
   no_warage_effect?: boolean
 }

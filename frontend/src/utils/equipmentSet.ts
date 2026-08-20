@@ -31,14 +31,13 @@ function baseStatsKey(it: Item): string {
   })
 }
 
-// 付加効果（bonus_effects。専用技フラグも含む）が同一かを表すキー（id は無視）
+// 付加効果（bonus_effects）が同一かを表すキー（id は無視）
 function bonusEffectsKey(it: Item): string {
   return JSON.stringify(
     (it.bonus_effects ?? []).map((e) => ({
       effect_name: e.effect_name,
       values: e.values,
       description: e.description,
-      is_exclusive: !!e.is_exclusive,
     }))
   )
 }

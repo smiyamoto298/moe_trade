@@ -181,7 +181,7 @@ describe('EquipmentSetPiecesEditor テクニック部位', () => {
         bonus_effects: [{
           effect_name: '炎纏い',
           values: [{ value: '5', value_unit: '%', label: '火力' }],
-          description: '', is_exclusive: false, no_warage_effect: false,
+          description: '', no_warage_effect: false,
         }],
       }],
       specialGroups: [{
@@ -336,5 +336,40 @@ describe('EquipmentSetPiecesEditor 特殊条件の設定グループ', () => {
     expect(screen.getByText('+ 設定グループを追加（部位ごとに特殊条件を分ける）')).toBeInTheDocument()
     // 既定グループは「全部位共通」表示（追加効果・付加効果・特殊条件の3セクション分）
     expect(screen.getAllByText('全部位共通')).toHaveLength(3)
+  })
+})
+
+// design.md「専用技」: 付加効果ごとの専用技フラグ（is_exclusive）は廃止した
+describe('EquipmentSetPiecesEditor 専用技の廃止', () => {
+  const formWithBonus = (): EquipmentSetForm => ({
+    ...makeForm([part({ category_id: 11, name: '頭装備' })]),
+    bonusGroups: [{
+      partCategoryIds: [],
+      bonus_effects: [{
+        effect_name: '炎纏い',
+        values: [{ value: '5', value_unit: '%', label: '火力' }],
+        description: '', no_warage_effect: false,
+      }],
+    }],
+  })
+
+  it('付加効果に専用技チェックを表示しない（WarAge無効は残る）', () => {
+    render(
+      <EquipmentSetPiecesEditor
+        categories={categories}
+        value={formWithBonus()}
+        onChange={() => {}}
+        bonusValueLabelOptions={[]}
+        statLabelOptions={[]}
+      />
+    )
+
+    expect(screen.queryByRole('checkbox', { name: '専用技' })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'WarAge無効' })).toBeInTheDocument()
+  })
+
+  it('formToPieces は付加効果に is_exclusive を含めない', () => {
+    const pieces = formToPieces(formWithBonus(), TECHNIQUE_IDS)
+    expect(pieces[0].bonus_effects[0]).not.toHaveProperty('is_exclusive')
   })
 })
