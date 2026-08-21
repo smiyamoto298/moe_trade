@@ -263,3 +263,34 @@ describe('ChatThread オークション', () => {
     expect(screen.getByText(/オークション（自動成立）/)).toBeTruthy()
   })
 })
+
+// design.md「取引希望の取り下げ（登録者が無応答のとき）」:
+// 取引希望者は、登録者から規定日数まったく返信が無い場合のみ自分の取引希望を
+// 取り下げられる。可否はサーバーが can_withdraw / withdrawable_at で返す。
+describe('ChatThread 取引希望の取り下げ', () => {
+  it('取り下げ可能なチャットでは「取り下げ」ボタンから decline を呼ぶ', async () => {
+    ;(chatApi.decline as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...chat, status: 'declined' as TradeChat['status'] },
+    })
+    renderThread({ chat: { ...chat, can_withdraw: true, withdrawable_at: '2026-06-15T10:00:00Z' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '取り下げ' }))
+    fireEvent.click(await screen.findByRole('button', { name: '取り下げる' }))
+
+    await waitFor(() => {
+      expect(chatApi.decline).toHaveBeenCalledWith(1)
+    })
+  })
+
+  it('まだ取り下げできないときはボタンを出さず、可能になる日時を案内する', () => {
+    renderThread({ chat: { ...chat, can_withdraw: false, withdrawable_at: '2026-06-15T10:00:00Z' } })
+    expect(screen.queryByRole('button', { name: '取り下げ' })).toBeNull()
+    expect(screen.getByText(/以降に取り下げできます/)).toBeTruthy()
+  })
+
+  it('登録者(owner)には取り下げボタン・案内を表示しない', () => {
+    renderThread({ chat: { ...chat, can_withdraw: true }, currentUserId: 1, isOwner: true })
+    expect(screen.queryByRole('button', { name: '取り下げ' })).toBeNull()
+    expect(screen.queryByText(/以降に取り下げできます/)).toBeNull()
+  })
+})

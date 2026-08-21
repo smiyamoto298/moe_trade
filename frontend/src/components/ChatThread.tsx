@@ -8,6 +8,10 @@ import { SERVER_COLORS } from '../utils/constants'
 const formatDateLabel = (iso: string) =>
   new Date(iso).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
 
+// 取り下げできるようになる日時（例: 6/12 21:30）
+const formatWithdrawDate = (iso: string) =>
+  new Date(iso).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
 // 日付が変わったかどうかはローカルタイムゾーンの暦日で比較する
 const isSameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString()
 
@@ -67,7 +71,9 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
             nextLast?.message === prevLast?.message &&
             next.status === prev.status &&
             next.seller_completed === prev.seller_completed &&
-            next.buyer_completed === prev.buyer_completed
+            next.buyer_completed === prev.buyer_completed &&
+            // 取り下げ可能になった瞬間（登録者の無応答が規定日数に達した）も再描画する
+            next.can_withdraw === prev.can_withdraw
           ) {
             return prev
           }
@@ -238,6 +244,24 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
     onStatusChange?.(merged)
   }
 
+  // 取引希望者による取り下げ。登録者から一定期間返信が無いチャットでのみ実行できる
+  // （不可の場合はボタンを出さないが、経過時間はサーバー側でも検証している）。
+  const handleWithdraw = async () => {
+    if (!(await confirm(
+      '登録者から返信がないため、この取引希望を取り下げます。よろしいですか？\n取り下げると、このチャットは見送りとして閉じられます。',
+      { title: '取引希望の取り下げ', confirmLabel: '取り下げる', danger: true },
+    ))) return
+    try {
+      const res = await chatApi.decline(chat.id)
+      const merged = mergeChat(chat, res.data)
+      setChat(merged)
+      onStatusChange?.(merged)
+    } catch (err: unknown) {
+      const r = (err as { response?: { data?: { message?: string } } })?.response
+      await alert(r?.data?.message ?? '取り下げに失敗しました。', { title: '取り下げできません' })
+    }
+  }
+
   const handleDealFailed = async (relist: boolean) => {
     setShowDealFailedConfirm(false)
     const res = await chatApi.dealFailed(chat.id, relist)
@@ -325,6 +349,19 @@ export default function ChatThread({ chat: initialChat, currentUserId, isOwner, 
               </button>
             </>
           )}
+          {/* 取引希望者のみ：登録者から一定期間返信が無い場合に自分の取引希望を取り下げる */}
+          {!isOwner && isOpen && !isAuction && (
+            chat.can_withdraw ? (
+              <button onClick={handleWithdraw} className="text-xs bg-surface hover:bg-surface-border border border-surface-border text-gray-400 rounded px-2.5 py-1 transition-colors">
+                取り下げ
+              </button>
+            ) : chat.withdrawable_at ? (
+              <span className="text-xs text-gray-500 self-center">
+                返信が無い場合 {formatWithdrawDate(chat.withdrawable_at)} 以降に取り下げできます
+              </span>
+            ) : null
+          )}
+
           {/* 出品者・取引希望者共通 */}
           {isDeal && !myCompleted && (
             <button onClick={handleMarkComplete} className="text-xs bg-emerald-900/40 hover:bg-emerald-900/60 border border-emerald-700/50 text-emerald-300 rounded px-2.5 py-1 transition-colors">

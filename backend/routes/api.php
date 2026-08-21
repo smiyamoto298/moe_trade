@@ -152,6 +152,8 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         // 取引希望の順番待ち（出品の open キュー内での自分の順位・待ち人数）を付与
         \App\Models\TradeChat::annotateBuyerQueue($chats, 'listing_id');
+        // 出品者が一定期間返信しない場合の取り下げ可否
+        \App\Models\TradeChat::annotateBuyerWithdraw($chats);
         // 落札落選通知用：不成立になったオークションに落札価格を付与
         \App\Models\TradeChat::annotateWonPrice($chats, 'listing_id');
         return response()->json($chats);
@@ -240,6 +242,8 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         // 販売希望の順番待ち（買取の open キュー内での自分の順位・待ち人数）を付与
         \App\Models\TradeChat::annotateBuyerQueue($chats, 'buy_request_id');
+        // 買取登録者が一定期間返信しない場合の取り下げ可否
+        \App\Models\TradeChat::annotateBuyerWithdraw($chats);
         // 落札落選通知用：不成立になったオークションに落札価格を付与
         \App\Models\TradeChat::annotateWonPrice($chats, 'buy_request_id');
         return response()->json($chats);

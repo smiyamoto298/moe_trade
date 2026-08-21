@@ -60,6 +60,10 @@ class ChatController extends Controller
             $chat->buyer_character_name = null;
             $chat->is_locked = true;
         }
+        // 取引希望者には、登録者の無応答による取り下げ可否を添える（マイ取引の取り下げボタン用）
+        if ($chat->buyer_id === $request->user()->id) {
+            TradeChat::annotateBuyerWithdraw(collect([$chat]));
+        }
         return response()->json($chat);
     }
 
@@ -373,20 +377,47 @@ class ChatController extends Controller
         if ($chat->source()?->isAuction()) {
             return response()->json(['message' => 'オークションでは入札の取り下げ・見送りはできません。'], 400);
         }
-        // owner が見送る場合は先着順を強制（先頭から順に見送る）。相手側の取り下げは順不同で可。
-        if ($chat->ownerId() === $user->id && $chat->isWaiting()) {
+        $isOwner = $chat->ownerId() === $user->id;
+
+        // owner が見送る場合は先着順を強制（先頭から順に見送る）。
+        if ($isOwner && $chat->isWaiting()) {
             return response()->json(['message' => '先着順での対応が必要です。先頭の取引希望から見送ってください。'], 400);
         }
 
+        // 取引希望者からの取り下げは、登録者が一定期間まったく返信していない場合のみ許可する。
+        // （出したそばから取り下げて順番待ちを動かすのではなく、音信不通からの離脱手段として提供する）
+        if (!$isOwner && !$chat->canBuyerWithdraw()) {
+            $days = TradeChat::WITHDRAW_AFTER_DAYS;
+            $at   = $chat->buyerWithdrawableAt();
+            return response()->json([
+                'message' => $at === null
+                    ? 'この取引希望は取り下げできません。'
+                    : "取引希望の取り下げは、登録者からの返信が{$days}日間ない場合にできます。",
+                'withdrawable_at' => $at?->toIso8601String(),
+            ], 400);
+        }
+
+        // owner から見えている（順番待ちでない）取引希望かどうかは、閉じる前に判定する
+        $wasVisibleToOwner = !$isOwner && !$chat->isWaiting();
+
         $chat->update(['status' => 'declined']);
 
-        // owner が見送った場合のみ、相手側（取引希望者）へ Web Push で知らせる
-        if ($chat->ownerId() === $user->id) {
+        if ($isOwner) {
+            // owner が見送った → 相手側（取引希望者）へ知らせる
             app(\App\Support\Notifier::class)->send(
                 $chat->buyer_id,
                 \App\Support\NotificationCategory::TRADE,
                 'MoE Trade — 取引見送り',
                 "「{$chat->source()?->item?->name}」の取引希望は見送りとなりました。"
+            );
+        } elseif ($wasVisibleToOwner) {
+            // 取引希望者が取り下げた → owner へ知らせる。
+            // owner から見えない順番待ちの取り下げは、そもそも認識されていないので通知しない。
+            app(\App\Support\Notifier::class)->send(
+                $chat->ownerId(),
+                \App\Support\NotificationCategory::TRADE,
+                'MoE Trade — 取引希望の取り下げ',
+                "「{$chat->source()?->item?->name}」の取引希望が取り下げられました。"
             );
         }
 

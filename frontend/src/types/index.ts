@@ -364,6 +364,11 @@ export interface TradeChat {
   queue_total?: number
   /** owner 視点で2番目以降の順番待ち（匿名・操作不可）かどうか。 */
   is_locked?: boolean
+  // ---- 取引希望の取り下げ（登録者が無応答のとき。取引希望者視点のみ付与） ----
+  /** いま自分の取引希望を取り下げられるかどうか。 */
+  can_withdraw?: boolean
+  /** 取り下げできるようになる時刻（ISO8601）。対象外のチャットでは null。 */
+  withdrawable_at?: string | null
 }
 
 // ---- お問い合わせ掲示板 ----

@@ -127,6 +127,13 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
 - 「取引成立」にすると出品が `completed` になり取引履歴を記録。同じ出品の他チャット（open）は新規メッセージ送信不可（「他のユーザーの取引が成立しています」）
 - 取引成立後に不成立となった場合は「取引不成立」（`POST /chats/:id/deal-failed`）で出品を `deal_failed` に変更。**チャットも `deal_failed` ステータスになり、交渉中には戻さずメッセージ送信・操作を不可（編集不可）にする**。成立時に記録した取引履歴は削除され、相場データに残らない。`relist: true` の場合は新しい出品を作成し、出品中一覧へ即時反映
 - 再オープン機能あり
+- **取引希望の取り下げ（登録者が無応答のとき）**: 取引希望を送った側（`buyer_id`）は、取引対象の登録者（owner）から **3日間**（`TradeChat::WITHDRAW_AFTER_DAYS`）まったく返信が無い場合に限り、マイ取引のチャットから自分の取引希望を取り下げ（`declined`）できる（`POST /chats/:id/decline`）
+  - 起点は **owner の最終メッセージ**。owner がまだ一度も発言していなければ**チャット作成時刻**（＝取引希望を送った時刻）。自分（取引希望者）が催促のメッセージを送っても起点は動かない
+  - 順番待ち（2番目以降）は owner から見えず返信も来ないため、チャット作成から同じ日数で取り下げできる。取り下げると次が繰り上がる
+  - **オークションの入札は日数に関わらず取り下げ不可**（期限日に自動成立するため）。owner 側の見送りは従来どおり日数の制約なし
+  - 可否はサーバーが算出して返す（取引希望者視点のみ）。`can_withdraw`（いま取り下げできるか）・`withdrawable_at`（取り下げできるようになる時刻。ISO8601）を `GET /api/chats/:id`・`GET /api/mypage/chats`・`GET /api/mypage/selling-offers` に付与。フロント（`ChatThread`）は `can_withdraw` のとき「取り下げ」ボタン、そうでなければ「返信が無い場合 M/D HH:mm 以降に取り下げできます」の案内を表示する
+  - 早すぎる取り下げはバックエンドでも 400（`withdrawable_at` を同梱）で拒否する
+  - 取り下げると **owner へ通知**（`trade`「取引希望の取り下げ」）。ただし owner から見えていない順番待ちの取り下げは通知しない
 - **入力中に出品が取り下げ／取引成立した場合**: 取引希望送信時にバックエンドが 400 を返し、フロントはエラー表示のうえ出品一覧へ誘導する（一覧上のパネルの場合は一覧を再取得＋エラーバナー表示、出品詳細からの場合は `/listings` へリダイレクト）
 - **出品詳細（`GET /api/listings/:id`）は公開対象（`active` / `completed`）のみ閲覧可**。取り下げ・期限切れ等は 404 を返し、直接URLでも閲覧できない（フロントは「見つかりませんでした」を表示）
 
@@ -242,6 +249,7 @@ Master of Epic のゲーム内アイテム・スキルを取引するためのWe
   - 新しい取引希望／販売希望（`trade`） → 出品者・買取登録者（順番待ち＝2番目以降は owner から見えないため通知しない）
   - 新着チャットメッセージ（`trade`） → 相手側（通知サマリーと同じ除外: open のオークション入札・owner から見えない順番待ち）。**通知の URL は `/mypage?chat=<chat_id>`**：クリックするとマイページが読み込み完了後に該当チャットの属するタブ（出品/取引希望/買取/売却）へ切り替えてそのチャットを開く（クエリは一度処理したら消す。該当チャットが見つからない場合は通常表示）。**取引希望者（買い手）からの最初のメッセージは通知しない**：フロントの取引希望フローは「チャット作成→直後に最初のメッセージ送信」の2段階のため、両方通知すると owner に「新しい取引希望」と二重に届く。最初のメッセージは取引希望の一部としてチャット作成時の通知に代表させ、2通目以降を通知する
   - 取引成立・見送り（`trade`。owner 操作）→ 取引希望者
+  - **取引希望の取り下げ**（`trade`。取引希望者の操作）→ owner。owner から見えていない順番待ちの取り下げは通知しない
   - オークション入札（`auction`） → owner（現在価格付き）／抜かれた入札者へ価格更新（新たに outbid になった人のみ・再送しない）
   - オークション解決（`auction`。即決・バッチ `auctions:resolve`）→ 落札者・owner・落選者。入札なし終了は owner のみ
   - **期限切れの前日**（`expiry`。期限まで24時間以内・バッチ `trades:notify-expiring` 毎時）→ 登録者へ期限更新を促す通知。送信済みは `expiry_notified_at` で管理し同じ期限に再送しない（期限の延長・再出品で `expires_at` が変わるとリセットされ、新しい期限の前日に再通知）。オークションは自動成立/取り下げ・延長不可のため対象外
@@ -1404,7 +1412,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 ### チャット
 - `GET  /api/chats/unread-count` — 未読チャット数（旧。フロントは notifications/summary を使用）
-- `GET  /api/chats/:id` — チャット詳細（メッセージ含む）
+- `GET  /api/chats/:id` — チャット詳細（メッセージ含む）。取引希望者には取り下げ可否（`can_withdraw` / `withdrawable_at`）を付与
 - `POST /api/chats/:id/messages` — メッセージ送信
 - `PATCH  /api/chats/:id/messages/:messageId` — メッセージ編集（本人のみ・**チャット内で最新の1件のみ**。open/deal 以外・他取引成立後は 400）
 - `DELETE /api/chats/:id/messages/:messageId` — メッセージ削除（本人のみ・**最初の取引希望メッセージは削除不可（400）**。open/deal 以外・他取引成立後は 400）
@@ -1412,7 +1420,7 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 - `POST /api/chats/:id/bid` — オークションの入札額更新（入札者本人のみ。`bid_price`。より有利な額のみ・取り下げ不可。即決価格到達で即時成立）
 - `POST /api/chats/:id/complete` — 取引完了確認（登録者(owner)／相手側それぞれが実行）
 - `POST /api/chats/:id/deal-failed` — 取引不成立（取引対象を `deal_failed` に変更し、成立時の取引履歴を削除。`relist: true` で同内容の再出品/再買取を作成。順番待ちが残る場合は次へ進む）
-- `POST /api/chats/:id/decline` — 見送り。**オークションは入札の取り下げ・見送り不可（400）**
+- `POST /api/chats/:id/decline` — 見送り／取引希望の取り下げ。owner の見送りは制約なし（先着順は強制）。**取引希望者（buyer）の取り下げは、owner の最終発言（無ければチャット作成）から3日経過している場合のみ**（早すぎる場合は 400 ＋ `withdrawable_at`）。**オークションは入札の取り下げ・見送り不可（400）**
 - `POST /api/chats/:id/reopen` — 再オープン
 
 ### 買取（買いたい）
@@ -1428,11 +1436,11 @@ editor / admin が、サイト外で取引された相場情報を手動登録�
 
 ### マイページ
 - `GET /api/mypage/listings` — 自分の出品一覧
-- `GET /api/mypage/chats` — 自分が取引希望者の（出品由来）チャット一覧
+- `GET /api/mypage/chats` — 自分が取引希望者の（出品由来）チャット一覧（順位・取り下げ可否 `can_withdraw` / `withdrawable_at` を付与）
 - `GET /api/mypage/selling-chats` — 自分の出品に対するチャット一覧（`listing_id` でグループ化・順番待ち付与）
 - `GET /api/mypage/buy-requests` — 自分の買取一覧
 - `GET /api/mypage/buy-request-chats` — 自分の買取に届いたチャット一覧（`buy_request_id` でグループ化）
-- `GET /api/mypage/selling-offers` — 自分が売り手として申し出た（買取由来）チャット一覧
+- `GET /api/mypage/selling-offers` — 自分が売り手として申し出た（買取由来）チャット一覧（順位・取り下げ可否 `can_withdraw` / `withdrawable_at` を付与）
 - `GET /api/mypage/item-counts` — 自分のアクティブ出品・買取の件数（item_id ごと。登録時の重複案内に使用）。併せて `listing_variants`（出品中の件数を `item_id:削れ:染色` 単位で集計）を返し、アイテムボックスの「出品中」判定に使う
 - `GET /api/mypage/inventory` — 所持アイテム台帳のスナップショット（`{ storage_mode, accounts, items, exclusions, custom_types }`。`storage_mode` はユーザー単位の保存先モード（`local`/`db`）、`items[].item` は紐づく登録アイテムを同梱、`custom_types` はユーザーごとのカスタム種別 `[{id, name, sort_order}]`、`exclusions[].custom_type_id` はカスタム種別への割当）。クライアントはこの `storage_mode` を正としてどの保存先を読むか決める
 - `PUT /api/mypage/inventory/storage-mode` — 保存先モード（`local`/`db`）をユーザー単位で記憶（`{ mode }`）。**実ボディ付き PUT の WAF 対策で `POST` + `X-HTTP-Method-Override: PUT` で送る**
@@ -1797,12 +1805,13 @@ worktree を残したままにするとポート枠が空かないため、作�
 | `tests/Feature/ChatApiTest.php` | チャット作成・重複防止・成立/不成立/完了確認・相場IPチェック・未読数 |
 | `tests/Feature/BuyRequestChatApiTest.php` | 買取の売却申し出・自己取引禁止・成立履歴・相場IPチェック |
 | `tests/Feature/TradeQueueTest.php` | 順番待ち（先着順）・匿名化・成立/不成立/完了の繰り上がり・待ち人数 |
+| `tests/Feature/TradeWithdrawTest.php` | 取引希望の取り下げ（登録者が3日無応答のときのみ可・自分の催促では起点が動かない・登録者の返信で数え直し・順番待ちの取り下げと繰り上がり・オークションは不可・`can_withdraw`/`withdrawable_at` の付与・当事者以外は403） |
 | `tests/Feature/NotificationApiTest.php` | 通知サマリー（未読チャット・掲示板新着・対象者判定） |
 | `tests/Unit/WebPushSenderTest.php` | Web Push 送信（VAPID未設定はno-op・購読なしは送信しない・期限切れ購読の自動削除・トランザクション中はコミット後送信） |
 | `tests/Feature/PushSubscriptionApiTest.php` | Web Push 購読API（401・登録・endpoint一致のユーザー付け替え・URL検証・本人のみ解除・公開鍵取得） |
 | `tests/Unit/NotifierTest.php` | 通知の振り分け（種別 × チャネルの ON/OFF・通知先メール未設定/未確認は送らない・宛先nullや不明ユーザー・未知の種別・コミット後配信とロールバック時の抑止・メール送信失敗でも止まらない・broadcast は ON のユーザーだけに届き指定ユーザーを除外/未確認メールに送らない/未知種別・ロールバック時の抑止） |
 | `tests/Feature/NotificationSettingsTest.php` | 通知設定API（401・既定は自分宛て種別ON／新規出品・買取OFF・種別×チャネルの更新とバリデーション・別アドレスは確認メール／ログイン用と同一なら確認不要・アカウント未認証は未確認扱い・署名付き確認リンク（無署名403・古いリンクは無効）・変更で確認解除・削除・平文非保存・他人の設定は見えない） |
-| `tests/Feature/NotificationDispatchTest.php` | 取引イベントの通知配信と種別（新規出品・新規買取のブロードキャスト（種別/URL/作成者除外）・新規取引希望・順番待ち除外・買取・新着メッセージ（URL は `/mypage?chat=<chat_id>`）・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
+| `tests/Feature/NotificationDispatchTest.php` | 取引イベントの通知配信と種別（新規出品・新規買取のブロードキャスト（種別/URL/作成者除外）・新規取引希望・順番待ち除外・買取・新着メッセージ（URL は `/mypage?chat=<chat_id>`）・**最初のメッセージは取引希望と二重通知しない**・成立/見送り・**取引希望の取り下げ（owner へ通知・順番待ちは通知しない）**・入札/outbid・即決の本人除外・バッチ解決の落札者/owner/落選者・入札なし終了） |
 | `tests/Feature/NotifyExpiringTradesTest.php` | 期限切れ前日の通知バッチ（24時間以内の出品/買取に通知・二重送信なし・24時間超/期限超過/非active/オークションは対象外・期限延長でリセットされ新期限の前日に再通知） |
 | `tests/Feature/BoardApiTest.php` | 掲示板スレッド/投稿・表示名・admin操作権限 |
 | `tests/Feature/AdminUserApiTest.php` | ユーザー管理API・権限チェック |
@@ -1932,6 +1941,7 @@ cd frontend && npm run test:watch  # ウォッチ実行
 - [x] アイテム種別に「アセット」を追加し、一覧を装備品 / テクニック / アセットの3タブに分割（`item_type` パラメータ・`/assets` ルート）。アセット固有パラメータ（設置個所・サイズ横×縦・ストレージ数・特殊機能）を登録/編集/一覧/詳細/絞り込みに対応
 - [x] **買取（買いたい）機能**: 出品と対称の登録・チャット・価格解析（売り相場/買い相場の分割）・期限1ヶ月（`buy_requests` / `buy_request_servers`・`/buy-requests`）
 - [x] **取引希望の順番待ち（先着順キュー）**: 2番目以降の匿名化・先着強制・成立/不成立/完了での繰り上がり
+- [x] **取引希望の取り下げ（登録者が3日無応答のとき）**: マイ取引のチャットから取引希望者が自分で取り下げ
 - [x] **テクニックの必要マスタリ**（`items.mastery_requirements`）と構成検索（`skill_match=composition`・`skill_include_mastery`）
 - [x] **お知らせバナー**（`announcements`・表示期間・日次削除バッチ・admin管理）
 - [x] **掲示板の画像添付・投稿編集・管理者限定スレッド**（`board_posts.image_path` / `board_threads.admin_only`）

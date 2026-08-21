@@ -264,16 +264,47 @@ class NotificationDispatchTest extends TestCase
         // owner が見送り → buyer1 に通知
         $this->actingAs($seller, 'sanctum')->postJson("/api/chats/{$chat1Id}/decline")->assertOk();
 
-        // buyer2 が取引希望を出して自分で取り下げ → 通知なし
+        // buyer2 が取引希望を出し、出品者が無応答のまま規定日数が過ぎて自分で取り下げ → 本人には通知なし
         $chat2Id = $this->actingAs($buyer2, 'sanctum')
             ->postJson("/api/listings/{$listing->id}/chats", ['server' => 'Emerald'])
             ->json('id');
+        $this->travel(TradeChat::WITHDRAW_AFTER_DAYS)->days();
         $this->actingAs($buyer2, 'sanctum')->postJson("/api/chats/{$chat2Id}/decline")->assertOk();
 
         $this->push->shouldHaveReceived('send')
             ->withArgs(fn ($uid, $cat, $title) => $uid === $buyer1->id && $title === 'MoE Trade — 取引見送り')
             ->once();
         $this->push->shouldNotHaveReceived('send', fn ($uid, $cat, $title) => $uid === $buyer2->id && $title === 'MoE Trade — 取引見送り');
+    }
+
+    public function test_取引希望の取り下げで出品者に通知される_順番待ちの取り下げは通知しない(): void
+    {
+        $seller  = $this->makeUser();
+        $buyer1  = $this->makeUser();
+        $buyer2  = $this->makeUser();
+        $listing = $this->makeListing($seller);
+
+        // 先着1番目（出品者から見えている）と、2番目（順番待ち＝出品者からは匿名で見えない）
+        $chat1Id = $this->actingAs($buyer1, 'sanctum')
+            ->postJson("/api/listings/{$listing->id}/chats", ['server' => 'Emerald'])
+            ->json('id');
+        $chat2Id = $this->actingAs($buyer2, 'sanctum')
+            ->postJson("/api/listings/{$listing->id}/chats", ['server' => 'Emerald'])
+            ->json('id');
+
+        $this->travel(TradeChat::WITHDRAW_AFTER_DAYS)->days();
+
+        // 順番待ちの取り下げは出品者に認識されていないので通知しない
+        $this->actingAs($buyer2, 'sanctum')->postJson("/api/chats/{$chat2Id}/decline")->assertOk();
+        $this->push->shouldNotHaveReceived('send', fn ($uid, $cat, $title) => $title === 'MoE Trade — 取引希望の取り下げ');
+
+        // 先頭の取り下げは出品者に通知する
+        $this->actingAs($buyer1, 'sanctum')->postJson("/api/chats/{$chat1Id}/decline")->assertOk();
+        $this->push->shouldHaveReceived('send')
+            ->withArgs(fn ($uid, $cat, $title) => $uid === $seller->id
+                && $cat === NotificationCategory::TRADE
+                && $title === 'MoE Trade — 取引希望の取り下げ')
+            ->once();
     }
 
     public function test_入札で出品者に通知され_抜かれた入札者に価格更新が通知される(): void

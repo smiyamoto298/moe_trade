@@ -81,6 +81,66 @@ class TradeChat extends Model
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    //  取引希望の取り下げ（登録者が無応答のとき）
+    //
+    //  取引希望を送った側（buyer_id）は、取引対象の登録者(owner)から
+    //  WITHDRAW_AFTER_DAYS 日間なんの返信も無い場合に限り、自分の取引希望を
+    //  取り下げ（declined）できる。順番待ち（2番目以降）は owner から見えない
+    //  ため返信が来ようがなく、チャット作成から同じ日数で取り下げられる。
+    // ─────────────────────────────────────────────────────────────────────
+
+    /** 取引希望者が自分で取り下げできるようになるまでの、登録者の無応答日数。 */
+    public const WITHDRAW_AFTER_DAYS = 3;
+
+    /**
+     * 登録者(owner)の応答が途絶えている起点時刻。
+     * owner の最終メッセージ、まだ一度も発言が無ければチャット作成時刻（＝取引希望を送った時刻）。
+     */
+    public function ownerSilentSince(): ?\Illuminate\Support\Carbon
+    {
+        $ownerId = $this->ownerId();
+        if ($ownerId === null) {
+            return null;
+        }
+        $last = $this->relationLoaded('messages')
+            ? $this->messages->where('user_id', $ownerId)->max('created_at')
+            : $this->messages()->where('user_id', $ownerId)->max('created_at');
+
+        return $last ? \Illuminate\Support\Carbon::parse($last) : $this->created_at;
+    }
+
+    /**
+     * 取引希望者が取り下げできるようになる時刻。取り下げの対象外なら null。
+     * オークションの入札は取り下げ不可（期限日に自動成立するため）。
+     */
+    public function buyerWithdrawableAt(): ?\Illuminate\Support\Carbon
+    {
+        if ($this->status !== 'open' || $this->isAuctionBid()) {
+            return null;
+        }
+        return $this->ownerSilentSince()?->copy()->addDays(self::WITHDRAW_AFTER_DAYS);
+    }
+
+    /** 取引希望者がいま取り下げできるか。 */
+    public function canBuyerWithdraw(): bool
+    {
+        $at = $this->buyerWithdrawableAt();
+        return $at !== null && !$at->isFuture();
+    }
+
+    /**
+     * buyer 視点：取り下げ可否（`can_withdraw`）と、可能になる時刻（`withdrawable_at`）を付与する。
+     * source（listing/buyRequest）と messages を eager load してから呼ぶこと。
+     */
+    public static function annotateBuyerWithdraw(Collection $chats): void
+    {
+        foreach ($chats as $c) {
+            $c->can_withdraw = $c->canBuyerWithdraw();
+            $c->withdrawable_at = $c->buyerWithdrawableAt()?->toIso8601String();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     //  順番待ち（先着順キュー）
     //
     //  同一の取引対象（listing/buy_request）に対する status='open' のチャットを

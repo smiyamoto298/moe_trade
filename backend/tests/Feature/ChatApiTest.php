@@ -226,15 +226,15 @@ class ChatApiTest extends TestCase
 
     public function test_見送りと再オープンができる(): void
     {
-        $buyer = $this->makeUser();
-        $chat  = $this->makeChat(null, $buyer);
+        $seller = $this->makeUser();
+        $chat   = $this->makeChat($seller);
 
-        $this->actingAs($buyer, 'sanctum')
+        $this->actingAs($seller, 'sanctum')
             ->postJson("/api/chats/{$chat->id}/decline")
             ->assertOk();
         $this->assertSame('declined', $chat->fresh()->status);
 
-        $this->actingAs($buyer, 'sanctum')
+        $this->actingAs($seller, 'sanctum')
             ->postJson("/api/chats/{$chat->id}/reopen")
             ->assertOk();
         $this->assertSame('open', $chat->fresh()->status);
