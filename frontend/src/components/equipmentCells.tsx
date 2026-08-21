@@ -205,9 +205,9 @@ function SkillBadges({ skills }: { skills: [string, number][] }) {
   )
 }
 
-// 「その他」種別（未開封ペット・レシピ・ペット用アイテム・アイテムセット）の固有情報セル。
+// 「その他」種別（未開封ペット・レシピ・ペット用アイテム・アイテムセット・選べるチケット）の固有情報セル。
 // ペット名、レシピの各エントリ（レシピ名 + そのレシピ名の必要スキル値）、
-// ペット用アイテムの対象ペット・効果、アイテムセットのアイテムリストをバッジで表示する。
+// ペット用アイテムの対象ペット・効果、アイテムセット／選べるチケットのアイテムリストをバッジで表示する。
 export function OtherInfoCell({ item }: { item: Item }) {
   // レシピ：recipe_entries があればエントリごとに表示。無ければ旧単一フィールドへフォールバック。
   const recipeEntries = item.recipe_entries && item.recipe_entries.length > 0

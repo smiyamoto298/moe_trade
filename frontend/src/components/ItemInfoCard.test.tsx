@@ -85,4 +85,39 @@ describe('ItemInfoCard（テクニック）', () => {
     expect(screen.getByText('レシピ情報')).toBeInTheDocument()
     expect(screen.getByText(/鍛冶:/)).toBeInTheDocument()
   })
+
+  it('アイテムセットは set_items を「アイテムリスト」として表示する', () => {
+    render(
+      <ItemInfoCard
+        item={makeItem({
+          category: { id: 44, parent_id: 4, name: 'アイテムセット', sort_order: 3 },
+          name: '初心者応援セット',
+          set_items: ['銅の剣', '回復ポーション'],
+        })}
+      />
+    )
+
+    expect(screen.getByText('アイテムセット情報')).toBeInTheDocument()
+    expect(screen.getByText('アイテムリスト')).toBeInTheDocument()
+    expect(screen.getByText('銅の剣')).toBeInTheDocument()
+    expect(screen.getByText('回復ポーション')).toBeInTheDocument()
+  })
+
+  it('選べるチケットは set_items を「選べるアイテム」として表示する', () => {
+    render(
+      <ItemInfoCard
+        item={makeItem({
+          category: { id: 45, parent_id: 4, name: '選べるチケット', sort_order: 4 },
+          name: '選べる武器チケット',
+          set_items: ['銅の剣', '鉄の槍'],
+        })}
+      />
+    )
+
+    expect(screen.getByText('選べるチケット情報')).toBeInTheDocument()
+    expect(screen.getByText('選べるアイテム')).toBeInTheDocument()
+    expect(screen.queryByText('アイテムリスト')).not.toBeInTheDocument()
+    expect(screen.getByText('銅の剣')).toBeInTheDocument()
+    expect(screen.getByText('鉄の槍')).toBeInTheDocument()
+  })
 })

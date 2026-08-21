@@ -29,7 +29,7 @@ class ListingController extends Controller
         }
         $this->applyItemTypeFilter($query, $itemType);
 
-        // フィルター（アイテム名。アイテムセットはアイテムリスト set_items 内の名前にも部分一致）
+        // フィルター（アイテム名。アイテムセット・選べるチケットはアイテムリスト set_items 内の名前にも部分一致）
         $query->when($request->item_name, fn($q) =>
             $q->whereHas('item', fn($iq) => $iq->where(function ($w) use ($request) {
                 $w->where('name', 'like', "%{$request->item_name}%")
