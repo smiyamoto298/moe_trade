@@ -239,7 +239,7 @@ export default function EquipmentSetPiecesEditor({ categories, value, onChange, 
   const { parts, baseStatsGroups, bonusGroups, specialGroups } = value
 
   // 選択可能な部位カテゴリ（武器・防具・装飾品・テクニックなどの子カテゴリ）。
-  // 装備部位になり得ない「装備セット」「その他（未開封ペット・レシピ）」は除外する。
+  // 装備部位になり得ない「装備セット」「その他（未開封ペット・レシピ・ペット用アイテム・アイテムセット・選べるチケット）」は除外する。
   const partCategoryGroups = categories.filter(
     (cat) => !(cat.parent_id === null && (cat.name === '装備セット' || cat.name === 'その他'))
       && (cat.children ?? []).length > 0

@@ -1409,6 +1409,81 @@ class ItemApiTest extends TestCase
         $this->assertSame(['初心者応援セット'], collect($res2->json('data'))->pluck('name')->all());
     }
 
+    public function test_選べるチケットはアイテムリストを保存できる_空エントリは除去される(): void
+    {
+        $user   = $this->makeUser();
+        $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $ticket = ItemCategory::create(['name' => '選べるチケット', 'parent_id' => $other->id, 'sort_order' => 4]);
+
+        $res = $this->actingAs($user, 'sanctum')->postJson('/api/items', [
+            'category_id' => $ticket->id,
+            'name'        => '選べる武器チケット',
+            'set_items'   => ['銅の剣', '  ', '鉄の槍', ''],
+        ]);
+
+        $res->assertStatus(201);
+        $item = Item::find($res->json('id'));
+        // アイテムセットと同じく set_items に保存され、空白のみのエントリは除去される
+        $this->assertSame(['銅の剣', '鉄の槍'], $item->set_items);
+    }
+
+    public function test_選べるチケット更新でアイテムリストを差し替えできる_全て空ならnull(): void
+    {
+        $editor = $this->makeUserWithRole('editor');
+        $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $ticket = ItemCategory::create(['name' => '選べるチケット', 'parent_id' => $other->id, 'sort_order' => 4]);
+
+        $id = $this->actingAs($editor, 'sanctum')->postJson('/api/items', [
+            'category_id' => $ticket->id,
+            'name'        => '差し替え前チケット',
+            'set_items'   => ['銅の剣'],
+        ])->json('id');
+
+        $this->actingAs($editor, 'sanctum')->putJson("/api/items/{$id}", [
+            'set_items' => ['鉄の剣', '鉄の盾'],
+        ])->assertOk();
+        $this->assertSame(['鉄の剣', '鉄の盾'], Item::find($id)->set_items);
+
+        $this->actingAs($editor, 'sanctum')->putJson("/api/items/{$id}", [
+            'set_items' => [],
+        ])->assertOk();
+        $this->assertNull(Item::find($id)->set_items);
+    }
+
+    public function test_アイテム一覧の名前検索は選べるチケットのアイテムリストにも一致する(): void
+    {
+        $other  = ItemCategory::create(['name' => 'その他', 'sort_order' => 9]);
+        $ticket = ItemCategory::create(['name' => '選べるチケット', 'parent_id' => $other->id, 'sort_order' => 4]);
+        $sword  = ItemCategory::create(['name' => '刀剣', 'sort_order' => 0]);
+
+        $this->makeItem(['name' => '選べる武器チケット', 'category_id' => $ticket->id, 'set_items' => ['銅の剣', '鉄の槍']]);
+        $this->makeItem(['name' => '銅の剣', 'category_id' => $sword->id]);
+
+        $res = $this->getJson('/api/items?name=' . urlencode('銅の剣'));
+        $res->assertOk();
+        $this->assertEqualsCanonicalizing(
+            ['選べる武器チケット', '銅の剣'],
+            collect($res->json('data'))->pluck('name')->all()
+        );
+
+        // リスト内の名前の部分一致でもヒットする
+        $res2 = $this->getJson('/api/items?name=' . urlencode('鉄の'));
+        $res2->assertOk();
+        $this->assertSame(['選べる武器チケット'], collect($res2->json('data'))->pluck('name')->all());
+    }
+
+    public function test_カテゴリ一覧のその他配下に選べるチケットが含まれる(): void
+    {
+        $this->seed(\Database\Seeders\ItemCategorySeeder::class);
+
+        $res = $this->getJson('/api/categories');
+        $res->assertOk();
+
+        $other = collect($res->json())->firstWhere('name', 'その他');
+        $this->assertNotNull($other, 'その他カテゴリが存在すること');
+        $this->assertContains('選べるチケット', collect($other['children'])->pluck('name')->all());
+    }
+
     public function test_レシピはエントリ_レシピ名と必要スキル値を保存する(): void
     {
         $user   = $this->makeUser();

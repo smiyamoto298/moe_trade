@@ -1,6 +1,6 @@
 import type { Item } from '../types'
 import { BASE_STAT_LABELS, SPECIAL_CONDITIONS, formatSignedValue, formatBonusValueDisplay, formatBonusEffectDescription } from '../utils/constants'
-import { OTHER_RECIPE } from '../utils/itemType'
+import { OTHER_RECIPE, setItemsLabel } from '../utils/itemType'
 import EquipmentSetBreakdown from './EquipmentSetBreakdown'
 import MasteryBadges from './MasteryBadges'
 import OfficialDbLink from './OfficialDbLink'
@@ -106,7 +106,7 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
       )}
 
       {/* 「その他」種別情報（未開封ペット: ペット名 / レシピ: レシピ名・必要スキル値の組を複数 /
-          ペット用アイテム: 対象ペット・効果 / アイテムセット: アイテムリスト） */}
+          ペット用アイテム: 対象ペット・効果 / アイテムセット: アイテムリスト / 選べるチケット: 選べるアイテム） */}
       {(item.pet_name || recipeEntries.length > 0 || item.target_pet || item.pet_item_effect || (item.set_items?.length ?? 0) > 0) && (
         <div className="mb-4">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{item.category.name}情報</h2>
@@ -136,7 +136,7 @@ export default function ItemInfoCard({ item, tourId }: { item: Item; tourId?: st
           )}
           {(item.set_items?.length ?? 0) > 0 && (
             <div>
-              <p className="text-xs text-gray-500 mb-1">アイテムリスト</p>
+              <p className="text-xs text-gray-500 mb-1">{setItemsLabel(item.category.name)}</p>
               {/* 1つの枠にまとめ、枠内で1行1アイテムの改行表示にする（一覧の情報列と同じ見た目） */}
               <div className="inline-block bg-surface rounded px-3 py-2 text-sm space-y-0.5">
                 {item.set_items!.map((name, i) => (

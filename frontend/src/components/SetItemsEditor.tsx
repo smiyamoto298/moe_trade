@@ -1,6 +1,7 @@
 // ───────────────────────────────────────────────────────────
-// アイテムセット（その他種別）の「アイテムリスト」入力エディタ。
-// ・セットに含まれるアイテム名（自由入力テキスト）を複数登録できる。
+// アイテムセット / 選べるチケット（その他種別）の「アイテムリスト」入力エディタ。
+// ・セットに含まれる（＝選べるチケットなら選択できる）アイテム名を自由入力テキストで複数登録できる。
+// ・どちらも同じ set_items カラムに保存する。文言だけ emptyHint で切り替える。
 // ・送信時は setItemsToPayload() で空エントリを除去する（バックエンドでも同様に正規化）。
 // ───────────────────────────────────────────────────────────
 
@@ -13,9 +14,15 @@ export const setItemsToPayload = (items: string[]): string[] | null => {
 interface Props {
   value: string[]
   onChange: (items: string[]) => void
+  /** 1件も無いときの説明文（種別で文言を変える）。 */
+  emptyHint?: string
 }
 
-export default function SetItemsEditor({ value, onChange }: Props) {
+export default function SetItemsEditor({
+  value,
+  onChange,
+  emptyHint = '「＋ アイテムを追加」で、セットに含まれるアイテム名を登録できます。',
+}: Props) {
   const update = (i: number, name: string) =>
     onChange(value.map((s, idx) => (idx === i ? name : s)))
   const add = () => onChange([...value, ''])
@@ -23,9 +30,7 @@ export default function SetItemsEditor({ value, onChange }: Props) {
 
   return (
     <div className="space-y-2">
-      {value.length === 0 && (
-        <p className="text-xs text-gray-500">「＋ アイテムを追加」で、セットに含まれるアイテム名を登録できます。</p>
-      )}
+      {value.length === 0 && <p className="text-xs text-gray-500">{emptyHint}</p>}
       {value.map((name, i) => (
         <div key={i} className="flex items-center gap-2">
           <input

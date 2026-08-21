@@ -21,7 +21,7 @@ class ItemController extends Controller
                 'listings as active_listing_count' => fn($q) => $q->where('status', 'active'),
                 'buyRequests as active_buy_request_count' => fn($q) => $q->where('status', 'active'),
             ])
-            // アイテム名検索（アイテムセットはアイテムリスト set_items 内の名前にも部分一致）
+            // アイテム名検索（アイテムセット・選べるチケットはアイテムリスト set_items 内の名前にも部分一致）
             ->when($request->name, fn($q) => $q->where(function ($w) use ($request) {
                 $w->where('name', 'like', "%{$request->name}%")
                   ->orWhereRaw('CAST(set_items AS CHAR) LIKE ?', ["%{$request->name}%"]);
@@ -172,7 +172,7 @@ class ItemController extends Controller
             // ペット用アイテム: 対象ペット・効果（自由入力）
             'target_pet'               => 'nullable|string|max:100',
             'pet_item_effect'          => 'nullable|string|max:500',
-            // アイテムセット: 構成アイテム名リスト（自由入力・複数）
+            // アイテムセット: 構成アイテム名リスト / 選べるチケット: 選択できるアイテム名リスト（自由入力・複数）
             'set_items'                => 'nullable|array',
             'set_items.*'              => 'nullable|string|max:200',
             // レシピ: {レシピ名, 必要スキル値} の組を複数（送られた場合は派生カラムをこれから算出）
@@ -200,7 +200,7 @@ class ItemController extends Controller
 
         // レシピ: recipe_entries から派生カラム（recipe_name/recipe_binder/skill_requirements）を算出
         $data = $this->normalizeRecipeEntries($data);
-        // アイテムセット: set_items の空エントリを除去
+        // アイテムセット / 選べるチケット: set_items の空エントリを除去
         $data = $this->normalizeSetItems($data);
 
         $user = $request->user();
@@ -320,7 +320,7 @@ class ItemController extends Controller
             // ペット用アイテム: 対象ペット・効果（自由入力）
             'target_pet'               => 'nullable|string|max:100',
             'pet_item_effect'          => 'nullable|string|max:500',
-            // アイテムセット: 構成アイテム名リスト（自由入力・複数）
+            // アイテムセット: 構成アイテム名リスト / 選べるチケット: 選択できるアイテム名リスト（自由入力・複数）
             'set_items'                => 'nullable|array',
             'set_items.*'              => 'nullable|string|max:200',
             // レシピ: {レシピ名, 必要スキル値} の組を複数（送られた場合は派生カラムをこれから算出）
@@ -346,7 +346,7 @@ class ItemController extends Controller
 
         // レシピ: recipe_entries が送られた場合のみ派生カラムを算出（部分更新の他フィールドは壊さない）
         $data = $this->normalizeRecipeEntries($data);
-        // アイテムセット: set_items が送られた場合のみ空エントリを除去
+        // アイテムセット / 選べるチケット: set_items が送られた場合のみ空エントリを除去
         $data = $this->normalizeSetItems($data);
 
         $isSet = array_key_exists('pieces', $data)
@@ -606,7 +606,7 @@ class ItemController extends Controller
     }
 
     /**
-     * アイテムセットの set_items（構成アイテム名リスト）を正規化する。
+     * アイテムセット / 選べるチケットの set_items（アイテム名リスト）を正規化する。
      * 送られていない場合はそのまま。空白のみのエントリは除去し、全て空なら null にする。
      */
     private function normalizeSetItems(array $data): array

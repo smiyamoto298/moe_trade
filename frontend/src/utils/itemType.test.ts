@@ -4,8 +4,12 @@ import {
   topCategoryName,
   itemTypeOf,
   techniqueCategoryIds,
+  hasSetItems,
+  setItemsLabel,
   TECHNIQUE_CATEGORY,
   ASSET_CATEGORY,
+  OTHER_ITEM_SET,
+  OTHER_CHOICE_TICKET,
 } from './itemType'
 
 // design.md「出品一覧のタブとルーティング」:
@@ -75,5 +79,23 @@ describe('techniqueCategoryIds', () => {
 
   it('テクニックカテゴリが無ければ空集合を返す', () => {
     expect(techniqueCategoryIds([cat(1, '武器')]).size).toBe(0)
+  })
+})
+
+describe('hasSetItems / setItemsLabel', () => {
+  it('アイテムセットと選べるチケットが set_items を持つ', () => {
+    expect(hasSetItems(OTHER_ITEM_SET)).toBe(true)
+    expect(hasSetItems(OTHER_CHOICE_TICKET)).toBe(true)
+  })
+
+  it('それ以外の種別は set_items を持たない', () => {
+    expect(hasSetItems('レシピ')).toBe(false)
+    expect(hasSetItems('ペット用アイテム')).toBe(false)
+    expect(hasSetItems('刀剣')).toBe(false)
+  })
+
+  it('見出しラベルは種別ごとに切り替わる', () => {
+    expect(setItemsLabel(OTHER_ITEM_SET)).toBe('アイテムリスト')
+    expect(setItemsLabel(OTHER_CHOICE_TICKET)).toBe('選べるアイテム')
   })
 })

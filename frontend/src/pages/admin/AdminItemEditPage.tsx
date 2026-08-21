@@ -16,7 +16,7 @@ import { parseHashtags, formatHashtags } from '../../utils/hashtags'
 import { SPECIAL_CONDITIONS, BASE_STAT_LABELS, STAT_INPUT_COLUMNS, ASSET_PLACEMENTS, ASSET_FUNCTIONS, MASTERIES, bonusValueForSave, isLabelOnlyUnit } from '../../utils/constants'
 import { useBonusValueLabels } from '../../hooks/useBonusValueLabels'
 import { mergeBaseStats, splitBaseStats, type CustomStatRow } from '../../utils/customStats'
-import { OTHER_PET, OTHER_RECIPE, OTHER_PET_ITEM, OTHER_ITEM_SET, techniqueCategoryIds } from '../../utils/itemType'
+import { OTHER_PET, OTHER_RECIPE, OTHER_PET_ITEM, OTHER_ITEM_SET, OTHER_CHOICE_TICKET, techniqueCategoryIds } from '../../utils/itemType'
 import { normalizeOfficialUrl } from '../../utils/officialUrl'
 
 const ALL_SPECIAL = Object.keys(SPECIAL_CONDITIONS)
@@ -51,6 +51,7 @@ const isPetCategory = (cat: ItemCategory) => cat.name === OTHER_PET
 const isRecipeCategory = (cat: ItemCategory) => cat.name === OTHER_RECIPE
 const isPetItemCategory = (cat: ItemCategory) => cat.name === OTHER_PET_ITEM
 const isItemSetCategory = (cat: ItemCategory) => cat.name === OTHER_ITEM_SET
+const isChoiceTicketCategory = (cat: ItemCategory) => cat.name === OTHER_CHOICE_TICKET
 
 export default function AdminItemEditPage() {
   const { id } = useParams<{ id: string }>()
@@ -148,7 +149,7 @@ export default function AdminItemEditPage() {
       if (!asCopy) setVerifiedStatus(item.verified_status)
       // レシピのエントリを復元（recipe_entries 優先、無ければ旧単一フィールドから合成）
       setRecipeEntries(itemToRecipeEntries(item))
-      // アイテムセットの構成アイテム名リストを復元
+      // アイテムセット / 選べるチケットのアイテム名リストを復元
       setSetItems([...(item.set_items ?? [])])
       // ハッシュタグをテキストボックスへ復元（コピー時も引き継ぐ）
       const tags = item.hashtags ?? []
@@ -218,12 +219,15 @@ export default function AdminItemEditPage() {
   const selectedCategory = allCategories.find((c) => String(c.id) === form.category_id)
   const isEquipSet = selectedCategory ? isEquipmentSetCategory(selectedCategory) : false
   const isAsset = selectedCategory ? isAssetCategory(selectedCategory) : false
-  // 「その他」種別（未開封ペット / レシピ / ペット用アイテム / アイテムセット）
+  // 「その他」種別（未開封ペット / レシピ / ペット用アイテム / アイテムセット / 選べるチケット）
   const isPet = selectedCategory ? isPetCategory(selectedCategory) : false
   const isRecipe = selectedCategory ? isRecipeCategory(selectedCategory) : false
   const isPetItem = selectedCategory ? isPetItemCategory(selectedCategory) : false
   const isItemSet = selectedCategory ? isItemSetCategory(selectedCategory) : false
-  const isOther = isPet || isRecipe || isPetItem || isItemSet
+  const isChoiceTicket = selectedCategory ? isChoiceTicketCategory(selectedCategory) : false
+  // アイテム名リスト（set_items）を持つ種別
+  const hasItemList = isItemSet || isChoiceTicket
+  const isOther = isPet || isRecipe || isPetItem || hasItemList
   // 親カテゴリが「テクニック」かどうか
   const isSkill = (() => {
     if (!selectedCategory) return false
@@ -468,7 +472,7 @@ export default function AdminItemEditPage() {
         pet_name: isPet ? (form.pet_name.trim() || null) : null,
         target_pet: isPetItem ? (form.target_pet.trim() || null) : null,
         pet_item_effect: isPetItem ? (form.pet_item_effect.trim() || null) : null,
-        set_items: isItemSet ? setItemsToPayload(setItems) : null,
+        set_items: hasItemList ? setItemsToPayload(setItems) : null,
         // レシピは recipe_entries を送る（recipe_name/recipe_binder/skill_requirements はサーバ側で派生）
         ...(isRecipe && { recipe_entries: recipeEntriesToPayload(recipeEntries) }),
         bonus_effects: isPlain ? bonusEffects
@@ -664,14 +668,21 @@ export default function AdminItemEditPage() {
         </div>
         )}
 
-        {/* アイテムセット：アイテムリスト（自由入力・複数） */}
-        {isItemSet && (
+        {/* アイテムセット / 選べるチケット：アイテムリスト（自由入力・複数） */}
+        {hasItemList && (
         <div className="bg-surface-card border border-surface-border rounded-lg p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-300">アイテムセット情報</h2>
-          <p className="text-[10px] text-gray-500">セットに含まれるアイテム名を登録できます。</p>
+          <h2 className="text-sm font-semibold text-gray-300">
+            {isChoiceTicket ? '選べるチケット情報' : 'アイテムセット情報'}
+          </h2>
+          <p className="text-[10px] text-gray-500">
+            {isChoiceTicket ? '選択できるアイテム名を登録できます。' : 'セットに含まれるアイテム名を登録できます。'}
+          </p>
           <SetItemsEditor
             value={setItems}
             onChange={setSetItems}
+            emptyHint={isChoiceTicket
+              ? '「＋ アイテムを追加」で、選択できるアイテム名を登録できます。'
+              : '「＋ アイテムを追加」で、セットに含まれるアイテム名を登録できます。'}
           />
         </div>
         )}
