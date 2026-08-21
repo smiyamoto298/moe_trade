@@ -53,7 +53,7 @@
 全件テストを毎サブエージェント停止ごとに回すのをやめ（最大のコスト要因だった）、**スコープ実行＋統合時全件**でカバレッジを同等に保つ:
 
 - **実装中（各 worktree）**: `bash .claude/test-scope.sh` が **変更したテストファイルだけ** を実行する。実行先はそのツリー自身の Docker スタック（未起動なら main スタックに自分の backend をマウントしたエフェメラルコンテナ）。テストは SQLite `:memory:` なので並列実行しても DB 競合しない。backend のコードを変更したのにテスト未追加なら **gate FAIL**（テスト追加を機械的に強制）。
-- **統合時（Stop hook）**: `stop_quality_gate.sh` がそのツリーで **全件**（backend PHPUnit ＋ frontend ビルド）を実行し、回帰を最終担保する。
+- **統合時（Stop hook）**: `stop_quality_gate.sh` がそのツリーで **全件**（backend PHPUnit ＋ frontend ビルド）を実行し、回帰を最終担保する。frontend ビルドは **ホストに `frontend/node_modules` があればホストで、無ければそのツリーの `frontend` コンテナで**実行する（`new-worktree.ps1` は node_modules をコンテナの named volume にしか作らないため、新しい worktree のホスト側には `tsc` が無い）。`-NoStart` で作った worktree はどちらも無いので警告付きスキップになる。ビルドまで確認したいなら `-Lean` で作る。
 - SubagentStop hook は backstop（main ツリーに変更が見えればスコープ実行、無ければ no-op）。
 
 ## 複数セッションの並行作業（1セッション = 1ブランチ = 1 worktree = 1 Docker スタック）

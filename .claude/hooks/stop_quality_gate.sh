@@ -28,9 +28,20 @@ else
 fi
 
 # 2) フロント型チェック+ビルド
-if [ -d "$ROOT/frontend" ] && command -v npm >/dev/null 2>&1; then
-  if ! ( cd "$ROOT/frontend" && npm run build >/tmp/fe.log 2>&1 ); then
-    fail=1; msgs+=("frontend のビルド/型チェックが失敗(tail: $(tail -5 /tmp/fe.log | tr '\n' ' '))")
+#    ホストに node_modules があればホストで、無ければそのツリーの frontend コンテナで実行する。
+#    （new-worktree.ps1 は node_modules をコンテナの named volume にしか作らないため、
+#      新しい worktree のホスト側には tsc が無く「'tsc' は認識されていません」で必ず落ちていた）
+if [ -d "$ROOT/frontend" ]; then
+  if [ -x "$ROOT/frontend/node_modules/.bin/tsc" ] && command -v npm >/dev/null 2>&1; then
+    if ! ( cd "$ROOT/frontend" && npm run build >/tmp/fe.log 2>&1 ); then
+      fail=1; msgs+=("frontend のビルド/型チェックが失敗(tail: $(tail -5 /tmp/fe.log | tr '\n' ' '))")
+    fi
+  elif docker compose ps --status running -q frontend 2>/dev/null | grep -q .; then
+    if ! docker compose exec -T frontend npm run build >/tmp/fe.log 2>&1; then
+      fail=1; msgs+=("frontend のビルド/型チェックが失敗(コンテナ実行, tail: $(tail -5 /tmp/fe.log | tr '\n' ' '))")
+    fi
+  else
+    msgs+=("WARN: frontend の node_modules が無く frontend コンテナも未起動のため、ビルド/型チェックを実行できませんでした。docker compose up -d frontend か frontend/ で npm ci を実行してください。")
   fi
 fi
 
