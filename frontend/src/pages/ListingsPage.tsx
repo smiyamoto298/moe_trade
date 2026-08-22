@@ -404,25 +404,36 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
     // 件数が変わるとページ割りも変わるため1ページ目に戻す
     setParams((p) => ({ ...p, per_page: PER_PAGE_BY_MODE[m], page: 1 }))
   }
-  // シンプル表示の列数（アイテム・価格・サーバー・操作）と詳細表示の列数
-  const colCount = compact ? 4 : 7
-  // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
-  const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'
-
-  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ、スマホは /items/:id へ遷移）。
+  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ）。
   // スマホでモーダルを出すと縦に長い詳細が扱いづらいため、端末幅（md=768px）で出し分ける。
   const isWideScreen = useMediaQuery('(min-width: 768px)')
   const [detailItemId, setDetailItemId] = useState<number | null>(null)
 
+  // スマホ（768px未満）のシンプル表示は、狭い幅でアイテム名が1〜2文字ずつ折り返されるのを
+  // 避けるため、サーバー列・操作列を落としてアイテム名と価格の2列だけにする。
+  const compactMobile = compact && !isWideScreen
+
+  // シンプル表示の列数（アイテム・価格・サーバー・操作／スマホはアイテム・価格）と詳細表示の列数
+  const colCount = compact ? (compactMobile ? 2 : 4) : 7
+  // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
+  const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'
+
   // シンプル表示のアイテム名。詳細表示では従来どおりただのテキスト。
-  const compactItemName = (item: Item) => {
+  // PC はアイテム詳細ポップアップ、スマホは出品詳細（取引詳細）へ遷移する。
+  const compactItemName = (l: Listing) => {
     const cls = 'text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors'
     return isWideScreen ? (
-      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(item.id)} className={cls}>
-        {item.name}
+      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(l.item.id)} className={cls}>
+        {l.item.name}
       </button>
     ) : (
-      <Link to={`/items/${item.id}`} className={`block ${cls}`}>{item.name}</Link>
+      <Link
+        to={`/listings/${l.id}`}
+        onClick={(e) => e.stopPropagation()}
+        className={`block ${cls}`}
+      >
+        {l.item.name}
+      </Link>
     )
   }
 
@@ -947,7 +958,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
               <thead>
                 <tr className="border-b border-surface-border">
                   {/* シンプル表示は列が少ないぶんアイテム名に幅を寄せる（他列は内容ぶんだけに縮める） */}
-                  <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-full' : 'w-52'}`}>アイテム</th>
+                  <th className={`text-left py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compactMobile ? 'px-3' : 'px-4'} ${compact ? 'w-full' : 'w-52'}`}>アイテム</th>
                   {compact ? null : isAllMode ? (
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide" colSpan={3}>情報</th>
                   ) : isSkillMode ? (
@@ -970,11 +981,16 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider listing-col-wide">特殊条件</th>
                     </>
                   )}
-                  <th className="text-right px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">価格</th>
-                  <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide'}`}>
-                    {compact ? 'サーバー' : '取引'}
-                  </th>
-                  <th className="px-4 py-3" />
+                  <th className={`text-right py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compactMobile ? 'px-2 w-px whitespace-nowrap' : 'px-3'}`}>価格</th>
+                  {/* スマホのシンプル表示はサーバー列・操作列を出さない（アイテム名の幅を確保する） */}
+                  {!compactMobile && (
+                    <>
+                      <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide'}`}>
+                        {compact ? 'サーバー' : '取引'}
+                      </th>
+                      <th className="px-4 py-3" />
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
@@ -992,12 +1008,14 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                     return (
                       <React.Fragment key={l.id}>
                       <tr
-                        className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'}`}
+                        // スマホのシンプル表示は行のどこをタップしても出品詳細（取引詳細）へ移動する
+                        {...(compactMobile ? { onClick: () => navigate(`/listings/${l.id}`) } : {})}
+                        className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'} ${compactMobile ? 'cursor-pointer' : ''}`}
                       >
                         {/* アイテム名・種別（シンプル表示ではアイテム名のみ） */}
-                        <td data-tour="listings-itemname" className="px-4 py-3">
+                        <td data-tour="listings-itemname" className={`py-3 ${compactMobile ? 'px-3' : 'px-4'}`}>
                           {compact ? (
-                            compactItemName(l.item)
+                            compactItemName(l)
                           ) : (
                           <>
                           {l.item.verified_status === 'unverified' && (
@@ -1199,7 +1217,7 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                         )}
 
                         {/* 価格・期限 */}
-                        <td className="px-3 py-3 text-right">
+                        <td className={`py-3 text-right ${compactMobile ? 'px-2 w-px whitespace-nowrap' : 'px-3'}`}>
                           {l.trade_type === 'auction' ? (
                             <>
                               <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
@@ -1221,6 +1239,9 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                           )}
                         </td>
 
+                        {/* スマホのシンプル表示はサーバー列・操作列を出さない（アイテム名の幅を確保する） */}
+                        {!compactMobile && (
+                        <>
                         {/* 取引方法・サーバー（シンプル表示は取引可能サーバーのみ） */}
                         <td className={`px-4 py-3 ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide min-w-[8.5rem]'}`}>
                           {!compact && (
@@ -1276,6 +1297,8 @@ export default function ListingsPage({ mode = 'equipment' }: Props) {
                             </div>
                           )}
                         </td>
+                        </>
+                        )}
                       </tr>
 
                       {/* 出品コメント行（コメントがある場合のみ、アイテム行の直下に表示。シンプル表示では出さない） */}
