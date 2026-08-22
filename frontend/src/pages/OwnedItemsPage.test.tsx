@@ -978,6 +978,60 @@ describe('OwnedItemsPage レスポンシブ表示（モバイルカード）', (
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
+  it('lg 以上でもアカウントが多いとき（タブ数が上限超）は表示切替をドロップダウンにする', async () => {
+    // 画面上部に固定するフィルタ行が、折り返したピル型タブで肥大化して一覧を覆い隠さないようにする。
+    setMatchMedia(true) // lg 以上
+    mockedDisplayType.mockReturnValue('all')
+    // 「すべて」＋アカウント8件 = タブ9個（上限8超）
+    const accounts = Array.from({ length: 8 }, (_, i) => ({ id: `acc${i + 1}`, name: `アカウント${i + 1}` }))
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory(
+        accounts.map((a, i) => unlinkedRow({ id: `r${i + 1}`, accountId: a.id, name: `アイテム${i + 1}` })),
+        { accounts },
+      ),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    const { container } = renderPage()
+
+    const accSelect = await screen.findByLabelText('表示アカウント')
+    expect(within(accSelect).getByRole('option', { name: 'すべて (8)' })).toBeInTheDocument()
+    expect(within(accSelect).getByRole('option', { name: 'アカウント8 (1)' })).toBeInTheDocument()
+    // フィルタ行にアカウントのピル型タブは出さない（種別タブは従来どおりピルのまま）
+    const filterBar = within(container.querySelector('[data-tour="owned-filter"]') as HTMLElement)
+    expect(filterBar.queryByRole('button', { name: /^アカウント\d+ \(/ })).not.toBeInTheDocument()
+    expect(filterBar.getByRole('button', { name: '取引可能 (0)' })).toBeInTheDocument()
+    // 一覧はテーブルのまま（切り替わるのはアカウント選択 UI だけ）
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    // 選択で絞り込める
+    fireEvent.change(accSelect, { target: { value: 'acc8' } })
+    expect(screen.getByText('アイテム8')).toBeInTheDocument()
+    expect(screen.queryByText('アイテム1')).not.toBeInTheDocument()
+  })
+
+  it('lg 以上でアカウントが上限以内ならピル型タブのまま', async () => {
+    setMatchMedia(true)
+    mockedDisplayType.mockReturnValue('all')
+    // 「すべて」＋アカウント7件 = タブ8個（上限ちょうど）
+    const accounts = Array.from({ length: 7 }, (_, i) => ({ id: `acc${i + 1}`, name: `アカウント${i + 1}` }))
+    mockedLoad.mockResolvedValue({
+      mode: 'local',
+      data: makeInventory(
+        accounts.map((a, i) => unlinkedRow({ id: `r${i + 1}`, accountId: a.id, name: `アイテム${i + 1}` })),
+        { accounts },
+      ),
+    })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    const { container } = renderPage()
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+    const filterBar = within(container.querySelector('[data-tour="owned-filter"]') as HTMLElement)
+    expect(filterBar.getByRole('button', { name: 'アカウント7 (1)' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('表示アカウント')).not.toBeInTheDocument()
+  })
+
   it('lg 以上ではテーブル表示のまま', async () => {
     setMatchMedia(true)
     mockedDisplayType.mockReturnValue('all')
