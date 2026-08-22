@@ -81,7 +81,7 @@ if [ "$conflicts" -gt 0 ]; then
 1. 分岐する(推奨): ユーザー承認後、Bash で「powershell -File scripts/new-worktree.ps1 -Branch <作業内容に合った短い名前> -Lean」を実行し(専用 Docker スタックの起動まで行うため数分かかる)、出力された worktree パス(../moe_trade-<name>)へ EnterWorktree ツールで移動してから元の依頼を続行する。実装・修正はこれを選ぶ。
 2. 分岐する・Docker なし: 動作確認が不要でテストだけ回す場合に限り、「-Lean」の代わりに「-NoStart」を付けて実行(ブラウザでの動作確認はできない)。移動手順は同じ。
 3. 分岐しない: 調査・質問のみ等、ファイル編集を伴わない場合。そのまま続行してよいが、編集を伴う作業になったら改めて分岐を提案すること。
-分岐した場合の終了手順(CLAUDE.md「作業完了時のフロー」): 作業が終わったら、その worktree の環境(http://localhost:81xx)で動作確認した結果を示し、AskUserQuestion で「この内容で main にマージしてよいか」をユーザーに必ず確認する。OK が出るまでマージも破棄もしない。OK なら main へマージし、そのあと「powershell -File scripts/remove-worktree.ps1 -Branch <name> -DeleteBranch」で Docker スタック・worktree・ブランチを破棄する。
+分岐した場合の終了手順(CLAUDE.md「作業完了時のフロー」): 作業が終わったら、その worktree の環境(http://localhost:81xx)で動作確認した結果を示し、AskUserQuestion で「この内容で main にマージしてよいか」をユーザーに必ず確認する。このとき、ユーザー自身がその worktree で検証できるアカウント情報(実際のポートを埋めた検証 URL / メールアドレスと平文パスワード / 役割と確認手順)を必ず一緒に提示する。worktree の DB にはユーザーのシードが無いため事前に自分で作る: docker compose exec -T php php artisan tinker --execute="echo App\Models\User::factory()->forPlainEmail('verify-seller@example.test')->create(['password' => 'password'])->id;" (管理画面の検証が要るなら create の配列に 'role' => 'admin' を足す)。OK が出るまでマージも破棄もしない。OK なら main へマージし、そのあと「powershell -File scripts/remove-worktree.ps1 -Branch <name> -DeleteBranch」で Docker スタック・worktree・ブランチを破棄する。
 EOF
 fi
 exit 0

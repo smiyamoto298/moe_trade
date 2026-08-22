@@ -111,11 +111,30 @@ worktree に分岐したセッションは、実装が終わっても**勝手に
 
 1. worktree 側でコミット（`design.md` とテストは CLAUDE.md 冒頭の必須ワークフローどおり）
 2. **ユーザーに確認する**（必須ゲート）: `-Lean` で起動したその worktree の環境（`http://localhost:81xx`）で動作確認し、結果を提示したうえで AskUserQuestion で「この内容で main にマージしてよいか」を必ず確認する。**OK が出るまでマージも環境の破棄もしない。**
+   - **確認を求めるときは、ユーザー自身がその worktree で検証できるアカウント情報を必ず一緒に提示する**（下記「検証用アカウントの提示」）。URL とログイン情報が無いとユーザーは検証できず、確認ゲートが形骸化する。
 3. 修正が必要と言われたら worktree に留まって直し、2 に戻る
 4. OK なら main のセッションで `git merge <branch>`（または PR）
 5. main ツリーで全件テスト＋ビルド（Stop hook の品質ゲートが自動で回す）
 6. マージが通ったら `powershell -File scripts/remove-worktree.ps1 -Branch <名前> -DeleteBranch` で、**そのセッション用の Docker スタック（コンテナ＋DB ボリューム）・worktree・ブランチをまとめて破棄**する。破棄しないとポート枠（Slot）が空かない
    - 作業ディレクトリが worktree の中のままだと削除に失敗するので、**ExitWorktree で main ツリーへ戻ってから**実行する
+
+#### 検証用アカウントの提示（マージ確認の必須項目）
+
+worktree の DB は `migrate --seed` で作られる空 DB で、**ユーザーのシードが無いためログインできるアカウントが1つも存在しない**（`-CopyDb` で作ったときだけ main の DB 内容が入る）。したがってマージ可否を尋ねる前に検証用アカウントを自分で作成し、次を AskUserQuestion の質問文（または直前の応答）に**そのまま貼る**:
+
+- **検証 URL**: `http://localhost:81xx` の xx を実際の値にした URL（その worktree のルート `.env` のフロントポート）。確認してほしい画面の URL まで書く。プレースホルダのまま出さない
+- **ログイン情報**: メールアドレスと**平文パスワード**（例: `verify-seller@example.test` / `password`）
+- **役割と状態**: そのアカウントが何者か（登録者／取引希望者／`admin` など）と、確認手順（例: 「ログイン → マイページ → 取引希望一覧に取り下げボタンが出る」）
+- 検証に複数の立場が要る変更なら、**立場ごとに1アカウントずつ**提示する（例: 出品者側と申込者側）
+- 事前に投入したデータ（出品・取引希望・オークション等）があれば、その ID や見つけ方も添える
+
+メールアドレスは平文を保存せず HMAC ブラインドインデックスで持つため（`App\Support\EmailHasher`）、**必ずファクトリの `forPlainEmail()` 経由で作る**（SQL 直挿し・`email` への平文代入は不可）。その worktree の php コンテナで:
+
+```bash
+docker compose exec -T php php artisan tinker --execute="\$u = App\Models\User::factory()->forPlainEmail('verify-seller@example.test')->create(['password' => 'password']); echo \$u->id;"
+```
+
+管理画面の検証が要るときは `->create(['password' => 'password', 'role' => 'admin'])`。作成に使ったコマンドも提示文に含めておくと、ユーザーがアカウントを増やしたいときにそのまま使える。
 
 `design.md` は全セッションが触る共有ファイルなので、**章・機能単位で小さくコミット**する（`bash .claude/commit-doc.sh design.md "feat: 〇〇を追記"`）。ブロックはされなくなったが、マージコンフリクトを小さく保つために有効。
 
