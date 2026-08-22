@@ -744,6 +744,21 @@ describe('OwnedItemsPage アカウント管理ボタン', () => {
     expect(within(modal).getByRole('button', { name: '改名' })).toBeInTheDocument()
     expect(within(modal).getByRole('button', { name: '削除' })).toBeInTheDocument()
   })
+
+  // design.md「MoE アカウント」: アカウント名は管理用ラベルにすぎず、実アカウント名と
+  // 一致していなくてよいことをモーダル上で注記する
+  it('アカウント管理モーダルに「実際のアカウント名と一致しなくてよい」旨を注記する', async () => {
+    mockedLoad.mockResolvedValue({ mode: 'local', data: makeInventory([unlinkedRow()]) })
+    mockedMatch.mockResolvedValue({ data: {} })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'アカウント管理' }))
+    const modal = (await screen.findByText('MoE アカウントの管理')).closest('div')!.parentElement as HTMLElement
+    expect(
+      within(modal).getByText(/実際のアカウント名と一致していなくても問題ありません/)
+    ).toBeInTheDocument()
+  })
 })
 
 // design.md「貼り付け取り込み」: 貼り付け領域はアコーディオンで折りたためる（既定は閉じる）。

@@ -25,6 +25,10 @@ const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 1\tアイネの抱っこぬいぐるみ\t中級者レア\t○\t1
 3\tアクアマリン\t中級者アンコモン\t○\t321`
 
+// アカウント名は所持品を分けるための管理用ラベルにすぎない（公式サイト側と照合するわけではない）ため、
+// 実アカウント名を入れる必要はないことを、入力ダイアログと管理モーダルの両方で明示する。
+const ACCOUNT_NAME_NOTE = '実際のアカウント名と一致していなくても問題ありません。'
+
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function OwnedItemsPage() {
@@ -389,7 +393,9 @@ export default function OwnedItemsPage() {
 
   // アカウント名の入力。ブラウザ標準の prompt ではなくダイアログ内のテキストボックスで受け取る。
   const promptName = (label: string, initial = ''): Promise<string | null> =>
-    prompt(label, { title: 'MoE アカウント', defaultValue: initial, confirmLabel: '決定' })
+    prompt(`${label}
+
+※ ${ACCOUNT_NAME_NOTE}`, { title: 'MoE アカウント', defaultValue: initial, confirmLabel: '決定' })
 
   // ---- 表示種別（ジャンル）の分類 ----
   // 既定種別「その他」の id（ユーザー割当 type_id=null はこの種別とみなす）
@@ -1495,6 +1501,7 @@ export default function OwnedItemsPage() {
               <h3 className="text-base font-bold text-white">MoE アカウントの管理</h3>
               <button onClick={addAccount} className="text-xs bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded transition-colors">+ 追加</button>
             </div>
+            <p className="text-xs text-gray-400">※ {ACCOUNT_NAME_NOTE}</p>
             {inventory.accounts.length === 0 ? (
               <p className="text-sm text-gray-500 py-4 text-center">アカウントはありません。「追加」から登録できます。</p>
             ) : (
