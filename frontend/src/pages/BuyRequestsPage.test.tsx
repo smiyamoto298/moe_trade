@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import BuyRequestsPage from './BuyRequestsPage'
 import { buyRequestsApi } from '../api/buyRequests'
 import client from '../api/client'
@@ -101,9 +101,16 @@ const page = (data: BuyRequest[]): { data: Paginated<BuyRequest> } => ({
   data: { data, current_page: 1, last_page: 1, per_page: 20, total: data.length },
 })
 
+// 遷移先の検証用。現在のパスを DOM に出すだけの小さなプローブ
+function LocationProbe() {
+  const { pathname } = useLocation()
+  return <div data-testid="location">{pathname}</div>
+}
+
 const renderPage = () =>
   render(
     <MemoryRouter initialEntries={['/buy-requests']}>
+      <LocationProbe />
       <BuyRequestsPage />
     </MemoryRouter>
   )
@@ -355,7 +362,7 @@ describe('BuyRequestsPage 表示モード（詳細 / シンプル）', () => {
 })
 
 // design.md「出品一覧・買取一覧の表示モード（詳細 / シンプル）」:
-// シンプル表示のアイテム名はクリックでアイテム詳細を開く（PC はポップアップ、スマホは /items/:id へ遷移）。
+// シンプル表示のアイテム名はクリックでアイテム詳細を開く（PC はポップアップ、スマホは買取詳細へ遷移）。
 describe('BuyRequestsPage シンプル表示のアイテム名クリック', () => {
   // jsdom は matchMedia 未実装 → useMediaQuery は fallback(true)= PC 扱いになる
   afterEach(() => {
@@ -374,7 +381,7 @@ describe('BuyRequestsPage シンプル表示のアイテム名クリック', () 
     expect(await screen.findByTestId('item-detail-modal')).toHaveTextContent('item:1')
   })
 
-  it('スマホではアイテム名がアイテム詳細ページへのリンクになる', async () => {
+  it('スマホではアイテム名が買取詳細（取引詳細）へのリンクになる', async () => {
     window.matchMedia = vi.fn(() => ({
       matches: false,
       addEventListener: vi.fn(),
@@ -384,7 +391,7 @@ describe('BuyRequestsPage シンプル表示のアイテム名クリック', () 
     renderPage()
 
     const link = await screen.findByRole('link', { name: '炎の大剣' })
-    expect(link).toHaveAttribute('href', '/items/1')
+    expect(link).toHaveAttribute('href', '/buy-requests/1')
     expect(screen.queryByRole('button', { name: '炎の大剣' })).not.toBeInTheDocument()
   })
 
@@ -394,5 +401,58 @@ describe('BuyRequestsPage シンプル表示のアイテム名クリック', () 
 
     expect(screen.queryByRole('button', { name: '炎の大剣' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '炎の大剣' })).not.toBeInTheDocument()
+  })
+})
+
+// design.md「出品一覧・買取一覧の表示モード（詳細 / シンプル）」:
+// スマホ（768px未満）のシンプル表示は、アイテム名の幅を確保するためサーバー列・操作列を落とし
+// 「アイテム名・価格」の2列だけにする。行タップで買取詳細（取引詳細）へ遷移する。
+describe('BuyRequestsPage スマホのシンプル表示（アイテム名・価格の2列）', () => {
+  const mockNarrowScreen = () => {
+    window.matchMedia = vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+  }
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('列はアイテム・価格だけで、サーバー列も操作列（取引／相場情報）も出さない', async () => {
+    auth.user = verifiedUser
+    mockNarrowScreen()
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['アイテム', '価格'])
+    expect(screen.getByText('5,000 AC')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'サーバー' })).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Emerald')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '取引' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '相場情報' })).not.toBeInTheDocument()
+  })
+
+  it('行のどこをタップしても買取詳細（取引詳細）へ遷移する', async () => {
+    mockNarrowScreen()
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    // アイテム名以外（価格セル）をタップしても遷移する
+    await userEvent.click(screen.getByText('5,000 AC'))
+    expect(screen.getByTestId('location')).toHaveTextContent('/buy-requests/1')
+  })
+
+  it('PC幅ではシンプル表示でもサーバー列・操作列を出す（2列化はスマホだけ）', async () => {
+    auth.user = verifiedUser
+    localStorage.setItem('moe_list_display_mode', 'compact')
+    renderPage()
+    await screen.findByText('炎の大剣')
+
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['アイテム', '価格', 'サーバー', ''])
+    expect(screen.getByRole('button', { name: '取引' })).toBeInTheDocument()
   })
 })

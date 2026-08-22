@@ -11,7 +11,7 @@ import ListDisplayToggle from '../components/ListDisplayToggle'
 import ItemDetailModal from '../components/ItemDetailModal'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { getListDisplayMode, setListDisplayMode, PER_PAGE_BY_MODE, type ListDisplayMode } from '../utils/listDisplayStore'
-import type { BuyRequest, Item, Paginated } from '../types'
+import type { BuyRequest, Paginated } from '../types'
 import { TRADE_TYPE_LABEL, SERVER_COLORS, remainingLabel, deadlineTooltip } from '../utils/constants'
 
 /**
@@ -142,18 +142,30 @@ export default function BuyRequestsPage() {
   // 操作列のボタン配置。シンプル表示は横並びにして行の高さを詰める
   const actionsClass = compact ? 'flex items-center justify-end gap-1' : 'flex flex-col gap-1 items-end'
 
-  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ、スマホは /items/:id へ遷移。出品一覧と同じ）
+  // シンプル表示のアイテム名クリックで開くアイテム詳細（PC はポップアップ。出品一覧と同じ）
   const isWideScreen = useMediaQuery('(min-width: 768px)')
   const [detailItemId, setDetailItemId] = useState<number | null>(null)
 
-  const compactItemName = (item: Item) => {
+  // スマホ（768px未満）のシンプル表示は、狭い幅でアイテム名が1〜2文字ずつ折り返されるのを
+  // 避けるため、サーバー列・操作列を落としてアイテム名と価格の2列だけにする（出品一覧と同じ）
+  const compactMobile = compact && !isWideScreen
+  const colCount = compactMobile ? 2 : 4
+
+  // シンプル表示のアイテム名。PC はアイテム詳細ポップアップ、スマホは買取詳細（取引詳細）へ遷移する。
+  const compactItemName = (b: BuyRequest) => {
     const cls = 'text-white font-medium text-left hover:text-primary-300 hover:underline transition-colors'
     return isWideScreen ? (
-      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(item.id)} className={cls}>
-        {item.name}
+      <button type="button" title="アイテム詳細を表示" onClick={() => setDetailItemId(b.item.id)} className={cls}>
+        {b.item.name}
       </button>
     ) : (
-      <Link to={`/items/${item.id}`} className={`block ${cls}`}>{item.name}</Link>
+      <Link
+        to={`/buy-requests/${b.id}`}
+        onClick={(e) => e.stopPropagation()}
+        className={`block ${cls}`}
+      >
+        {b.item.name}
+      </Link>
     )
   }
 
@@ -308,19 +320,24 @@ export default function BuyRequestsPage() {
           <thead>
             <tr className="border-b border-surface-border">
               {/* シンプル表示は列が少ないぶんアイテム名に幅を寄せる（他列は内容ぶんだけに縮める） */}
-              <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-full' : ''}`}>アイテム</th>
-              <th className="text-right px-3 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">価格</th>
-              <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide'}`}>
-                {compact ? 'サーバー' : '取引'}
-              </th>
-              <th className="px-4 py-3" />
+              <th className={`text-left py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compactMobile ? 'px-3' : 'px-4'} ${compact ? 'w-full' : ''}`}>アイテム</th>
+              <th className={`text-right py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compactMobile ? 'px-2 w-px whitespace-nowrap' : 'px-3'}`}>価格</th>
+              {/* スマホのシンプル表示はサーバー列・操作列を出さない（アイテム名の幅を確保する） */}
+              {!compactMobile && (
+                <>
+                  <th className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide'}`}>
+                    {compact ? 'サーバー' : '取引'}
+                  </th>
+                  <th className="px-4 py-3" />
+                </>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border">
             {loading ? (
-              <tr><td colSpan={4} className="text-center py-16 text-gray-500">読み込み中...</td></tr>
+              <tr><td colSpan={colCount} className="text-center py-16 text-gray-500">読み込み中...</td></tr>
             ) : !data || data.data.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-16 text-gray-500">該当する買取はありません。</td></tr>
+              <tr><td colSpan={colCount} className="text-center py-16 text-gray-500">該当する買取はありません。</td></tr>
             ) : (
               data.data.map((b) => {
                 const daysLeft = Math.ceil((new Date(b.expires_at).getTime() - Date.now()) / 86400000)
@@ -330,11 +347,15 @@ export default function BuyRequestsPage() {
                 const isCompleted = b.status === 'completed'
                 return (
                   <React.Fragment key={b.id}>
-                  <tr className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'}`}>
+                  <tr
+                    // スマホのシンプル表示は行のどこをタップしても買取詳細（取引詳細）へ移動する
+                    {...(compactMobile ? { onClick: () => navigate(`/buy-requests/${b.id}`) } : {})}
+                    className={`transition-colors ${isOpen ? 'bg-primary-500/5' : 'hover:bg-surface-border/20'} ${compactMobile ? 'cursor-pointer' : ''}`}
+                  >
                     {/* アイテム名・種別（シンプル表示ではアイテム名のみ） */}
-                    <td className="px-4 py-3">
+                    <td className={`py-3 ${compactMobile ? 'px-3' : 'px-4'}`}>
                       {!compact && <p className="text-xs text-gray-400">{b.item.category.name}</p>}
-                      {compact ? compactItemName(b.item) : <p className="text-white font-medium">{b.item.name}</p>}
+                      {compact ? compactItemName(b) : <p className="text-white font-medium">{b.item.name}</p>}
                       {!compact && b.item.official_url && (
                         <div className="mt-1">
                           <OfficialDbLink url={b.item.official_url} />
@@ -343,7 +364,7 @@ export default function BuyRequestsPage() {
                     </td>
 
                     {/* 買取希望価格・期限 */}
-                    <td className="px-3 py-3 text-right">
+                    <td className={`py-3 text-right ${compactMobile ? 'px-2 w-px whitespace-nowrap' : 'px-3'}`}>
                       {b.trade_type === 'auction' ? (
                         <>
                           <p className="text-[10px] text-amber-300/80 leading-none">現在価格</p>
@@ -368,6 +389,9 @@ export default function BuyRequestsPage() {
                       )}
                     </td>
 
+                    {/* スマホのシンプル表示はサーバー列・操作列を出さない（アイテム名の幅を確保する） */}
+                    {!compactMobile && (
+                    <>
                     {/* 取引方法・サーバー（シンプル表示は取引可能サーバーのみ） */}
                     <td className={`px-4 py-3 ${compact ? 'w-px whitespace-nowrap' : 'listing-col-wide min-w-[8.5rem]'}`}>
                       {!compact && (
@@ -422,12 +446,14 @@ export default function BuyRequestsPage() {
                         </div>
                       )}
                     </td>
+                    </>
+                    )}
                   </tr>
 
                   {/* 買取コメント行（コメントがある場合のみ、アイテム行の直下に表示。シンプル表示では出さない） */}
                   {b.comment && !compact && (
                     <tr className={`!border-t-0 ${isOpen ? 'bg-primary-500/5' : ''}`}>
-                      <td colSpan={4} className="px-4 pb-3 pt-0">
+                      <td colSpan={colCount} className="px-4 pb-3 pt-0">
                         <p className="text-xs text-gray-300 bg-surface rounded px-3 py-2 whitespace-pre-wrap break-words">
                           <span className="text-gray-500 mr-1.5 select-none">💬</span>
                           {b.comment}
@@ -439,7 +465,7 @@ export default function BuyRequestsPage() {
                   {/* 売却申し出パネル（行を展開） */}
                   {isOpen && (
                     <tr key={`panel-${b.id}`}>
-                      <td colSpan={4} className="px-4 pb-4">
+                      <td colSpan={colCount} className="px-4 pb-4">
                         <TradeRequestPanel
                           source={b}
                           kind="buy_request"
