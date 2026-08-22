@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { manualChunks } from './src/build/manualChunks'
 
 /**
  * ビルドごとに一意な識別子。ビルド時に __BUILD_ID__ として焼き込み、
@@ -27,6 +28,10 @@ export default defineConfig(({ mode }) => {
         },
       },
     ],
+    build: {
+      // 依存ライブラリの固定チャンク分割。ルールと理由は src/build/manualChunks.ts 参照
+      rollupOptions: { output: { manualChunks } },
+    },
     server: {
       host: true,
       watch: {
