@@ -10,26 +10,34 @@ import SideBanners from './components/SideBanners'
 import TourOverlay from './components/TourOverlay'
 import HelpButton from './components/HelpButton'
 import ListingsPage from './pages/ListingsPage'
-import ListingDetailPage from './pages/ListingDetailPage'
-import NewListingPage from './pages/NewListingPage'
-import BuyRequestsPage from './pages/BuyRequestsPage'
-import BuyRequestDetailPage from './pages/BuyRequestDetailPage'
-import NewBuyRequestPage from './pages/NewBuyRequestPage'
-import ItemDetailPage from './pages/ItemDetailPage'
-import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
-import ForgotPasswordPage from './pages/ForgotPasswordPage'
-import ResetPasswordPage from './pages/ResetPasswordPage'
-import MyPage from './pages/MyPage'
-import OwnedItemsPage from './pages/OwnedItemsPage'
-import BoardPage from './pages/BoardPage'
-import BoardThreadPage from './pages/BoardThreadPage'
-import TermsPage from './pages/TermsPage'
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
 import { useAuth } from './contexts/AuthContext'
 import type { UserRole } from './types'
 
-// 管理画面は利用者が限られるため遅延読み込みにして、初回バンドルから外す
+/*
+ * ルート単位のコード分割。
+ * 1回の画面表示で描画されるルートは1つだけなので、入口ページ以外はすべて
+ * React.lazy で別チャンクに切り出し、初回バンドルから外す。
+ * ListingsPage だけは同期 import のまま残す（`/` のリダイレクト先 `/all` および
+ * 各種別タブの実体＝ほぼ全訪問の入口であり、遅延させると初回描画に
+ * チャンク取得のラウンドトリップが1回増えるため）。
+ * 追加・変更時は「入口以外は lazy」を維持すること。
+ */
+const ListingDetailPage = lazy(() => import('./pages/ListingDetailPage'))
+const NewListingPage = lazy(() => import('./pages/NewListingPage'))
+const BuyRequestsPage = lazy(() => import('./pages/BuyRequestsPage'))
+const BuyRequestDetailPage = lazy(() => import('./pages/BuyRequestDetailPage'))
+const NewBuyRequestPage = lazy(() => import('./pages/NewBuyRequestPage'))
+const ItemDetailPage = lazy(() => import('./pages/ItemDetailPage'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const RegisterPage = lazy(() => import('./pages/RegisterPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
+const MyPage = lazy(() => import('./pages/MyPage'))
+const OwnedItemsPage = lazy(() => import('./pages/OwnedItemsPage'))
+const BoardPage = lazy(() => import('./pages/BoardPage'))
+const BoardThreadPage = lazy(() => import('./pages/BoardThreadPage'))
+const TermsPage = lazy(() => import('./pages/TermsPage'))
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'))
 const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'))
 const AdminItemsPage = lazy(() => import('./pages/admin/AdminItemsPage'))
 const AdminItemEditPage = lazy(() => import('./pages/admin/AdminItemEditPage'))

@@ -459,9 +459,21 @@ Google等でアイテム名を検索したとき、そのアイテムのペー�
 ### コード分割（バンドルの遅延読み込み）
 - recharts を含む価格解析チャートは `components/PriceAnalyticsAsync.tsx`（`React.lazy` ラッパー）経由で読み込む。
   チャートを表示する側は `PriceAnalytics` を直接 import せず、必ずこのラッパーを使う（直接 import すると分割が無効になる）
-- 管理画面6ページ（`/admin/*`）は `App.tsx` で `React.lazy` によるルート単位の遅延読み込み。
+- **ルート単位の遅延読み込み（入口以外は全て lazy）**: `App.tsx` のページは `ListingsPage` を除いてすべて `React.lazy`。
+  1回の画面表示で描画されるルートは1つだけなので、訪問者は自分が開いたページのチャンクしか取得しない。
   `<Routes>` 全体を `<Suspense fallback={<Spinner center />}>` で包み、チャンク取得中はスピナーを表示する
-- 効果: 初回バンドル 904KB（gzip 253KB）→ 458KB（gzip 132KB）。recharts は「相場情報」等で初めてチャートを開いたときに取得される
+  - `ListingsPage` だけ同期 import のまま残す。`/` のリダイレクト先 `/all` と各種別タブ（`/listings` `/skills` `/assets` `/others`）の実体で
+    ほぼ全訪問の入口になるため、遅延させると初回描画にチャンク取得のラウンドトリップが1回増える
+  - ページを追加するときは `React.lazy` で書く。回帰防止テスト `frontend/src/App.test.tsx` が
+    `App.tsx` のソースを走査し、`./pages/...` の静的 import が `ListingsPage` 以外に増えていないかを検査する
+- **依存ライブラリの固定チャンク**: `frontend/src/build/manualChunks.ts`（`vite.config.ts` の `rollupOptions.output.manualChunks` 本体）で
+  `react-vendor`（react / react-dom / scheduler / react-router / react-router-dom / @remix-run/router）と `axios` を切り出す。
+  アプリのコードと更新頻度が違うため、機能追加のたびにアプリ側チャンクのハッシュだけが変わり、これらはブラウザキャッシュに残り続ける
+  - 判定はパッケージ名の**完全一致**。パス断片の部分一致にすると `react-smooth` / `react-is`（recharts の依存）まで巻き込み、
+    遅延させている重いチャートを初回バンドルへ引き戻してしまう。回帰防止テストは `frontend/src/build/manualChunks.test.ts`
+  - 遅延読み込み側の依存（recharts / lodash / d3-*）はここに列挙しない
+- 効果（初回に必ず読む JS = `index` + `react-vendor` + `axios`）: 602KB（gzip 171KB）→ **348KB（gzip 111KB）**。
+  Vite のチャンクサイズ警告（500KB 超）も解消。recharts は「相場情報」等で初めてチャートを開いたときに取得される
 
 ### 出品一覧のタブとルーティング
 - **`/all` がサイトのホーム**。`/` はここへリダイレクトし、PWA の `start_url` も `/all?src=pwa`（`src=pwa` はインストール経由の利用を計測するため）
