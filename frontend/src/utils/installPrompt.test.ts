@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   installPromptCapture,
   isInstallAvailable,
+  isInstallDismissed,
   isRunningStandalone,
+  markInstallDismissed,
   promptInstall,
   resetInstallPromptForTest,
   subscribeInstallAvailability,
@@ -131,6 +133,21 @@ describe('promptInstall', () => {
     window.dispatchEvent(event)
 
     await expect(promptInstall()).resolves.toBe(false)
+  })
+})
+
+describe('isInstallDismissed / markInstallDismissed', () => {
+  afterEach(() => {
+    localStorage.removeItem('pwa_install_dismissed')
+  })
+
+  it('未記録なら false、markInstallDismissed で true になる（localStorage 永続）', () => {
+    expect(isInstallDismissed()).toBe(false)
+
+    markInstallDismissed()
+
+    expect(isInstallDismissed()).toBe(true)
+    expect(localStorage.getItem('pwa_install_dismissed')).toBe('1')
   })
 })
 

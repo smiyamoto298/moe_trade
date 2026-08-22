@@ -14,6 +14,9 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
+/** 「あとで」を選んだら以後バナーは出さない（端末ごとに localStorage で保持） */
+const DISMISSED_KEY = 'pwa_install_dismissed'
+
 let deferredPrompt: BeforeInstallPromptEvent | null = null
 const listeners = new Set<(available: boolean) => void>()
 
@@ -32,6 +35,24 @@ export function subscribeInstallAvailability(listener: (available: boolean) => v
 /** 現時点でインストールボタンを出せるか */
 export function isInstallAvailable(): boolean {
   return deferredPrompt !== null
+}
+
+/** インストールバナーで「あとで」を選んだ端末か */
+export function isInstallDismissed(): boolean {
+  try {
+    return localStorage.getItem(DISMISSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** 「あとで」を記録する（localStorage が使えない環境では何もしない） */
+export function markInstallDismissed(): void {
+  try {
+    localStorage.setItem(DISMISSED_KEY, '1')
+  } catch {
+    /* localStorage が使えない環境ではセッション内のみ非表示 */
+  }
 }
 
 /** 既にホーム画面のアプリとして起動しているか（インストール済みならボタンを出さない） */

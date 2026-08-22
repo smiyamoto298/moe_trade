@@ -11,6 +11,8 @@ import { notificationSettingsApi, type NotificationSettings } from '../api/notif
 // - トグル操作で即座に保存し、失敗したら元の状態へ戻す
 // - 通知先メールが未設定/未確認のときは「ONにしても届かない」旨を明示する
 // - ログイン用と別のアドレスを指定すると確認メールを送り、確認まで通知は届かない
+// - 「ブラウザ通知の受け取り（このブラウザ）」は種別トグルより先頭に表示する
+// - PWA インストール可能かつバナーを「あとで」で消した端末には、先頭にインストール導線を出す
 
 vi.mock('../api/notificationSettings', async () => {
   const actual = await vi.importActual<typeof import('../api/notificationSettings')>(
@@ -47,6 +49,22 @@ vi.mock('../contexts/NotificationContext', () => ({
     enablePush: notifState.enablePush,
     requestNotifPermission: notifState.requestNotifPermission,
   }),
+}))
+
+// PWA インストール導線（既定: インストール不可・「あとで」なし・ブラウザタブ起動）。
+// テストごとに installState を書き換えて各状態を再現する。
+const installState = vi.hoisted(() => ({
+  available: false,
+  dismissed: false,
+  standalone: false,
+  promptInstall: vi.fn(),
+}))
+vi.mock('../utils/installPrompt', () => ({
+  isInstallAvailable: () => installState.available,
+  isInstallDismissed: () => installState.dismissed,
+  isRunningStandalone: () => installState.standalone,
+  subscribeInstallAvailability: () => () => {},
+  promptInstall: installState.promptInstall,
 }))
 
 const dialogMocks = vi.hoisted(() => ({
@@ -88,6 +106,10 @@ beforeEach(() => {
   notifState.permission = 'granted'
   notifState.supported = true
   notifState.optedOut = false
+  installState.available = false
+  installState.dismissed = false
+  installState.standalone = false
+  installState.promptInstall.mockResolvedValue(true)
   dialogMocks.confirm.mockResolvedValue(true)
 })
 
@@ -209,6 +231,70 @@ describe('NotificationSettingsPage', () => {
       expect.stringContaining('対応していません'),
       expect.objectContaining({ title: 'プッシュ通知を利用するには' })
     )
+  })
+
+  it('「ブラウザ通知の受け取り」セクションを種別トグルより先頭に表示する', async () => {
+    mockedApi.get.mockResolvedValue(ok(settings()))
+    renderPage()
+
+    const pushHeading = await screen.findByRole('heading', {
+      name: 'ブラウザ通知の受け取り（このブラウザ）',
+    })
+    const typesHeading = screen.getByRole('heading', { name: '通知の種類' })
+    expect(
+      pushHeading.compareDocumentPosition(typesHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  // 以下は PWA インストール導線（バナーを「あとで」で消した端末向けの再導線）
+  it('インストール可能かつ「あとで」済みなら、先頭にインストールボタンを表示し押すと prompt を呼ぶ', async () => {
+    installState.available = true
+    installState.dismissed = true
+    mockedApi.get.mockResolvedValue(ok(settings()))
+    renderPage()
+
+    const button = await screen.findByRole('button', { name: 'アプリをインストール' })
+    // 先頭 = 「ブラウザ通知の受け取り」セクションよりも前に置く
+    const pushHeading = screen.getByRole('heading', {
+      name: 'ブラウザ通知の受け取り（このブラウザ）',
+    })
+    expect(
+      button.compareDocumentPosition(pushHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+
+    await userEvent.click(button)
+    expect(installState.promptInstall).toHaveBeenCalled()
+  })
+
+  it('「あとで」していない端末では出さない（ヘッダー直下のバナーと重複するため）', async () => {
+    installState.available = true
+    installState.dismissed = false
+    mockedApi.get.mockResolvedValue(ok(settings()))
+    renderPage()
+
+    await screen.findByRole('heading', { name: '通知の種類' })
+    expect(screen.queryByRole('button', { name: 'アプリをインストール' })).not.toBeInTheDocument()
+  })
+
+  it('インストール不可（イベント未発火）なら「あとで」済みでも出さない', async () => {
+    installState.available = false
+    installState.dismissed = true
+    mockedApi.get.mockResolvedValue(ok(settings()))
+    renderPage()
+
+    await screen.findByRole('heading', { name: '通知の種類' })
+    expect(screen.queryByRole('button', { name: 'アプリをインストール' })).not.toBeInTheDocument()
+  })
+
+  it('インストール済み（standalone 起動）では出さない', async () => {
+    installState.available = true
+    installState.dismissed = true
+    installState.standalone = true
+    mockedApi.get.mockResolvedValue(ok(settings()))
+    renderPage()
+
+    await screen.findByRole('heading', { name: '通知の種類' })
+    expect(screen.queryByRole('button', { name: 'アプリをインストール' })).not.toBeInTheDocument()
   })
 
   it('確認済みなら確認済みの表示になり、削除できる', async () => {

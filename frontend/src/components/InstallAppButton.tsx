@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import {
   isInstallAvailable,
+  isInstallDismissed,
   isRunningStandalone,
+  markInstallDismissed,
   promptInstall,
   subscribeInstallAvailability,
 } from '../utils/installPrompt'
-
-/** 「あとで」を選んだら以後は出さない（端末ごとに localStorage で保持） */
-const DISMISSED_KEY = 'pwa_install_dismissed'
 
 /**
  * ホーム画面へのインストールを促すバナー（ヘッダー直下）。
@@ -18,13 +17,7 @@ const DISMISSED_KEY = 'pwa_install_dismissed'
  */
 export default function InstallAppButton() {
   const [available, setAvailable] = useState(() => isInstallAvailable())
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      return localStorage.getItem(DISMISSED_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
+  const [dismissed, setDismissed] = useState(() => isInstallDismissed())
 
   useEffect(() => subscribeInstallAvailability(setAvailable), [])
 
@@ -37,11 +30,7 @@ export default function InstallAppButton() {
   }
 
   const handleDismiss = () => {
-    try {
-      localStorage.setItem(DISMISSED_KEY, '1')
-    } catch {
-      /* localStorage が使えない環境ではセッション内のみ非表示 */
-    }
+    markInstallDismissed()
     setDismissed(true)
   }
 

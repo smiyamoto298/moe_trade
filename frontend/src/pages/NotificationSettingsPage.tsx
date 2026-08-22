@@ -9,6 +9,13 @@ import {
 import { useNotification } from '../contexts/NotificationContext'
 import { useDialog } from '../contexts/DialogContext'
 import { buildPushGuide } from '../utils/pushGuide'
+import {
+  isInstallAvailable,
+  isInstallDismissed,
+  isRunningStandalone,
+  promptInstall,
+  subscribeInstallAvailability,
+} from '../utils/installPrompt'
 
 /**
  * 通知設定画面（/mypage/notifications）。
@@ -16,6 +23,10 @@ import { buildPushGuide } from '../utils/pushGuide'
  * 通知の種別（取引 / オークション / 期限切れ）ごとに、ブラウザ通知（Web Push）と
  * メール通知をそれぞれ ON/OFF できる。メール通知は宛先アドレスを設定し、
  * 確認が済んだときだけ届く（未確認のアドレスへは送らない）。
+ *
+ * 画面の先頭には「このブラウザへの配信」の設定を置く（ここがONでないと種別を
+ * ONにしても届かないため）。さらに PWA 未インストールでバナーを「あとで」で
+ * 消した端末には、最上部にインストール導線を表示する。
  */
 export default function NotificationSettingsPage() {
   const {
@@ -32,6 +43,13 @@ export default function NotificationSettingsPage() {
   const [emailSaving, setEmailSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  // PWA のインストール可否（beforeinstallprompt を保持しているか）。
+  // ヘッダー直下のバナーで「あとで」を選んだ端末はバナーが出ないままになるため、
+  // 通知設定画面の先頭に代わりのインストール導線を出す（バナー表示中の端末には重複するので出さない）
+  const [installAvailable, setInstallAvailable] = useState(() => isInstallAvailable())
+  useEffect(() => subscribeInstallAvailability(setInstallAvailable), [])
+  const showInstall = installAvailable && isInstallDismissed() && !isRunningStandalone()
 
   useEffect(() => {
     notificationSettingsApi
@@ -159,6 +177,20 @@ export default function NotificationSettingsPage() {
         </Link>
       </div>
 
+      {/* インストール可能（Android Chrome 等）なのに「あとで」でバナーを消した端末向けの導線。
+          バナー表示中の端末はヘッダー直下に同じ導線が出ているため、ここには出さない */}
+      {showInstall && (
+        <div className="text-sm bg-emerald-900/20 border border-emerald-700/40 rounded-lg p-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-emerald-100">
+          <span>📲 ホーム画面にインストールすると、アプリのように起動でき通知にも気づきやすくなります。</span>
+          <button
+            onClick={() => promptInstall()}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded transition-colors"
+          >
+            アプリをインストール
+          </button>
+        </div>
+      )}
+
       {notice && (
         <p className="text-sm text-emerald-300 bg-emerald-900/20 border border-emerald-700/40 rounded-lg p-3">{notice}</p>
       )}
@@ -166,55 +198,17 @@ export default function NotificationSettingsPage() {
         <p className="text-sm text-rose-300 bg-rose-900/20 border border-rose-700/40 rounded-lg p-3">{error}</p>
       )}
 
-      {/* ---- 種別 × チャネルの ON/OFF ---- */}
-      <section className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-4">
+      {/* ---- このブラウザへの配信の ON/OFF ----
+          下の種別トグルは「何を受け取るか」の設定で、こちらは「このブラウザに配信するか」。
+          まずここがONでないとブラウザ通知は届かないため、画面の先頭に置く。
+          届かない状態のときは警告色にして、ONにしても届かないことを明示する。 */}
+      <section className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-3">
         <div>
-          <h2 className="text-base font-semibold text-white">通知の種類</h2>
+          <h2 className="text-base font-semibold text-white">ブラウザ通知の受け取り（このブラウザ）</h2>
           <p className="text-xs text-gray-400 mt-1">
-            通知の種類ごとに、ブラウザ通知（プッシュ）とメール通知をそれぞれ受け取るか設定できます。
+            このブラウザにプッシュ通知を配信するかの設定です。ここがOFFのままだと、下の「通知の種類」でONにしてもブラウザ通知は届きません。
           </p>
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[26rem]">
-            <thead>
-              <tr className="text-xs text-gray-400 border-b border-surface-border">
-                <th className="text-left font-medium py-2">通知の種類</th>
-                <th className="w-24 py-2 font-medium">ブラウザ通知</th>
-                <th className="w-24 py-2 font-medium">メール通知</th>
-              </tr>
-            </thead>
-            <tbody>
-              {NOTIFICATION_CATEGORIES.map(({ key, label, description }) => (
-                <tr key={key} className="border-b border-surface-border/60 last:border-0 align-top">
-                  <td className="py-3 pr-3">
-                    <div className="text-gray-200 font-medium">{label}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{description}</div>
-                  </td>
-                  {(['push', 'email'] as const).map((channel) => (
-                    <td key={channel} className="py-3 text-center">
-                      <label className="inline-flex items-center justify-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={settings[channel][key]}
-                          disabled={saving}
-                          onChange={() => toggle(channel, key)}
-                          aria-label={`${label}の${channel === 'push' ? 'ブラウザ通知' : 'メール通知'}`}
-                        />
-                        <span className="w-10 h-6 rounded-full bg-surface-border peer-checked:bg-primary-500 peer-disabled:opacity-50 transition-colors relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
-                      </label>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* このブラウザの通知許可・購読の状態と操作。
-            上の種別トグルは「何を受け取るか」の設定で、こちらは「このブラウザに配信するか」。
-            届かない状態のときは警告色にして、ONにしても届かないことを明示する。 */}
         <div
           className={`text-xs rounded-md p-3 flex flex-wrap items-center gap-2 ${
             pushActive
@@ -273,6 +267,54 @@ export default function NotificationSettingsPage() {
             </>
           )}
         </div>
+      </section>
+
+      {/* ---- 種別 × チャネルの ON/OFF ---- */}
+      <section className="bg-surface-card border border-surface-border rounded-lg p-4 space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-white">通知の種類</h2>
+          <p className="text-xs text-gray-400 mt-1">
+            通知の種類ごとに、ブラウザ通知（プッシュ）とメール通知をそれぞれ受け取るか設定できます。
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[26rem]">
+            <thead>
+              <tr className="text-xs text-gray-400 border-b border-surface-border">
+                <th className="text-left font-medium py-2">通知の種類</th>
+                <th className="w-24 py-2 font-medium">ブラウザ通知</th>
+                <th className="w-24 py-2 font-medium">メール通知</th>
+              </tr>
+            </thead>
+            <tbody>
+              {NOTIFICATION_CATEGORIES.map(({ key, label, description }) => (
+                <tr key={key} className="border-b border-surface-border/60 last:border-0 align-top">
+                  <td className="py-3 pr-3">
+                    <div className="text-gray-200 font-medium">{label}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{description}</div>
+                  </td>
+                  {(['push', 'email'] as const).map((channel) => (
+                    <td key={channel} className="py-3 text-center">
+                      <label className="inline-flex items-center justify-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings[channel][key]}
+                          disabled={saving}
+                          onChange={() => toggle(channel, key)}
+                          aria-label={`${label}の${channel === 'push' ? 'ブラウザ通知' : 'メール通知'}`}
+                        />
+                        <span className="w-10 h-6 rounded-full bg-surface-border peer-checked:bg-primary-500 peer-disabled:opacity-50 transition-colors relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
+                      </label>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         {!emailActive && (
           <p className="text-xs bg-amber-900/20 border border-amber-700/40 rounded-md p-3 text-amber-100/90">
             通知先メールアドレスが{settings.notification_email ? '未確認' : '未設定'}のため、メール通知はONにしても届きません。
