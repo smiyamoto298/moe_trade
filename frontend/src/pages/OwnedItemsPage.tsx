@@ -25,6 +25,11 @@ const SAMPLE = `No▼\tアイテム名\tカテゴリ\t転送\t個数
 1\tアイネの抱っこぬいぐるみ\t中級者レア\t○\t1
 3\tアクアマリン\t中級者アンコモン\t○\t321`
 
+// 表示アカウント切替をピル型タブで並べる上限（「すべて」「未割り当て」を含めたタブ数）。
+// これを超えると lg 以上でもドロップダウンに切り替える（フィルタ行は画面上部に固定されるため、
+// タブが折り返して段数が増えると一覧の表示領域を食い潰してしまう）。
+const ACCOUNT_TAB_LIMIT = 8
+
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function OwnedItemsPage() {
@@ -1027,7 +1032,7 @@ export default function OwnedItemsPage() {
     ? 'アイテムボックスを貼り付けて読み込んでください。'
     : '表示できるアイテムがありません。'
 
-  // ---- フィルタ行のタブ定義（lg 以上はピル型タブ、lg 未満はドロップダウンで表示する） ----
+  // ---- フィルタ行のタブ定義（ピル型タブ／ドロップダウンで表示する） ----
   const accountTabs = [
     { id: 'all', label: 'すべて', count: inventory.items.length },
     ...inventory.accounts.map((a) => ({
@@ -1040,6 +1045,10 @@ export default function OwnedItemsPage() {
       ? [{ id: 'unassigned', label: '未割り当て', count: inventory.items.filter((i) => i.accountId == null).length }]
       : []),
   ]
+  // アカウントが増えるとピル型タブが何段にも折り返し、画面上部に固定しているフィルタ行が
+  // 一覧を覆い隠すほど肥大化する。タブ数が上限を超えたら lg 以上でもドロップダウンに切り替え、
+  // フィルタ行の高さを常に1行分に保つ。
+  const showAccountTabs = isDesktop && accountTabs.length <= ACCOUNT_TAB_LIMIT
   const typeTabs: { id: DisplayType; label: string }[] = [
     { id: 'all', label: 'すべて' },
     { id: 'tradeable', label: '取引可能' },
@@ -1180,11 +1189,12 @@ export default function OwnedItemsPage() {
         {/* 1段目: アカウント切替＋マークのみ＋サーバ登録対象外。
             モバイルでは横に押し合って窮屈になるため縦積みにする（sm 以上で横並び） */}
         <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
-          {/* 表示切替（アカウントごと）。lg 以上はピル型タブ、lg 未満は場所を取らないドロップダウン。
+          {/* 表示切替（アカウントごと）。lg 以上かつタブ数が ACCOUNT_TAB_LIMIT 以下ならピル型タブ、
+              lg 未満またはアカウントが多いときは場所を取らないドロップダウン。
               アカウントが増えても右上のボタン群は固定したいので、タブ側を flex-1 で残り幅に折り返させる */}
           <div className="flex items-start gap-2 flex-1 min-w-0">
             <span className="text-xs text-gray-400 w-8 shrink-0 pt-1.5">表示</span>
-            {isDesktop ? (
+            {showAccountTabs ? (
               <div className="flex flex-wrap items-center gap-2 min-w-0">
               {accountTabs.map((tab) => {
                 const active = filterAccountId === tab.id
@@ -1210,7 +1220,7 @@ export default function OwnedItemsPage() {
                 value={filterAccountId}
                 onChange={(e) => setFilterAccountId(e.target.value)}
                 aria-label="表示アカウント"
-                className="flex-1 min-w-0 bg-surface border border-surface-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary-500"
+                className="flex-1 min-w-0 lg:max-w-xs bg-surface border border-surface-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary-500"
               >
                 {accountTabs.map((tab) => (
                   <option key={tab.id} value={tab.id}>{tab.label} ({tab.count})</option>
